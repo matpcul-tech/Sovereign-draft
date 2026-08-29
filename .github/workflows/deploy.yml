@@ -40,6 +40,10 @@ jobs:
           VITE_BASE: /${{ github.event.repository.name }}/
         run: npm run build
       - uses: actions/configure-pages@v5
+        # Provision Pages on first run instead of failing until someone flips
+        # the setting by hand. No-op once Pages is configured.
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
