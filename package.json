@@ -1,0 +1,22 @@
+{
+  "name": "sovereign-draft",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Sovereign Draft — a touch-first 2D CAD program for architectural drafting. Draw, dimension, trim, offset, block, and export to DXF/PDF/PNG at true scale.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.0"
+  },
+  "devDependencies": {
+    "vite": "^7.3.0",
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^4.0.18"
+  }
+}
