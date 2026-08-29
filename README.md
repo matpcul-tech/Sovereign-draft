@@ -69,7 +69,7 @@ Requirements: HTTPS (for the service worker and installability), no server-side 
 
 ### GitHub Pages
 
-`.github/workflows/deploy.yml` builds and publishes on every push to `main`, and can be run on demand from the Actions tab. Enable it once, in **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+`.github/workflows/deploy.yml` builds and publishes on every push to the repository's **default branch** (whatever it is named), and can be run on demand from the Actions tab. Enable it once, in **Settings → Pages → Build and deployment → Source: GitHub Actions** — until that is set, the deploy step fails with "Pages is not enabled".
 
 ### Serving from a subdirectory
 

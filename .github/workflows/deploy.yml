@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   workflow_dispatch:
 
 # Allow the workflow to publish to Pages via OIDC.
@@ -18,6 +18,12 @@ concurrency:
 
 jobs:
   build:
+    # Publish only from the repository's default branch, whatever it is named,
+    # plus manual runs. Referencing a fixed branch name would silently never
+    # fire on a repo whose default is named something else.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
