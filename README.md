@@ -65,7 +65,21 @@ node scripts/gen-icons.mjs
 
 `npm run build` emits a fully static site in `dist/` — deploy it to any static host (GitHub Pages, Netlify, Cloudflare Pages, S3…). The service worker precaches the app shell so it installs and runs offline; Google Fonts are runtime-cached with system-font fallbacks.
 
-Requirements: HTTPS (for the service worker and clipboard), no server-side code needed. The Anthropic API is called directly from the browser with the user's own key, so no proxy is required — though you can front it with one if you'd rather issue scoped keys.
+Requirements: HTTPS (for the service worker and installability), no server-side code needed. The Anthropic API is called directly from the browser with the user's own key, so no proxy is required — though you can front it with one if you'd rather issue scoped keys.
+
+### GitHub Pages
+
+`.github/workflows/deploy.yml` builds and publishes on every push to `main`, and can be run on demand from the Actions tab. Enable it once, in **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+
+### Serving from a subdirectory
+
+A GitHub Pages *project* site is served from `https://<user>.github.io/<repo>/`, so the bundle needs a matching base path. Set `VITE_BASE` at build time:
+
+```bash
+VITE_BASE=/Sovereign-draft/ npm run build
+```
+
+The deploy workflow does this automatically from the repository name. Leave `VITE_BASE` unset (defaults to `/`) for a user/org site, a custom domain, or any host serving from the domain root.
 
 ## Architecture
 

@@ -1,7 +1,12 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// Served from the domain root by default. GitHub Pages project sites live
+// under /<repo>/, so CI sets VITE_BASE (e.g. "/Sovereign-draft/").
+const base = process.env.VITE_BASE || '/';
+
 export default defineConfig({
+  base,
   build: {
     target: 'es2020',
     sourcemap: true
@@ -18,10 +23,11 @@ export default defineConfig({
         background_color: '#07101f',
         display: 'standalone',
         orientation: 'any',
+        // Relative to the manifest, so these resolve under any deploy base.
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+          { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
         ]
       },
       workbox: {
