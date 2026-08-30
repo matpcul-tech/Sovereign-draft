@@ -69,7 +69,7 @@ Requirements: HTTPS (for the service worker and installability), no server-side 
 
 ### GitHub Pages
 
-`.github/workflows/deploy.yml` builds and publishes on every push to the repository's **default branch** (whatever it is named), and can also be run on demand from the Actions tab.
+`.github/workflows/deploy.yml` builds and publishes on every push to **`main`**, and can also be run on demand from the Actions tab. Publishing from a different branch is a one-line change to the workflow's `branches:` list.
 
 **One-time setup:** turn Pages on under **Settings → Pages → Build and deployment → Source: GitHub Actions**. Until that is done the deploy job fails at `configure-pages` with *"Please verify that the repository has Pages enabled"*; the workflow cannot do it for you, because creating a Pages site needs admin rights that the workflow's `GITHUB_TOKEN` does not carry. Once the setting is on, the next push deploys with no further changes, and the published URL appears on the run's `deploy` job.
 
