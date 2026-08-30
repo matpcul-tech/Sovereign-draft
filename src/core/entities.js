@@ -19,6 +19,7 @@
  *   {type:'centerline',layer, pts}            construction geometry, non-printing
  *   {type:'callout',   layer, anchor,pts,content,textH}  leader + boxed label
  *   {type:'hatchRegion',layer, pts, pattern}  explicit region plus pattern
+ *   {type:'xref',   layer, name,path,x,y,rot,scale,overlay,entities}
  * Optional: lt (linetype), lw (mm lineweight), block group `g`, numeric `id`.
  * Walls are groups of lines tagged kind:'wall'. INSERT is a live parametric
  * block (no `g`) expanded at draw/hit/osnap/export; explode yields fragments.
@@ -26,6 +27,7 @@
 import { dist, distToSeg, arcPoints, dimGeom, pointInPoly, ellipsePoints, cloudPoints, imageCorners, angularGeom } from './geometry.js';
 import { hatchLines } from './hatch.js';
 import { expandInsert, insertGrips } from './dynblock.js';
+import { expandXref, xrefGrips } from './xref.js';
 import { tableFrags, tableCorners } from './schedule.js';
 import { dimLabel } from './dimStyle.js';
 import { expandGrid } from './grid.js';
@@ -95,6 +97,7 @@ export function flattenEnt(e){
   if (!e) return [];
   if (isComposite(e)) return expandComposite(e);
   if (e.type === 'insert') return expandInsert(e);
+  if (e.type === 'xref') return expandXref(e);
   if (e.type === 'grid') return expandGrid(e);
   if (e.type === 'xline') return [spanXline(e)];
   return [e];
@@ -104,6 +107,7 @@ export function explodeForIO(e){
   if (!e) return [];
   if (isComposite(e)) return expandComposite(e);
   if (e.type === 'insert') return expandInsert(e);
+  if (e.type === 'xref') return expandXref(e);
   if (e.type === 'table') return tableFrags(e);
   if (e.type === 'ellipse') return [{ type: 'poly', closed: true, pts: ellipsePoints(e), layer: e.layer, lt: e.lt, lw: e.lw }];
   if (e.type === 'cloud') return [{ type: 'poly', closed: true, pts: cloudPoints(e.pts || [], e.amp), layer: e.layer, lt: e.lt, lw: e.lw }];
@@ -260,7 +264,7 @@ export function translateEnt(e, dx, dy){
   }
   else if (e.type === 'circle' || e.type === 'arc' || e.type === 'ellipse'){ e.cx += dx; e.cy += dy; }
   else if (e.type === 'text' || e.type === 'table' || e.type === 'image'){ e.x += dx; e.y += dy; }
-  else if (e.type === 'insert'){ e.x += dx; e.y += dy; }
+  else if (e.type === 'insert' || e.type === 'xref'){ e.x += dx; e.y += dy; }
   else if (e.type === 'xline'){ e.x1 += dx; e.y1 += dy; e.x2 += dx; e.y2 += dy; }
   else if (e.type === 'room'){
     if (e.pts) for (let i = 0; i < e.pts.length; i++){ e.pts[i][0] += dx; e.pts[i][1] += dy; }
@@ -272,7 +276,7 @@ export function translateEnt(e, dx, dy){
 export function entBBox(e, bb){
   if (isComposite(e)){ expandComposite(e).forEach(f => entBBox(f, bb)); return; }
   function add(x, y){ if (x < bb[0]) bb[0] = x; if (y < bb[1]) bb[1] = y; if (x > bb[2]) bb[2] = x; if (y > bb[3]) bb[3] = y; }
-  if (e.type === 'insert'){ flattenEnt(e).forEach(f => entBBox(f, bb)); add(e.x, e.y); return; }
+  if (e.type === 'insert' || e.type === 'xref'){ flattenEnt(e).forEach(f => entBBox(f, bb)); add(e.x, e.y); return; }
   if (e.type === 'grid'){ flattenEnt(e).forEach(f => entBBox(f, bb)); return; }
   if (e.type === 'line' || e.type === 'xline'){ add(e.x1, e.y1); add(e.x2, e.y2); }
   else if (e.type === 'poly' || e.type === 'hatch' || e.type === 'leader' || e.type === 'room'){ for (let i = 0; i < (e.pts || []).length; i++) add(e.pts[i][0], e.pts[i][1]); }
@@ -314,10 +318,10 @@ export function rotateMembers(ms){
     else if (e.type === 'arc'){ p = rot(e.cx, e.cy); e.cx = p[0]; e.cy = p[1]; e.a1 += 90; e.a2 += 90; }
     else if (e.type === 'text' || e.type === 'table'){ p = rot(e.x, e.y); e.x = p[0]; e.y = p[1]; }
     else if (e.type === 'image'){ p = rot(e.x, e.y); e.x = p[0]; e.y = p[1]; e.rot = (e.rot || 0) + 90; }
-    else if (e.type === 'insert'){
+    else if (e.type === 'insert' || e.type === 'xref'){
       p = rot(e.x, e.y); e.x = p[0]; e.y = p[1];
       e.rot = (e.rot || 0) + 90;
-      e.host = null; e.cl = null; e.t = undefined;
+      if (e.type === 'insert'){ e.host = null; e.cl = null; e.t = undefined; }
     }
     else if (e.type === 'grid'){
       p = rot(e.x, e.y); e.x = p[0]; e.y = p[1];
@@ -329,6 +333,7 @@ export function rotateMembers(ms){
 /* Grip points for single-entity editing. Each grip mutates its entity via apply(p). */
 export function gripPts(e){
   if (e.type === 'insert') return insertGrips(e);
+  if (e.type === 'xref') return xrefGrips(e);
   const g = [];
   if (e.type === 'line' || e.type === 'xline'){
     g.push({ x: e.x1, y: e.y1, apply(p){ e.x1 = p[0]; e.y1 = p[1]; } });

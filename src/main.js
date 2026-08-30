@@ -11,7 +11,7 @@ import { syncCtx, renderHistory, renderProps, cycleCurrentLt, cycleCurrentLw, cy
 import { openSheet, closeSheets } from './ui/sheets.js';
 import { renderLayers } from './ui/layersPanel.js';
 import { toast } from './ui/toast.js';
-import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90, placeAllSchedules, exportScheduleCSV, applyCleanup, applyOverkill, applyRooms, applyTakeoff, applySheetSet } from './actions.js';
+import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90, placeAllSchedules, exportScheduleCSV, applyCleanup, applyOverkill, applyRooms, applyTakeoff, applySheetSet, applyAttachXref } from './actions.js';
 import { buildDXF, sniffDrawing, openDXF } from './io/dxf.js';
 import { isDwgBuffer, parseDwg } from './io/dwg.js';
 import { buildPDF, buildAllSheetsPDF, scaleLabel } from './io/pdf.js';
@@ -485,6 +485,11 @@ function wireUi(){
     if (kind === 'json'){
       try {
         const p = validateProject(JSON.parse(text));
+        if (opts.xref){
+          applyAttachXref({ name: p.name, entities: p.entities }, { name: p.name || nameFromFile(filename), path: filename });
+          zoomFit(); draw();
+          return;
+        }
         pushUndo();
         applyProject(state, p);
         closeSheets(); afterChange(); zoomFit(); draw();
@@ -495,6 +500,11 @@ function wireUi(){
     try {
       const { entities, count, insunits, units } = openDXF(text, n => String(n || 'WALLS').toUpperCase().slice(0, 24));
       if (!count){ toast('No supported objects in that file'); return; }
+      if (opts.xref){
+        applyAttachXref({ name: nameFromFile(filename), entities }, { name: nameFromFile(filename), path: filename });
+        zoomFit(); draw();
+        return;
+      }
       if (opts.merge){
         pushUndo();
         entities.forEach(e => { e.layer = ensureLayer(e.layer); addEntity(e); });
@@ -506,21 +516,28 @@ function wireUi(){
       }
     } catch (err){ toast((opts.merge ? 'Insert' : 'Open') + ' failed: ' + err.message); }
   }
-  function readDrawingFile(file, merge){
+  function readDrawingFile(file, merge, asXref){
     if (!file) return;
     const n = String(file.name || '').toLowerCase();
+    const name = nameFromFile(file.name);
+    function attach(ents){
+      applyAttachXref({ name, entities: ents }, { name, path: file.name });
+      zoomFit(); draw();
+    }
     if (n.endsWith('.dwg') || file.type === 'application/acad' || file.type === 'image/vnd.dwg'){
       const rd = new FileReader();
       rd.onload = async () => {
         try {
           const buf = rd.result;
           if (!isDwgBuffer(buf, file.name)){
+            if (asXref){ openDrawingText(new TextDecoder('latin1').decode(buf), file.name, { xref: true }); return; }
             openDrawingText(new TextDecoder('latin1').decode(buf), file.name, { merge: !!merge });
             return;
           }
           toast('Opening DWG…');
           const r = await parseDwg(buf, { filename: file.name, ensureLayer: n => String(n || 'WALLS').toUpperCase().slice(0, 24) });
           if (!r.entities.length){ toast('No supported objects in that DWG'); return; }
+          if (asXref){ attach(r.entities); return; }
           if (merge){
             pushUndo();
             r.entities.forEach(e => { e.layer = ensureLayer(e.layer); addEntity(e); });
@@ -538,7 +555,7 @@ function wireUi(){
       return;
     }
     const rd = new FileReader();
-    rd.onload = () => openDrawingText(String(rd.result || ''), file.name, { merge: !!merge });
+    rd.onload = () => openDrawingText(String(rd.result || ''), file.name, { merge: !!merge, xref: !!asXref });
     rd.readAsText(file);
   }
 
@@ -553,6 +570,12 @@ function wireUi(){
   $('fileDXF') && $('fileDXF').addEventListener('change', ev => {
     const f = ev.target.files && ev.target.files[0];
     if (f) readDrawingFile(f, true);
+    ev.target.value = '';
+  });
+  $('mXref') && $('mXref').addEventListener('click', () => $('fileXref').click());
+  $('fileXref') && $('fileXref').addEventListener('change', ev => {
+    const f = ev.target.files && ev.target.files[0];
+    if (f) readDrawingFile(f, false, true);
     ev.target.value = '';
   });
 

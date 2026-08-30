@@ -28,6 +28,7 @@ import { areaOf, listEntity, idPoint } from './core/inquiry.js';
 import { healWalls } from './core/cleanup.js';
 import { bindAlignedDim } from './core/assoc.js';
 import { makeGridFromCorners, expandGrid } from './core/grid.js';
+import { attachXref, expandXref } from './core/xref.js';
 import { overkill } from './core/overkill.js';
 import { buildTakeoffTable, takeoffSummary } from './core/takeoff.js';
 import { syncAutoRooms } from './core/rooms.js';
@@ -526,7 +527,9 @@ export function explodeSelection(){
     if (e.type === 'insert'){
       expandInsert(e).forEach(f => add.push(f));
       kill.push(e.id);
-    } else if (e.type === 'table'){
+    } else if (e.type === 'xref'){
+      expandXref(e).forEach(f => add.push(f));
+      kill.push(e.id);
       tableFrags(e).forEach(f => add.push(f));
       kill.push(e.id);
     } else if (e.type === 'grid'){
@@ -544,6 +547,24 @@ export function explodeSelection(){
   state.selIds = add.length ? add.map(f => f.id) : ms.filter(e => !kill.includes(e.id)).map(e => e.id);
   afterChange();
   toast('Exploded');
+}
+
+export function applyAttachXref(source, opts){
+  const src = source || {};
+  const ents = src.entities || [];
+  if (!ents.length){ toast('Nothing to attach'); return null; }
+  pushUndo();
+  const xref = attachXref(state.entities, src, opts);
+  addEntity(xref);
+  afterChange();
+  toast('XREF ' + (xref.name || '') + ' · ' + (xref.entities || []).length + ' objects');
+  return xref;
+}
+
+export function bindSelection(){
+  const ms = selMembers().filter(e => e.type === 'xref');
+  if (!ms.length){ toast('Select an xref to bind'); return; }
+  explodeSelection();
 }
 
 export function flipSelection(){

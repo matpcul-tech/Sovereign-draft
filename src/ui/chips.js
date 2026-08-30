@@ -65,7 +65,7 @@ export function syncCtx(){
   const anyInsert = ms.some(e => e.type === 'insert');
   const wallSel = ms.some(e => e.kind === 'wall');
   ['chipDelete','chipRotate','chipDup','chipAssign','chipBlock'].forEach(id => { if ($(id)) $(id).style.display = has ? '' : 'none'; });
-  if ($('chipExplode')) $('chipExplode').style.display = (anyG || anyInsert || ms.some(e => e.type === 'table')) ? '' : 'none';
+  if ($('chipExplode')) $('chipExplode').style.display = (anyG || anyInsert || ms.some(e => e.type === 'table' || e.type === 'xref')) ? '' : 'none';
   if ($('chipEditTxt')) $('chipEditTxt').style.display = (ms.length === 1 && ms[0].type === 'text') ? '' : 'none';
   if ($('chipFlip')) $('chipFlip').style.display = (ms.length === 1 && (ms[0].type === 'dim' || ms[0].type === 'insert')) ? '' : 'none';
   if ($('chipDoor')) $('chipDoor').style.display = wallSel ? '' : 'none';

@@ -125,7 +125,7 @@ function writeEnt(w, e, r2000, inBlock){
     let deg = g.ang * 180 / Math.PI;
     if (deg > 90 || deg < -90) deg += 180;
     w(0, 'TEXT', 8, 'DIMS', 10, fmtN(g.mid[0]), 20, fmtN(g.mid[1]), 30, 0, 40, 0.8, 50, fmtN(deg), 72, 1, 11, fmtN(g.mid[0]), 21, fmtN(g.mid[1]), 31, 0, 1, dimLabel(e));
-  } else if (e.type === 'insert' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || e.type === 'profile' || e.type === 'centerline' || e.type === 'callout' || e.type === 'hatchRegion' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
+  } else if (e.type === 'insert' || e.type === 'xref' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || e.type === 'profile' || e.type === 'centerline' || e.type === 'callout' || e.type === 'hatchRegion' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
     explodeForIO(e).forEach(f => writeEnt(w, f, r2000, inBlock));
   }
   void arcPoints;

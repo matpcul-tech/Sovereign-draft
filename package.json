@@ -1,7 +1,7 @@
 {
   "name": "sovereign-draft",
   "private": false,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "The CAD you open without a license. Browser 2D CAD, CLI, and embeddable kernel. JSON in git, DXF/DWG in, issued PDF out.",
   "type": "module",
   "main": "./src/api.js",

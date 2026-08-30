@@ -221,6 +221,12 @@ export function transformEnt(e, fn, extra){
       e.flip = (e.flip || 1) * -1;
       e.rot = extra.mirrorAng * 2 - (e.rot || 0);
     }
+  } else if (e.type === 'xref'){
+    const p = fn(e.x, e.y);
+    e.x = p[0]; e.y = p[1];
+    if (extra && extra.addAng) e.rot = (e.rot || 0) + extra.addAng;
+    if (extra && extra.scaleR) e.scale = (e.scale == null ? 1 : e.scale) * extra.scaleR;
+    if (extra && extra.mirrorAng != null) e.rot = extra.mirrorAng * 2 - (e.rot || 0);
   } else if (e.type === 'xline'){
     const a = fn(e.x1, e.y1), b = fn(e.x2, e.y2);
     e.x1 = a[0]; e.y1 = a[1]; e.x2 = b[0]; e.y2 = b[1];

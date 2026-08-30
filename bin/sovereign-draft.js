@@ -8,7 +8,8 @@
  */
 import { readFileSync, writeFileSync } from 'fs';
 import { basename } from 'path';
-import { open, openAsync, draw, sheetset, toPDF, toDXF, toJSON, toSVG, toHTML, sampleCabin, encodeShare, shareUrl } from '../src/api.js';
+import { open, openAsync, draw, sheetset, toPDF, toDXF, toJSON, toSVG, toHTML, sampleCabin, encodeShare, shareUrl, attach } from '../src/api.js';
+import { setDisplayUnits } from '../src/core/format.js';
 
 function parseArgs(argv){
   const opts = { files: [] };
@@ -28,6 +29,8 @@ function parseArgs(argv){
     else if (a === '--sheets') opts.sheets = true;
     else if (a === '--model-pdf') opts.modelPdf = true;
     else if (a === '--sample') opts.sample = true;
+    else if (a === '--xref') { (opts.xrefs = opts.xrefs || []).push(next()); }
+    else if (a === '--units') opts.units = next();
     else if (a === '-h' || a === '--help') opts.help = true;
     else if (a.startsWith('-')) throw new Error('Unknown flag ' + a);
     else opts.files.push(a);
@@ -48,6 +51,8 @@ function help(){
     '  sovereign-draft --sheets <file> --pdf set.pdf',
     '  sovereign-draft --prompt "24x36 cabin" --pdf cabin.pdf',
     '  sovereign-draft --sample --pdf cabin.pdf',
+    '  sovereign-draft site.json --xref cabin.json --pdf site.pdf',
+    '  sovereign-draft plan.json --units mm --pdf plan.pdf',
     '',
     'ANTHROPIC_API_KEY (or --key) is required for --prompt.',
     'PDF is written as latin1. JSON is the git source of truth.'
@@ -81,6 +86,19 @@ async function main(){
     process.exit(opts.help ? 0 : 1);
   }
   let doc = await loadDoc(opts);
+  if (opts.xrefs){
+    for (const f of opts.xrefs){
+      const buf = readFileSync(f);
+      const lower = f.toLowerCase();
+      const other = lower.endsWith('.dwg') ? await openAsync(buf, basename(f)) : open(buf.toString(lower.endsWith('.json') ? 'utf8' : 'latin1'), basename(f));
+      attach(doc, other, { name: basename(f).replace(/\.[^.]+$/, ''), path: f });
+    }
+  }
+  if (opts.units){
+    const u = String(opts.units).toLowerCase();
+    doc.units = (u === 'mm' || u === 'm') ? u : 'ft';
+    setDisplayUnits(doc.units);
+  }
   if (opts.sheets && !opts.prompt && !opts.sample) doc = sheetset(doc, { name: opts.name || doc.name });
   if (opts.name) doc.name = opts.name;
   if (opts.pdf){
