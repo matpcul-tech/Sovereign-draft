@@ -24,6 +24,7 @@ import { makeLayout, makeViewport, fitViewport, SHEETS } from './core/layout.js'
 import { membersBBox } from './core/entities.js';
 import { addSheet, addViewToSheet, normalizeSheets, findSheet } from './core/document.js';
 import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys, markScheduleCSV } from './core/keynote.js';
+import { placeInMargin, makeTableAnnotation, addAnnotation } from './core/sheetspace.js';
 import { cabin24x36 } from './core/demo.js';
 
 const $ = id => document.getElementById(id);
@@ -521,9 +522,21 @@ function wireUi(){
     const sheet = state.space !== 'model' ? activeLayout() : null;
     const rows = keynoteRows(state.entities, sheet);
     if (!rows.length){ toast('Nothing is marked yet'); return; }
-    const bb = membersBBox(state.entities);
     pushUndo();
-    addEntity(buildKeynoteLegend(state.entities, sheet, [bb[2] + 3, bb[3]]));
+    if (sheet){
+      /* A legend belongs to the sheet, in paper inches, so it keeps its size
+       * whatever scale the views are drawn at. */
+      const t = buildKeynoteLegend(state.entities, sheet, [0, 0], { colW: [0.55, 2.1] });
+      t.rowH = 0.22;
+      const size = [t.colW.reduce((a, b) => a + b, 0), (t.cells.length + 1) * t.rowH];
+      const slot = placeInMargin(sheet, size);
+      if (!slot){ toast('No room on this sheet for a legend'); return; }
+      const idx = state.layouts.findIndex(x => x.id === sheet.id);
+      state.layouts[idx] = addAnnotation(sheet, makeTableAnnotation(slot.x, slot.y, t));
+    } else {
+      const bb = membersBBox(state.entities);
+      addEntity(buildKeynoteLegend(state.entities, sheet, [bb[2] + 3, bb[3]]));
+    }
     afterChange();
     toast(rows.length + ' keynote' + (rows.length === 1 ? '' : 's') + (sheet ? ' on ' + (sheet.sheetNumber || sheet.name) : ''));
   });
@@ -534,9 +547,22 @@ function wireUi(){
     const groups = collectMarks(state.entities);
     if (!groups.length){ toast('Nothing is marked yet'); return; }
     const cols = attributeKeys(state.entities).slice(0, 3);
-    const bb = membersBBox(state.entities);
     pushUndo();
-    addEntity(buildMarkSchedule(state.entities, sheet, [bb[2] + 3, bb[1] + 14], { columns: cols.length ? cols : undefined }));
+    if (sheet){
+      const t = buildMarkSchedule(state.entities, sheet, [0, 0], {
+        columns: cols.length ? cols : undefined,
+        colW: [0.55, 0.45].concat((cols.length ? cols : ['type', 'material', 'size']).map(() => 0.85))
+      });
+      t.rowH = 0.22;
+      const size = [t.colW.reduce((a, b) => a + b, 0), (t.cells.length + 1) * t.rowH];
+      const slot = placeInMargin(sheet, size);
+      if (!slot){ toast('No room on this sheet for a schedule'); return; }
+      const idx = state.layouts.findIndex(x => x.id === sheet.id);
+      state.layouts[idx] = addAnnotation(sheet, makeTableAnnotation(slot.x, slot.y, t));
+    } else {
+      const bb = membersBBox(state.entities);
+      addEntity(buildMarkSchedule(state.entities, sheet, [bb[2] + 3, bb[1] + 14], { columns: cols.length ? cols : undefined }));
+    }
     afterChange();
     const total = groups.reduce((n, g) => n + g.qty, 0);
     toast(groups.length + ' mark' + (groups.length === 1 ? '' : 's') + ', ' + total + ' total');

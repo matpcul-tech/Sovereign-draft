@@ -1,6 +1,7 @@
 /* Live canvas rendering: grid, entities, selection, grips, tool previews,
  * paper-space layouts.
  */
+import { tableFrags } from '../core/schedule.js';
 import { state, layerByName, selMembers, activeLayout } from '../core/state.js';
 import { vp, W2S, S2W } from '../core/viewport.js';
 import { membersBBox, gripPts } from '../core/entities.js';
@@ -152,6 +153,37 @@ function drawPaper(){
     ctx.strokeStyle = '#8fa3c0'; ctx.lineWidth = 1;
     ctx.strokeRect(tl[0], tl[1], vp0.pw * scl, vp0.ph * scl);
   }
+  /* Sheet space annotations, drawn in paper inches through p2s. */
+  (L.annotations || []).forEach(a => {
+    if (!a) return;
+    ctx.strokeStyle = '#43536f'; ctx.lineWidth = 1;
+    ctx.fillStyle = '#07101f';
+    if (a.kind === 'table' && a.table){
+      const t = Object.assign({}, a.table, { x: a.x, y: a.y });
+      const ts = (t.rowH || 0.22) / 0.85;
+      tableFrags(t).forEach(f => {
+        if (f.type === 'line'){
+          const p0 = p2s(f.x1, f.y1), p1 = p2s(f.x2, f.y2);
+          ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
+        } else if (f.type === 'text'){
+          const q = p2s(f.x, f.y);
+          ctx.font = Math.max(8, f.size * ts * scl) + 'px Outfit, system-ui';
+          ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+          ctx.fillText(f.content || '', q[0], q[1]);
+        }
+      });
+      return;
+    }
+    if (a.leader && a.leader.length === 2){
+      const p0 = p2s(a.leader[0][0], a.leader[0][1]), p1 = p2s(a.leader[1][0], a.leader[1][1]);
+      ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
+    }
+    const q = p2s(a.x, a.y);
+    ctx.font = Math.max(8, (a.size || 0.12) * scl) + 'px Outfit, system-ui';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(a.text || '', q[0], q[1]);
+  });
+
   if (L.titleBlock){
     const tbH = 0.9;
     const t0 = p2s(0.5, 0.5 + tbH), t1 = p2s(sh.w - 0.5, 0.5);

@@ -8,6 +8,7 @@ import { membersBBox, explodeForIO } from '../core/entities.js';
 import { hatchLines, hatchPlan, ppfToScaleFactor } from '../core/hatch.js';
 import { helveticaWidth } from '../core/textmetrics.js';
 import { sheetLabel } from '../core/document.js';
+import { tableFrags } from '../core/schedule.js';
 import { sheetOf } from '../core/layout.js';
 
 export const SCALE_LADDER = [
@@ -257,6 +258,30 @@ function layoutPage(entities, opts){
     P('0.2 G 0.8 w');
     P(f2(VX) + ' ' + f2(VY) + ' ' + f2(VW) + ' ' + f2(VH) + ' re S');
   }
+  /* Sheet space annotations. Coordinates are paper inches, so a legend keeps
+   * its size and position whatever scale the views are drawn at. */
+  (layout.annotations || []).forEach(a => {
+    if (!a) return;
+    const IX = v => v * 72, IY = v => v * 72;
+    P('0.6 w 0.08 G');
+    if (a.kind === 'table' && a.table){
+      const t = Object.assign({}, a.table, { x: a.x, y: a.y });
+      const ts = (t.rowH || 0.22) / 0.85;
+      tableFrags(t).forEach(f => {
+        if (f.type === 'line'){
+          P(f2(IX(f.x1)) + ' ' + f2(IY(f.y1)) + ' m ' + f2(IX(f.x2)) + ' ' + f2(IY(f.y2)) + ' l S');
+        } else if (f.type === 'text'){
+          textAt(IX(f.x), IY(f.y), Math.max(f.size * ts * 72, 4), f.content || '', 0, false, 0.1);
+        }
+      });
+      return;
+    }
+    if (a.leader && a.leader.length === 2){
+      P(f2(IX(a.leader[0][0])) + ' ' + f2(IY(a.leader[0][1])) + ' m ' + f2(IX(a.leader[1][0])) + ' ' + f2(IY(a.leader[1][1])) + ' l S');
+    }
+    textAt(IX(a.x), IY(a.y), Math.max((a.size || 0.12) * 72, 4), a.text || '', 0, false, 0.1);
+  });
+
   if (layout.titleBlock !== false){
     const tbY = 36, tbH = 54, tbX = 36, tbW = pageW - 72;
     P('0.08 G 1.2 w');
