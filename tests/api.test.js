@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
-import { createDocument, open, toPDF, toDXF, toJSON, toSVG, sampleCabin } from '../src/api.js';
+import { createDocument, open, toPDF, toDXF, toJSON, toSVG, toHTML, sampleCabin } from '../src/api.js';
 import { cabin24x36 } from '../src/core/demo.js';
 import { defaultLayers } from '../src/core/state.js';
 import { buildDXF } from '../src/io/dxf.js';
@@ -38,6 +38,11 @@ describe('sheetset + PDF', () => {
     const svg = toSVG(doc);
     expect(svg).toContain('<svg');
     expect(svg).toContain('</svg>');
+    const html = toHTML(doc);
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('24x36 Cabin');
+    expect(html).toContain('ROOM SCHEDULE');
+    expect(html).toContain('id="drawing"');
   });
 });
 

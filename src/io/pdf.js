@@ -12,6 +12,7 @@ import { tableFrags } from '../core/schedule.js';
 import { detailBubbleText } from '../core/sheetspace.js';
 import { sheetOf } from '../core/layout.js';
 import { titleBlockModel, drawingTitleOf, fitPaperText, viewportClearOfTitle } from '../core/titleblock.js';
+import { entsInBBox } from '../core/legend.js';
 
 export const SCALE_LADDER = [
   { ppf: 72,   lbl: '1" = 1\'-0"' },
@@ -227,7 +228,10 @@ function layoutPage(entities, opts){
   const sh = sheetOf(layout.sheet);
   const pageW = Math.round(sh.w * 72), pageH = Math.round(sh.h * 72);
   const layerVisible = opts.layerVisible || (() => true);
-  const visible = entities.filter(e => layerVisible(e.layer));
+  let visible = entities.filter(e => layerVisible(e.layer));
+  if (layout.section && layout.section.bbox){
+    visible = entsInBBox(visible, layout.section.bbox, 0.4);
+  }
   const f2 = n => String(Math.round(n * 100) / 100);
   const C = [];
   const P = s => C.push(s);

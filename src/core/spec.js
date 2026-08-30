@@ -190,12 +190,17 @@ export function envelopeDims(entities){
   return dims;
 }
 
-export function padForLabels(bbox, body){
+export function padForLabels(bbox, body, kind){
   const bw = Math.max((body[2] - body[0]), 1);
   const bh = Math.max((body[3] - body[1]), 0.5);
   const vertical = bh >= bw * 0.7;
+  if (kind === 'section'){
+    /* Isolate this room / station. Do not expand to the whole body. */
+    const pad = vertical ? Math.max(1.2, bw * 0.15) : 0.45;
+    const labelW = vertical ? Math.max(4, bw * 0.9) : 0.7;
+    return [bbox[0] - pad, bbox[1] - 0.35, bbox[2] + labelW, bbox[3] + 0.35];
+  }
   const pad = Math.max(2, Math.min(bw, bh) * 0.15);
-  /* Tall stacks keep a leader column. Floor plans only need a small margin. */
   const labelW = vertical ? Math.max(8, bw * 1.8) : Math.max(2, bw * 0.12);
   return [
     bbox[0] - pad,

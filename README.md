@@ -141,14 +141,23 @@ writeFileSync('plan.pdf', toPDF(set), 'latin1')
 ```
 npx --yes github:matpcul-tech/Sovereign-draft --sample --pdf cabin.pdf
 npx sovereign-draft plan.json --pdf plan.pdf
-npx sovereign-draft plan.dxf --sheets --pdf set.pdf --svg set.svg
+npx sovereign-draft plan.dxf --sheets --pdf set.pdf --svg set.svg --html set.html
 npx sovereign-draft --prompt "24x36 cabin, 3 rooms" --pdf cabin.pdf   # needs ANTHROPIC_API_KEY
 npx sovereign-draft drawing.dwg --json drawing.json
 ```
 
 `examples/cabin.json` is the sample, committed so it diffs in git. CI plots it to PDF on every push.
 
-Embed a drawing in your page (chrome off):
+From any repo:
+
+```yaml
+- uses: matpcul-tech/Sovereign-draft/.github/actions/plot@main
+  with:
+    file: drawings/cabin.json
+    pdf: cabin.pdf
+```
+
+Embed a drawing in your page (chrome off), or email `--html` — a single file with the SVG, the schedule, and the JSON so it can be opened again. No server.
 
 ```html
 <iframe src="embed.html?src=plan.json"></iframe>

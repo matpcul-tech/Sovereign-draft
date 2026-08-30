@@ -1,0 +1,27 @@
+name: Plot Sovereign Draft
+description: Plot a JSON or DXF drawing to an issued PDF. No CAD license.
+inputs:
+  file:
+    description: Path to a .json or .dxf drawing
+    required: true
+  pdf:
+    description: Output PDF path
+    required: false
+    default: drawing.pdf
+  sheets:
+    description: Generate a sheet set before plotting
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - name: Plot
+      shell: bash
+      run: |
+        npm install --no-save github:matpcul-tech/Sovereign-draft
+        SHEETS=""
+        if [ "${{ inputs.sheets }}" = "true" ]; then SHEETS="--sheets"; fi
+        npx sovereign-draft "${{ inputs.file }}" $SHEETS --pdf "${{ inputs.pdf }}"

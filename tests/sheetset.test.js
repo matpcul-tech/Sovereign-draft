@@ -50,6 +50,17 @@ describe('cabin sheet set', () => {
     expect(layouts.every(L => L.viewports && L.viewports[0] && L.viewports[0].pw > 0)).toBe(true);
   });
 
+  it('does not expand a room sheet to the whole cabin', () => {
+    const layouts = generateSheetSet(ents, layers);
+    const kit = layouts.find(L => /KITCHEN/i.test(L.name));
+    expect(kit).toBeTruthy();
+    const kw = kit.section.bbox[2] - kit.section.bbox[0];
+    const kh = kit.section.bbox[3] - kit.section.bbox[1];
+    const all = membersBBox(ents);
+    expect(kw).toBeLessThan((all[2] - all[0]) * 0.75);
+    expect(kh).toBeLessThan((all[3] - all[1]) * 0.85);
+  });
+
   it('each section sheet has a legend that only lists that section', () => {
     const layouts = generateSheetSet(ents, layers);
     const kitchen = layouts.find(L => /kitchen/i.test(L.name));
