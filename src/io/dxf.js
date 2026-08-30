@@ -1,6 +1,7 @@
-/* DXF writer (R12 / optional R2000) and a tolerant reader for LINE, CIRCLE,
- * ARC, TEXT, MTEXT, LWPOLYLINE, POLYLINE/VERTEX, INSERT (as a block group),
- * HATCH. Units are assumed to be feet both ways.
+/* DXF writer (R12 / optional R2000) and a tolerant reader.
+ * World units are decimal feet. The writer stamps $INSUNITS=2.
+ * The reader honors $INSUNITS (inches, mm, cm, meters → feet) and, when the
+ * header is missing, treats huge coordinates (max > 2000) as millimetres.
  */
 import { fmtN, dimGeom, arcPoints } from '../core/geometry.js';
 import { LTYPE_NAMES, LINETYPES } from '../core/style.js';
@@ -21,7 +22,11 @@ export function buildDXF(entities, layers, opts){
   const L = [];
   function w(...args){ for (const a of args) L.push(String(a)); }
   const acadver = r2000 ? 'AC1015' : 'AC1009';
-  w(0, 'SECTION', 2, 'HEADER', 9, '$ACADVER', 1, acadver, 0, 'ENDSEC');
+  w(0, 'SECTION', 2, 'HEADER',
+    9, '$ACADVER', 1, acadver,
+    9, '$INSUNITS', 70, 2,
+    9, '$MEASUREMENT', 70, 0,
+    0, 'ENDSEC');
 
   w(0, 'SECTION', 2, 'TABLES');
   /* LTYPE table */
@@ -148,10 +153,12 @@ export function parseDXF(txt, ensureLayer){
     if (isNaN(code)){ i--; continue; }
     pairs.push([code, lines[i + 1] !== undefined ? lines[i + 1].trim() : '']);
   }
-  let inEnt = false, inBlocks = false, cur = null, curVerts = null;
+  let inEnt = false, inBlocks = false, inHeader = false, cur = null, curVerts = null;
   const added = [];
   const blockDefs = {};
   let blockName = null, blockEnts = null;
+  let insunits = 0, headerVar = '';
+
 
   function emit(e){
     if (blockName){ blockEnts.push(e); return; }
@@ -169,7 +176,7 @@ export function parseDXF(txt, ensureLayer){
     else if (t === 'ARC' && cur[10] !== undefined) emit(style({ type: 'arc', layer: ly, cx: num(cur[10]), cy: num(cur[20]), r: num(cur[40]) || 0.1, a1: num(cur[50]), a2: num(cur[51]) }));
     else if ((t === 'TEXT' || t === 'MTEXT') && cur[10] !== undefined){
       const content = t === 'MTEXT' ? flattenMtext(cur[1] || '') : String(cur[1] || '');
-      emit(style({ type: 'text', layer: ly, x: num(cur[10]), y: num(cur[20]), size: clampN(num(cur[40]) || 1, 0.2, 10), content }));
+      emit(style({ type: 'text', layer: ly, x: num(cur[10]), y: num(cur[20]), size: num(cur[40]) || 1, content }));
     }
     else if (t === 'LWPOLYLINE' && cur._pts && cur._pts.length >= 2) emit(style({ type: 'poly', layer: ly, closed: !!(num(cur[70]) & 1), pts: cur._pts }));
     else if (t === 'POLYLINE' && curVerts && curVerts.length >= 2) emit(style({ type: 'poly', layer: ly, closed: !!(num(cur[70]) & 1), pts: curVerts }));
@@ -190,14 +197,53 @@ export function parseDXF(txt, ensureLayer){
     else if (t === 'HATCH' && cur._pts && cur._pts.length >= 3){
       emit(style({ type: 'hatch', layer: ly, pts: cur._pts, pattern: cur[2] || 'ANSI31', scale: num(cur[41]) || 1 }));
     }
+    else if (t === 'ELLIPSE' && cur[10] !== undefined){
+      const mx = num(cur[11]), my = num(cur[21]);
+      const rx = Math.hypot(mx, my) || 1;
+      const ratio = num(cur[40]) || 1;
+      emit(style({ type: 'ellipse', layer: ly, cx: num(cur[10]), cy: num(cur[20]), rx, ry: rx * Math.abs(ratio || 1), rot: Math.atan2(my, mx) * 180 / Math.PI }));
+    }
+    else if (t === 'SPLINE' && cur._pts && cur._pts.length >= 2){
+      emit(style({ type: 'poly', layer: ly, closed: !!(num(cur[70]) & 1), pts: cur._pts }));
+    }
+    else if (t === 'SOLID' || t === '3DFACE'){
+      const pts = [[num(cur[10]), num(cur[20])], [num(cur[11]), num(cur[21])], [num(cur[12]), num(cur[22])]];
+      if (cur[13] !== undefined) pts.push([num(cur[13]), num(cur[23])]);
+      emit(style({ type: 'poly', layer: ly, closed: true, pts }));
+    }
+    else if (t === 'XLINE' && cur[10] !== undefined){
+      const x = num(cur[10]), y = num(cur[20]), dx = num(cur[11]) || 1, dy = num(cur[21]);
+      emit(style({ type: 'xline', layer: ly, lt: lt || 'DASHED', x1: x, y1: y, x2: x + dx, y2: y + dy }));
+    }
+    else if (t === 'RAY' && cur[10] !== undefined){
+      const x = num(cur[10]), y = num(cur[20]), dx = num(cur[11]) || 1, dy = num(cur[21]);
+      const L = Math.hypot(dx, dy) || 1;
+      emit(style({ type: 'line', layer: ly, lt: lt || 'DASHED', x1: x, y1: y, x2: x + dx / L * 200, y2: y + dy / L * 200 }));
+    }
+    else if ((t === 'DIMENSION' || t === 'ALIGNED_DIMENSION') && cur[13] !== undefined){
+      emit(style({ type: 'dim', layer: ly || 'DIMS', x1: num(cur[13]), y1: num(cur[23]), x2: num(cur[14]), y2: num(cur[24]), off: 2 }));
+    }
+    else if (t === 'LEADER' && cur._pts && cur._pts.length >= 2){
+      emit(style({ type: 'leader', layer: ly, pts: cur._pts, content: String(cur[1] || '') }));
+    }
     cur = null; curVerts = null;
   }
 
   for (const [c, v] of pairs){
     if (c === 0 && v === 'SECTION') continue;
-    if (c === 2 && v === 'BLOCKS'){ inBlocks = true; inEnt = false; continue; }
-    if (c === 2 && v === 'ENTITIES'){ inEnt = true; inBlocks = false; blockName = null; continue; }
-    if (c === 0 && v === 'ENDSEC'){ if (inEnt || inBlocks) flush(); inEnt = false; inBlocks = false; blockName = null; continue; }
+    if (c === 2 && v === 'HEADER'){ inHeader = true; inEnt = false; inBlocks = false; continue; }
+    if (c === 2 && v === 'BLOCKS'){ inBlocks = true; inEnt = false; inHeader = false; continue; }
+    if (c === 2 && v === 'ENTITIES'){ inEnt = true; inBlocks = false; inHeader = false; blockName = null; continue; }
+    if (c === 0 && v === 'ENDSEC'){
+      if (inEnt || inBlocks) flush();
+      inEnt = false; inBlocks = false; inHeader = false; blockName = null;
+      continue;
+    }
+    if (inHeader){
+      if (c === 9) headerVar = v;
+      else if (headerVar === '$INSUNITS' && (c === 70 || c === 10)) insunits = parseInt(v, 10) || 0;
+      continue;
+    }
     if (inBlocks && c === 0 && v === 'BLOCK'){ flush(); cur = { _t: 'BLOCK' }; continue; }
     if (inBlocks && cur && cur._t === 'BLOCK' && c === 2){
       blockName = String(v).toUpperCase();
@@ -213,13 +259,15 @@ export function parseDXF(txt, ensureLayer){
       if (v === 'SEQEND'){ if (cur) cur._inv = false; flush(); continue; }
       flush();
       cur = { _t: v };
-      if (v === 'LWPOLYLINE' || v === 'HATCH') cur._pts = [];
+      if (v === 'LWPOLYLINE' || v === 'HATCH' || v === 'SPLINE' || v === 'LEADER') cur._pts = [];
       continue;
     }
     if (!cur) continue;
-    if ((cur._t === 'LWPOLYLINE' || cur._t === 'HATCH') && (c === 10 || c === 20)){
-      if (c === 10) cur._pts.push([num(v), 0]);
-      else if (cur._pts.length) cur._pts[cur._pts.length - 1][1] = num(v);
+    if ((cur._t === 'LWPOLYLINE' || cur._t === 'HATCH' || cur._t === 'SPLINE' || cur._t === 'LEADER') && (c === 10 || c === 20 || c === 11 || c === 21)){
+      const xcode = (c === 10 || c === 11);
+      const ycode = (c === 20 || c === 21);
+      if (xcode) cur._pts.push([num(v), 0]);
+      else if (ycode && cur._pts.length) cur._pts[cur._pts.length - 1][1] = num(v);
       continue;
     }
     if (cur._t === 'POLYLINE' && cur._inv && curVerts && (c === 10 || c === 20)){
@@ -231,7 +279,84 @@ export function parseDXF(txt, ensureLayer){
     if (cur[c] === undefined) cur[c] = v;
   }
   flush();
-  return added.filter(e => e.type !== 'poly' || e.pts.every(p => p[0] !== null && p[1] !== null));
+  const out = added.filter(e => e.type !== 'poly' || e.pts.every(p => p[0] !== null && p[1] !== null));
+  const scaled = applyDxfUnits(out, insunits);
+  return scaled;
+}
+
+const INSUNITS_TO_FEET = {
+  1: 1 / 12,        /* inches */
+  2: 1,             /* feet */
+  4: 1 / 304.8,     /* mm */
+  5: 1 / 30.48,     /* cm */
+  6: 1 / 0.3048     /* meters */
+};
+
+export function dxfUnitLabel(insunits){
+  return ({ 1: 'inches', 2: 'feet', 4: 'mm', 5: 'cm', 6: 'meters' })[insunits] || 'feet';
+}
+
+function maxAbs(ents){
+  let m = 0;
+  (ents || []).forEach(e => {
+    if (e.x1 != null) m = Math.max(m, Math.abs(e.x1), Math.abs(e.y1), Math.abs(e.x2 || 0), Math.abs(e.y2 || 0));
+    if (e.cx != null) m = Math.max(m, Math.abs(e.cx), Math.abs(e.cy), Math.abs(e.r || 0));
+    if (e.x != null && e.type !== 'line') m = Math.max(m, Math.abs(e.x), Math.abs(e.y));
+    (e.pts || []).forEach(p => { m = Math.max(m, Math.abs(p[0]), Math.abs(p[1])); });
+  });
+  return m;
+}
+
+function scaleEnts(ents, f){
+  if (!f || f === 1) return ents;
+  (ents || []).forEach(e => {
+    if (e.x1 != null){ e.x1 *= f; e.y1 *= f; e.x2 *= f; e.y2 *= f; }
+    if (e.x3 != null){ e.x3 *= f; e.y3 *= f; }
+    if (e.cx != null){ e.cx *= f; e.cy *= f; }
+    if (e.r != null) e.r *= f;
+    if (e.rx != null){ e.rx *= f; e.ry *= f; }
+    if (e.off != null) e.off *= f;
+    if (e.size != null) e.size *= f;
+    if (e.x != null && e.y != null && e.type !== 'line' && e.type !== 'dim' && e.type !== 'xline'){
+      e.x *= f; e.y *= f;
+    }
+    if (e.pts) e.pts = e.pts.map(p => [p[0] * f, p[1] * f]);
+  });
+  return ents;
+}
+
+function applyDxfUnits(ents, insunits){
+  let f = INSUNITS_TO_FEET[insunits];
+  if (!f){
+    const m = maxAbs(ents);
+    if (m > 2000) f = 1 / 304.8;       /* likely millimetres, no $INSUNITS */
+    else f = 1;
+  }
+  const scaled = scaleEnts(ents, f);
+  scaled.forEach(e => {
+    if (e.type === 'text' && e.size != null) e.size = clampN(e.size, 0.2, 10);
+  });
+  return scaled;
+}
+
+export function sniffDrawing(text, filename){
+  const n = String(filename || '').toLowerCase();
+  const t = String(text || '').replace(/^\uFEFF/, '');
+  if (n.endsWith('.dwg') || /^AC10\d{2}/.test(t)) return 'dwg';
+  if (n.endsWith('.json') || t.trim().startsWith('{')) return 'json';
+  if (n.endsWith('.dxf') || (/\bSECTION\b/.test(t) && /\bENTITIES\b/.test(t))) return 'dxf';
+  return 'unknown';
+}
+
+function peekInsUnits(txt){
+  const m = String(txt || '').match(/\$INSUNITS[\s\S]{0,24}?70[\s\S]{0,16}?(-?\d+)/);
+  return m ? (parseInt(m[1], 10) || 0) : 0;
+}
+
+export function openDXF(txt, ensureLayer){
+  const entities = parseDXF(txt, ensureLayer || (n => n || 'WALLS'));
+  const insunits = peekInsUnits(txt);
+  return { entities, count: entities.length, insunits, units: dxfUnitLabel(insunits) };
 }
 
 function scaleRotateTranslate(e, x, y, sx, sy, deg){
@@ -245,10 +370,15 @@ function scaleRotateTranslate(e, x, y, sx, sy, deg){
     e.x1 = a[0]; e.y1 = a[1]; e.x2 = b[0]; e.y2 = b[1];
   } else if (e.type === 'poly' || e.type === 'hatch'){
     e.pts = e.pts.map(p => xf(p[0], p[1]));
-  } else if (e.type === 'circle' || e.type === 'arc'){
+  } else if (e.type === 'circle' || e.type === 'arc' || e.type === 'ellipse'){
     const p = xf(e.cx, e.cy); e.cx = p[0]; e.cy = p[1]; e.r *= Math.abs(sx);
+    if (e.rx != null){ e.rx *= Math.abs(sx); e.ry *= Math.abs(sy || sx); }
     if (e.type === 'arc'){ e.a1 += deg; e.a2 += deg; }
+    if (e.type === 'ellipse') e.rot = (e.rot || 0) + deg;
   } else if (e.type === 'text'){
     const p = xf(e.x, e.y); e.x = p[0]; e.y = p[1]; e.size *= Math.abs(sx);
+  } else if (e.type === 'xline'){
+    const a = xf(e.x1, e.y1), b = xf(e.x2, e.y2);
+    e.x1 = a[0]; e.y1 = a[1]; e.x2 = b[0]; e.y2 = b[1];
   }
 }

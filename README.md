@@ -16,7 +16,8 @@ Touch-first 2D CAD for schematic-to-CD architectural drafting. Runs entirely in 
 | `/` | Focus command line | `EL` | Ellipse |
 | `RC` | Revision cloud | `LE` | Leader |
 | `IMG` | Image underlay | `XL` | Construction line |
-| `GRID` | Column grid | | |
+| `GRID` | Column grid | `OPEN` | Open DXF / JSON |
+| `DXFIN` | Insert DXF (merge) | | |
 
 **Wall mode** draws two parallel faces + caps. Thickness chip: 4″ / 6″ / 8″. Walls **heal as you draw** — L-corners miter and T-junctions recut automatically. Doors and windows are **dynamic INSERT blocks**: stretch the width grip, tap the diamond to flip swing, type `2'6"` with the door selected. They recut the host wall. **Explode** (`XP`) yields ordinary lines and arcs. Fixtures (stove, bed, …) are the same INSERT type with rotate + flip grips.
 
@@ -94,8 +95,14 @@ One model space + N layouts. Each layout has a sheet (Letter / Tabloid / Arch D)
 
 ## DXF
 
-**In:** LINE, ARC, CIRCLE, TEXT, MTEXT (flattened), LWPOLYLINE, POLYLINE, INSERT (as a block group), HATCH.  
-**Out:** R12 (POLYLINE + LTYPE table + 370 weights) or R2000 (LWPOLYLINE). Toggle in the Sheet menu. Stays pure JS.
+Sovereign Draft **is the editor**. Open a `.dxf` (or drop it on the sheet) and it becomes the drawing — no second CAD required.
+
+**Open** (`OPEN`, Sheet → Open drawing, or drop a file) replaces the sheet. **Insert DXF** (`DXFIN`) merges into the current drawing. `.json` project files open the same way. `.dwg` is binary and cannot be read; Save As DXF in the other program, then Open here.
+
+**Units.** World units are decimal feet, Y-up. The writer stamps `$INSUNITS=2`. The reader honors `$INSUNITS` (inches, mm, cm, meters → feet). If the header is missing and coordinates look like millimetres (max > 2000), they are scaled to feet; otherwise feet are assumed. A 36 ft cabin is never auto-scaled.
+
+**In:** LINE, ARC, CIRCLE, ELLIPSE, TEXT, MTEXT (flattened), LWPOLYLINE, POLYLINE, SPLINE (as polyline), SOLID / 3DFACE, INSERT (block geometry), HATCH, XLINE, RAY, DIMENSION (aligned), LEADER.  
+**Out:** R12 (POLYLINE + LTYPE table + 370 weights + `$INSUNITS`) or R2000 (LWPOLYLINE). Toggle in the Sheet menu. Inserts, rooms and dims explode to ordinary geometry on export. Stays pure JS.
 
 ## AI drafting (BYO Anthropic key)
 
@@ -132,7 +139,7 @@ Doors, windows and symbols are live `insert` entities (no frozen `g` group). Gri
 | Flip | diamond | Door swing L↔R, or mirror a fixture |
 | Rotate | circle (red) | Fixture / user-block angle |
 
-Type a length (`3`, `2'6"`) with a door or window selected to set width. Properties sheet also edits width and swing. Copy of a hosted insert detaches it (does not punch a second opening). DXF and PDF expand inserts to ordinary geometry so LibreCAD still opens the file.
+Type a length (`3`, `2'6"`) with a door or window selected to set width. Properties sheet also edits width and swing. Copy of a hosted insert detaches it (does not punch a second opening). DXF and PDF expand inserts to ordinary geometry.
 
 ## Privacy
 
