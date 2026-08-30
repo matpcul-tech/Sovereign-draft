@@ -1,0 +1,55 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    # The production branch. Change this list if you publish from another one.
+    branches: [main]
+  workflow_dispatch:
+
+# Allow the workflow to publish to Pages via OIDC.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish; queue at most one more.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build
+        # Project Pages sites are served from /<repo>/, so the bundle needs a
+        # matching base. Set VITE_BASE to "/" for a user site or custom domain.
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+        run: npm run build
+      # Requires Pages to be enabled once, by hand:
+      #   Settings -> Pages -> Build and deployment -> Source: GitHub Actions
+      # `enablement: true` cannot substitute for that here — creating a Pages
+      # site needs admin rights that the workflow GITHUB_TOKEN does not carry,
+      # and the attempt fails with "Resource not accessible by integration".
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
