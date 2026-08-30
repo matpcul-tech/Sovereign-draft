@@ -18,7 +18,7 @@ export function shellHTML(){
 <div id="hint" class="empty">
   <h2>CAD editor</h2>
   <p>Open a DXF, drop a file, or tap <span class="k">AI</span> to describe a plan.<br>
-  Type <span class="k">/</span> for the command line. One finger draws, two fingers pan.</p>
+  Type <span class="k">SHEETSET</span> to break a build into pages with a legend on each sheet.</p>
   <div class="hint-actions">
     <button type="button" id="hintOpen">Open drawing</button>
     <button type="button" id="hintSample">Sample cabin</button>
@@ -45,7 +45,7 @@ export function shellHTML(){
 </div>
 <div id="cmdline">
   <span id="cmdprompt">Command:</span>
-  <input id="cmdinput" autocomplete="off" spellcheck="false" placeholder="LINE  FILLET  @8<45  12'6"">
+  <input id="cmdinput" autocomplete="off" spellcheck="false" placeholder="LINE  FILLET  SHEETSET  12'6"">
 </div>
 <div id="bottom">
   <div id="ctxrow">
@@ -201,7 +201,9 @@ export function shellHTML(){
   <button class="primary" id="btnExportPDF">Export PDF</button>
 </div>
 <div class="sheet" id="sheetLayouts">
-  <h3><i>Layouts</i></h3>
+  <h3><i>Sheet set</i></h3>
+  <div class="subtle" style="margin-top:0">Break the model into pages — cover, overall, and one sheet per room or labeled section, each with its own legend.</div>
+  <button class="primary" id="btnSheetSet">Generate sheet set</button>
   <div id="layoutlist"></div>
   <button class="addlayer" id="btnAddSheet">+ New sheet</button>
   <button class="addlayer" id="btnAddView">+ Add view to this sheet</button>
@@ -242,7 +244,8 @@ export function shellHTML(){
   <button class="mrow" id="mExportAllPDF"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v12"/><path d="M16 7H9a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V11z"/><path d="M16 7v4h4"/></svg>Export all sheets<small>one PDF</small></button>
   <button class="mrow" id="mExportSVG"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 16c1.5-4 6.5-4 8 0"/></svg>Export SVG<small>for Illustrator / web</small></button>
   <button class="mrow" id="mExportPNG"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Export PNG<small>with title block</small></button>
-  <button class="mrow" id="mLayouts"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="1"/><path d="M3 16h18"/></svg>Layouts<small>paper space</small></button>
+  <button class="mrow" id="mLayouts"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="1"/><path d="M3 16h18"/></svg>Sheet set<small>pages + legends</small></button>
+  <button class="mrow" id="mSheetSet"><svg viewBox="0 0 24 24"><path d="M4 4h10v16H4zM16 8h4v12h-4z"/></svg>Generate sheets<small>one page per section</small></button>
   <button class="mrow" id="mSchedules"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 4v16"/></svg>Place schedules<small>door · window · room</small></button>
   <button class="mrow" id="mKeynotes"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="19" cy="15" r="3"/></svg>Keynote legend<small>this sheet</small></button>
   <button class="mrow" id="mMarkSched"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>Mark schedule<small>marks + qty</small></button>

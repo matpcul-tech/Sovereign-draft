@@ -17,7 +17,7 @@ Touch-first 2D CAD for schematic-to-CD architectural drafting. Runs entirely in 
 | `RC` | Revision cloud | `LE` | Leader |
 | `IMG` | Image underlay | `XL` | Construction line |
 | `GRID` | Column grid | `OPEN` | Open DXF / JSON |
-| `DXFIN` | Insert DXF (merge) | | |
+| `DXFIN` | Insert DXF (merge) | `SHEETSET` | Generate sheet set |
 
 **Wall mode** draws two parallel faces + caps. Thickness chip: 4″ / 6″ / 8″. Walls **heal as you draw** — L-corners miter and T-junctions recut automatically. Doors and windows are **dynamic INSERT blocks**: stretch the width grip, tap the diamond to flip swing, type `2'6"` with the door selected. They recut the host wall. **Explode** (`XP`) yields ordinary lines and arcs. Fixtures (stove, bed, …) are the same INSERT type with rotate + flip grips.
 
@@ -92,6 +92,8 @@ Layers lock (click the padlock — locked objects can't be selected) and a **P**
 ## Paper space
 
 One model space + N layouts. Each layout has a sheet (Letter / Tabloid / Arch D), plot scale, title block, and viewports that clip + scale model geometry. PDF export plots the active layout at the chosen architectural scale.
+
+**Sheet set** (`SHEETSET` / `SS`, or Sheet → Generate sheets) splits the model into a real CAD sheet set: **G-001** cover with a drawing index, **A-101** overall, and one sheet per room or labeled section. Each page carries a legend of the layers, symbols and callouts actually visible in that view. Export all sheets as one PDF from the Sheet menu. PageUp / PageDown walks the set.
 
 ## DXF
 
