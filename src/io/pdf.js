@@ -284,6 +284,21 @@ function layoutPage(entities, opts){
     if (a.leader && a.leader.length === 2){
       P(f2(IX(a.leader[0][0])) + ' ' + f2(IY(a.leader[0][1])) + ' m ' + f2(IX(a.leader[1][0])) + ' ' + f2(IY(a.leader[1][1])) + ' l S');
     }
+    if (a.kind === 'mark'){
+      const cx = IX(a.x), cy = IY(a.y), r = (a.r || 0.18) * 72;
+      const k = r * 0.5523;
+      const circ = f2(cx + r) + ' ' + f2(cy) + ' m ' +
+        f2(cx + r) + ' ' + f2(cy + k) + ' ' + f2(cx + k) + ' ' + f2(cy + r) + ' ' + f2(cx) + ' ' + f2(cy + r) + ' c ' +
+        f2(cx - k) + ' ' + f2(cy + r) + ' ' + f2(cx - r) + ' ' + f2(cy + k) + ' ' + f2(cx - r) + ' ' + f2(cy) + ' c ' +
+        f2(cx - r) + ' ' + f2(cy - k) + ' ' + f2(cx - k) + ' ' + f2(cy - r) + ' ' + f2(cx) + ' ' + f2(cy - r) + ' c ' +
+        f2(cx + k) + ' ' + f2(cy - r) + ' ' + f2(cx + r) + ' ' + f2(cy - k) + ' ' + f2(cx + r) + ' ' + f2(cy) + ' c';
+      P('1 g'); P(circ + ' f');
+      P('0.08 G 1.05 w'); P(circ + ' S');
+      const ts = Math.max((a.size || 0.09) * 72, 5);
+      const label = String(a.text || '');
+      textAt(cx - helveticaWidth(label, ts, true) / 2, cy - ts * 0.32, ts, label, 0, true, 0.08);
+      return;
+    }
     if (a.kind === 'detail'){
       /* The standard bubble: a circle split by its horizontal diameter, view
        * number over sheet number. */

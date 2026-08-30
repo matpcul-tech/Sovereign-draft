@@ -1,7 +1,7 @@
 {
   "name": "sovereign-draft",
   "private": false,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "The CAD you open without a license. Browser 2D CAD, CLI, and embeddable kernel. JSON in git, DXF/DWG in, issued PDF out.",
   "type": "module",
   "main": "./src/api.js",
@@ -12,12 +12,23 @@
   "bin": {
     "sovereign-draft": "./bin/sovereign-draft.js"
   },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matpcul-tech/Sovereign-draft.git"
+  },
+  "homepage": "https://github.com/matpcul-tech/Sovereign-draft",
+  "bugs": {
+    "url": "https://github.com/matpcul-tech/Sovereign-draft/issues"
+  },
   "files": [
     "src",
     "bin",
+    "examples",
     "index.html",
     "embed.html",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "dev": "vite",

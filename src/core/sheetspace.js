@@ -54,11 +54,13 @@ export function annotationRect(a){
 function estimateWidth(a){
   if (a.kind === 'table' && a.table) return (a.table.colW || []).reduce((s, c) => s + c, 0);
   if (a.kind === 'detail') return (a.r || DETAIL_BUBBLE_R) * 2;
+  if (a.kind === 'mark') return (a.r || 0.18) * 2;
   return boxWidth(a.text || '', a.size || 0.12);
 }
 function estimateHeight(a){
   if (a.kind === 'table' && a.table) return (a.table.cells || []).length * (a.table.rowH || 0.22) + (a.table.title ? (a.table.rowH || 0.22) : 0);
   if (a.kind === 'detail') return (a.r || DETAIL_BUBBLE_R) * 2;
+  if (a.kind === 'mark') return (a.r || 0.18) * 2;
   return (a.size || 0.12) * 1.4;
 }
 
@@ -113,6 +115,19 @@ export function placeInMargin(sheet, size, extra){
 export function makeNote(x, y, text, opts){
   const o = opts || {};
   return { kind: 'note', x, y, text: String(text || ''), size: o.size || 0.12, layer: o.layer || 'NOTES' };
+}
+
+/* A mark bubble sits on the view over the part, same number as the schedule. */
+export function makeMarkBubble(x, y, mark, opts){
+  const o = opts || {};
+  return {
+    kind: 'mark',
+    x, y,
+    r: o.r || 0.18,
+    text: String(mark || ''),
+    size: o.size || 0.09,
+    layer: o.layer || 'NOTES'
+  };
 }
 
 export function makeTableAnnotation(x, y, table, opts){

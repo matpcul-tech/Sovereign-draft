@@ -1,0 +1,2482 @@
+{
+ "app": "sovereign-draft",
+ "v": 7,
+ "name": "24x36 Cabin",
+ "firm": {
+  "company": "",
+  "copyright": "",
+  "drawnBy": ""
+ },
+ "idSeq": 73,
+ "gSeq": 1,
+ "layers": [
+  {
+   "name": "WALLS",
+   "color": "#d4a843",
+   "aci": 2,
+   "visible": true
+  },
+  {
+   "name": "DOORS",
+   "color": "#00d4b8",
+   "aci": 4,
+   "visible": true
+  },
+  {
+   "name": "FIXTURES",
+   "color": "#c45a3c",
+   "aci": 1,
+   "visible": true
+  },
+  {
+   "name": "DIMS",
+   "color": "#8fa3c0",
+   "aci": 8,
+   "visible": true
+  },
+  {
+   "name": "TEXT",
+   "color": "#e8e4dd",
+   "aci": 7,
+   "visible": true
+  },
+  {
+   "name": "HATCH",
+   "color": "#6b7c93",
+   "aci": 8,
+   "visible": true
+  },
+  {
+   "name": "CENTER",
+   "color": "#c45a3c",
+   "aci": 1,
+   "visible": true,
+   "lt": "CENTER"
+  },
+  {
+   "name": "SCHEDULES",
+   "color": "#e8e4dd",
+   "aci": 7,
+   "visible": true
+  },
+  {
+   "name": "UNDERLAY",
+   "color": "#4a5a73",
+   "aci": 8,
+   "visible": true,
+   "plot": false
+  },
+  {
+   "name": "ROOMS",
+   "color": "#4ade80",
+   "aci": 3,
+   "visible": true
+  },
+  {
+   "name": "GRID",
+   "color": "#8fa3c0",
+   "aci": 8,
+   "visible": true,
+   "lt": "CENTER"
+  },
+  {
+   "name": "DEFPOINTS",
+   "color": "#6b7c93",
+   "aci": 8,
+   "visible": true,
+   "plot": false
+  }
+ ],
+ "entities": [
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "x1": 0,
+   "y1": 0.25,
+   "x2": 35.75,
+   "y2": 0.25
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "x1": 35.75,
+   "y1": 24,
+   "x2": 35.75,
+   "y2": 0.25
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "x1": 0,
+   "y1": 23.75,
+   "x2": 35.75,
+   "y2": 23.75
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "x1": 0.25,
+   "y1": 0,
+   "x2": 0.25,
+   "y2": 23.75
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "b",
+   "ocl": {
+    "x1": 0,
+    "y1": 24,
+    "x2": 0,
+    "y2": 0,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "x1": -0.25,
+   "y1": 24,
+   "x2": -0.25,
+   "y2": 0,
+   "g": "cab4"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "cap0",
+   "ocl": {
+    "x1": 0,
+    "y1": 24,
+    "x2": 0,
+    "y2": 0,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "x1": 0.25,
+   "y1": 24,
+   "x2": -0.25,
+   "y2": 24,
+   "g": "cab4"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "cap1",
+   "ocl": {
+    "x1": 0,
+    "y1": 24,
+    "x2": 0,
+    "y2": 0,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "x1": 0.25,
+   "y1": 0,
+   "x2": -0.25,
+   "y2": 0,
+   "g": "cab4"
+  },
+  {
+   "type": "insert",
+   "layer": "DOORS",
+   "name": "Door",
+   "def": "door",
+   "x": 11.099999999999998,
+   "y": 0,
+   "rot": 0,
+   "width": 3,
+   "swing": "L",
+   "flip": 1,
+   "scale": 1,
+   "th": 0.5,
+   "host": "cab1",
+   "t": 0.35,
+   "cl": {
+    "x1": 0,
+    "y1": 0,
+    "x2": 36,
+    "y2": 0,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "frags": null,
+   "mark": "D01"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "a",
+   "x1": 0,
+   "y1": 0.25,
+   "x2": 11.099999999999998,
+   "y2": 0.25,
+   "ocl": {
+    "x1": 0,
+    "y1": 0,
+    "x2": 36,
+    "y2": 0,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab1"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "b",
+   "x1": 0,
+   "y1": -0.25,
+   "x2": 11.099999999999998,
+   "y2": -0.25,
+   "ocl": {
+    "x1": 0,
+    "y1": 0,
+    "x2": 36,
+    "y2": 0,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab1"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "jamb",
+   "x1": 11.099999999999998,
+   "y1": 0.25,
+   "x2": 11.099999999999998,
+   "y2": -0.25,
+   "ocl": {
+    "x1": 0,
+    "y1": 0,
+    "x2": 36,
+    "y2": 0,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab1"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "jamb",
+   "x1": 14.1,
+   "y1": 0.25,
+   "x2": 14.1,
+   "y2": -0.25,
+   "ocl": {
+    "x1": 0,
+    "y1": 0,
+    "x2": 36,
+    "y2": 0,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab1"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "a",
+   "x1": 14.1,
+   "y1": 0.25,
+   "x2": 36,
+   "y2": 0.25,
+   "ocl": {
+    "x1": 0,
+    "y1": 0,
+    "x2": 36,
+    "y2": 0,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab1"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "b",
+   "x1": 14.1,
+   "y1": -0.25,
+   "x2": 36,
+   "y2": -0.25,
+   "ocl": {
+    "x1": 0,
+    "y1": 0,
+    "x2": 36,
+    "y2": 0,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab1"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "cap0",
+   "x1": 0,
+   "y1": 0.25,
+   "x2": 0,
+   "y2": -0.25,
+   "ocl": {
+    "x1": 0,
+    "y1": 0,
+    "x2": 36,
+    "y2": 0,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab1"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "cap1",
+   "x1": 36,
+   "y1": 0.25,
+   "x2": 36,
+   "y2": -0.25,
+   "ocl": {
+    "x1": 0,
+    "y1": 0,
+    "x2": 36,
+    "y2": 0,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab1"
+  },
+  {
+   "type": "insert",
+   "layer": "DOORS",
+   "name": "Door",
+   "def": "door",
+   "x": 14,
+   "y": 4.75,
+   "rot": 90,
+   "width": 2.5,
+   "swing": "R",
+   "flip": 1,
+   "scale": 1,
+   "th": 0.5,
+   "host": "cab5",
+   "t": 0.25,
+   "cl": {
+    "x1": 14,
+    "y1": 0,
+    "x2": 14,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "frags": null,
+   "mark": "D02"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "a",
+   "x1": 13.75,
+   "y1": 0,
+   "x2": 13.75,
+   "y2": 4.75,
+   "ocl": {
+    "x1": 14,
+    "y1": 0,
+    "x2": 14,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab5"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "b",
+   "x1": 14.25,
+   "y1": 0,
+   "x2": 14.25,
+   "y2": 4.75,
+   "ocl": {
+    "x1": 14,
+    "y1": 0,
+    "x2": 14,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab5"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "jamb",
+   "x1": 13.75,
+   "y1": 4.75,
+   "x2": 14.25,
+   "y2": 4.75,
+   "ocl": {
+    "x1": 14,
+    "y1": 0,
+    "x2": 14,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab5"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "jamb",
+   "x1": 13.75,
+   "y1": 7.25,
+   "x2": 14.25,
+   "y2": 7.25,
+   "ocl": {
+    "x1": 14,
+    "y1": 0,
+    "x2": 14,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab5"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "a",
+   "x1": 13.75,
+   "y1": 7.25,
+   "x2": 13.75,
+   "y2": 24,
+   "ocl": {
+    "x1": 14,
+    "y1": 0,
+    "x2": 14,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab5"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "b",
+   "x1": 14.25,
+   "y1": 7.25,
+   "x2": 14.25,
+   "y2": 24,
+   "ocl": {
+    "x1": 14,
+    "y1": 0,
+    "x2": 14,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab5"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "cap0",
+   "x1": 13.75,
+   "y1": 0,
+   "x2": 14.25,
+   "y2": 0,
+   "ocl": {
+    "x1": 14,
+    "y1": 0,
+    "x2": 14,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab5"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "cap1",
+   "x1": 13.75,
+   "y1": 24,
+   "x2": 14.25,
+   "y2": 24,
+   "ocl": {
+    "x1": 14,
+    "y1": 0,
+    "x2": 14,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab5"
+  },
+  {
+   "type": "insert",
+   "layer": "DOORS",
+   "name": "Door",
+   "def": "door",
+   "x": 5.75,
+   "y": 10,
+   "rot": 0,
+   "width": 2.5,
+   "swing": "L",
+   "flip": 1,
+   "scale": 1,
+   "th": 0.5,
+   "host": "cab6",
+   "t": 0.5,
+   "cl": {
+    "x1": 0,
+    "y1": 10,
+    "x2": 14,
+    "y2": 10,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "frags": null,
+   "mark": "D03"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "a",
+   "x1": 0,
+   "y1": 10.25,
+   "x2": 5.75,
+   "y2": 10.25,
+   "ocl": {
+    "x1": 0,
+    "y1": 10,
+    "x2": 14,
+    "y2": 10,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab6"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "b",
+   "x1": 0,
+   "y1": 9.75,
+   "x2": 5.75,
+   "y2": 9.75,
+   "ocl": {
+    "x1": 0,
+    "y1": 10,
+    "x2": 14,
+    "y2": 10,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab6"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "jamb",
+   "x1": 5.75,
+   "y1": 10.25,
+   "x2": 5.75,
+   "y2": 9.75,
+   "ocl": {
+    "x1": 0,
+    "y1": 10,
+    "x2": 14,
+    "y2": 10,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab6"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "jamb",
+   "x1": 8.25,
+   "y1": 10.25,
+   "x2": 8.25,
+   "y2": 9.75,
+   "ocl": {
+    "x1": 0,
+    "y1": 10,
+    "x2": 14,
+    "y2": 10,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab6"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "a",
+   "x1": 8.25,
+   "y1": 10.25,
+   "x2": 14,
+   "y2": 10.25,
+   "ocl": {
+    "x1": 0,
+    "y1": 10,
+    "x2": 14,
+    "y2": 10,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab6"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "b",
+   "x1": 8.25,
+   "y1": 9.75,
+   "x2": 14,
+   "y2": 9.75,
+   "ocl": {
+    "x1": 0,
+    "y1": 10,
+    "x2": 14,
+    "y2": 10,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab6"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "cap0",
+   "x1": 0,
+   "y1": 10.25,
+   "x2": 0,
+   "y2": 9.75,
+   "ocl": {
+    "x1": 0,
+    "y1": 10,
+    "x2": 14,
+    "y2": 10,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab6"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "cap1",
+   "x1": 14,
+   "y1": 10.25,
+   "x2": 14,
+   "y2": 9.75,
+   "ocl": {
+    "x1": 0,
+    "y1": 10,
+    "x2": 14,
+    "y2": 10,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab6"
+  },
+  {
+   "type": "insert",
+   "layer": "DOORS",
+   "name": "Window",
+   "def": "window",
+   "x": 28.8,
+   "y": 24,
+   "rot": 180,
+   "width": 3,
+   "swing": "L",
+   "flip": 1,
+   "scale": 1,
+   "th": 0.5,
+   "host": "cab3",
+   "t": 0.2,
+   "cl": {
+    "x1": 36,
+    "y1": 24,
+    "x2": 0,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "frags": null,
+   "mark": "W01"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "a",
+   "x1": 36,
+   "y1": 23.75,
+   "x2": 30.299999999999997,
+   "y2": 23.75,
+   "ocl": {
+    "x1": 36,
+    "y1": 24,
+    "x2": 0,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab3"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "b",
+   "x1": 36,
+   "y1": 24.25,
+   "x2": 30.299999999999997,
+   "y2": 24.25,
+   "ocl": {
+    "x1": 36,
+    "y1": 24,
+    "x2": 0,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab3"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "jamb",
+   "x1": 30.299999999999997,
+   "y1": 23.75,
+   "x2": 30.299999999999997,
+   "y2": 24.25,
+   "ocl": {
+    "x1": 36,
+    "y1": 24,
+    "x2": 0,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab3"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "jamb",
+   "x1": 27.3,
+   "y1": 23.75,
+   "x2": 27.3,
+   "y2": 24.25,
+   "ocl": {
+    "x1": 36,
+    "y1": 24,
+    "x2": 0,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab3"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "a",
+   "x1": 27.3,
+   "y1": 23.75,
+   "x2": 0,
+   "y2": 23.75,
+   "ocl": {
+    "x1": 36,
+    "y1": 24,
+    "x2": 0,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab3"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "b",
+   "x1": 27.3,
+   "y1": 24.25,
+   "x2": 0,
+   "y2": 24.25,
+   "ocl": {
+    "x1": 36,
+    "y1": 24,
+    "x2": 0,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab3"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "cap0",
+   "x1": 36,
+   "y1": 23.75,
+   "x2": 36,
+   "y2": 24.25,
+   "ocl": {
+    "x1": 36,
+    "y1": 24,
+    "x2": 0,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab3"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "cap1",
+   "x1": 0,
+   "y1": 23.75,
+   "x2": 0,
+   "y2": 24.25,
+   "ocl": {
+    "x1": 36,
+    "y1": 24,
+    "x2": 0,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab3"
+  },
+  {
+   "type": "insert",
+   "layer": "DOORS",
+   "name": "Window",
+   "def": "window",
+   "x": 36,
+   "y": 12,
+   "rot": 90,
+   "width": 4,
+   "swing": "L",
+   "flip": 1,
+   "scale": 1,
+   "th": 0.5,
+   "host": "cab2",
+   "t": 0.5,
+   "cl": {
+    "x1": 36,
+    "y1": 0,
+    "x2": 36,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "frags": null,
+   "mark": "W02"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "a",
+   "x1": 35.75,
+   "y1": 0,
+   "x2": 35.75,
+   "y2": 10,
+   "ocl": {
+    "x1": 36,
+    "y1": 0,
+    "x2": 36,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab2"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "b",
+   "x1": 36.25,
+   "y1": 0,
+   "x2": 36.25,
+   "y2": 10,
+   "ocl": {
+    "x1": 36,
+    "y1": 0,
+    "x2": 36,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab2"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "jamb",
+   "x1": 35.75,
+   "y1": 10,
+   "x2": 36.25,
+   "y2": 10,
+   "ocl": {
+    "x1": 36,
+    "y1": 0,
+    "x2": 36,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab2"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "jamb",
+   "x1": 35.75,
+   "y1": 14,
+   "x2": 36.25,
+   "y2": 14,
+   "ocl": {
+    "x1": 36,
+    "y1": 0,
+    "x2": 36,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab2"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "a",
+   "x1": 35.75,
+   "y1": 14,
+   "x2": 35.75,
+   "y2": 24,
+   "ocl": {
+    "x1": 36,
+    "y1": 0,
+    "x2": 36,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab2"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "b",
+   "x1": 36.25,
+   "y1": 14,
+   "x2": 36.25,
+   "y2": 24,
+   "ocl": {
+    "x1": 36,
+    "y1": 0,
+    "x2": 36,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab2"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "cap0",
+   "x1": 35.75,
+   "y1": 0,
+   "x2": 36.25,
+   "y2": 0,
+   "ocl": {
+    "x1": 36,
+    "y1": 0,
+    "x2": 36,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab2"
+  },
+  {
+   "type": "line",
+   "layer": "WALLS",
+   "kind": "wall",
+   "th": 0.5,
+   "role": "cap1",
+   "x1": 35.75,
+   "y1": 24,
+   "x2": 36.25,
+   "y2": 24,
+   "ocl": {
+    "x1": 36,
+    "y1": 0,
+    "x2": 36,
+    "y2": 24,
+    "th": 0.5,
+    "layer": "WALLS"
+   },
+   "g": "cab2"
+  },
+  {
+   "type": "hatch",
+   "layer": "HATCH",
+   "pts": [
+    [
+     0.5,
+     10.5
+    ],
+    [
+     13.5,
+     10.5
+    ],
+    [
+     13.5,
+     23.5
+    ],
+    [
+     0.5,
+     23.5
+    ]
+   ],
+   "pattern": "ANSI31",
+   "scale": 1
+  },
+  {
+   "type": "hatch",
+   "layer": "HATCH",
+   "pts": [
+    [
+     14.5,
+     0.5
+    ],
+    [
+     35.5,
+     0.5
+    ],
+    [
+     35.5,
+     23.5
+    ],
+    [
+     14.5,
+     23.5
+    ]
+   ],
+   "pattern": "ANSI31",
+   "scale": 1
+  },
+  {
+   "type": "hatch",
+   "layer": "HATCH",
+   "pts": [
+    [
+     0.5,
+     0.5
+    ],
+    [
+     13.5,
+     0.5
+    ],
+    [
+     13.5,
+     9.5
+    ],
+    [
+     0.5,
+     9.5
+    ]
+   ],
+   "pattern": "NET",
+   "scale": 1
+  },
+  {
+   "type": "text",
+   "layer": "TEXT",
+   "x": 4.5,
+   "y": 16,
+   "size": 1.4,
+   "content": "KITCHEN"
+  },
+  {
+   "type": "text",
+   "layer": "TEXT",
+   "x": 22,
+   "y": 12,
+   "size": 1.4,
+   "content": "BEDROOM"
+  },
+  {
+   "type": "text",
+   "layer": "TEXT",
+   "x": 4.5,
+   "y": 4.5,
+   "size": 1.4,
+   "content": "LIVING"
+  },
+  {
+   "type": "dim",
+   "layer": "DIMS",
+   "x1": 0,
+   "y1": 0,
+   "x2": 36,
+   "y2": 0,
+   "off": -2.5,
+   "kind": "aligned",
+   "dimStyle": "ARCH",
+   "arrow": "tick",
+   "textH": 0.8,
+   "precision": "1/2",
+   "assoc": [
+    {
+     "kind": "wall",
+     "g": "cab4",
+     "end": 1
+    },
+    {
+     "kind": "wall",
+     "g": "cab1",
+     "end": 1
+    }
+   ]
+  },
+  {
+   "type": "dim",
+   "layer": "DIMS",
+   "x1": 0,
+   "y1": 0,
+   "x2": 0,
+   "y2": 24,
+   "off": -2.5,
+   "kind": "aligned",
+   "dimStyle": "ARCH",
+   "arrow": "tick",
+   "textH": 0.8,
+   "precision": "1/2",
+   "assoc": [
+    {
+     "kind": "wall",
+     "g": "cab4",
+     "end": 1
+    },
+    {
+     "kind": "wall",
+     "g": "cab4",
+     "end": 0
+    }
+   ]
+  },
+  {
+   "type": "dim",
+   "layer": "DIMS",
+   "x1": 0,
+   "y1": 24,
+   "x2": 14,
+   "y2": 24,
+   "off": 2,
+   "kind": "aligned",
+   "dimStyle": "ARCH",
+   "arrow": "tick",
+   "textH": 0.8,
+   "precision": "1/2",
+   "assoc": [
+    {
+     "kind": "wall",
+     "g": "cab4",
+     "end": 0
+    },
+    {
+     "kind": "wall",
+     "g": "cab5",
+     "end": 1
+    }
+   ]
+  },
+  {
+   "type": "dim",
+   "layer": "DIMS",
+   "x1": 14,
+   "y1": 0,
+   "x2": 36,
+   "y2": 0,
+   "off": 2,
+   "kind": "aligned",
+   "dimStyle": "ARCH",
+   "arrow": "tick",
+   "textH": 0.8,
+   "precision": "1/2",
+   "assoc": [
+    {
+     "kind": "wall",
+     "g": "cab5",
+     "end": 0
+    },
+    {
+     "kind": "wall",
+     "g": "cab1",
+     "end": 1
+    }
+   ]
+  },
+  {
+   "type": "line",
+   "layer": "CENTER",
+   "lt": "CENTER",
+   "x1": 18,
+   "y1": -1,
+   "x2": 18,
+   "y2": 25
+  },
+  {
+   "type": "room",
+   "layer": "ROOMS",
+   "name": "BEDROOM",
+   "pts": [
+    [
+     14.25,
+     0.25
+    ],
+    [
+     35.75,
+     0.25
+    ],
+    [
+     35.75,
+     23.75
+    ],
+    [
+     14.25,
+     23.75
+    ],
+    [
+     14.25,
+     10
+    ]
+   ],
+   "auto": true,
+   "cx": 25,
+   "cy": 12,
+   "area": 505.25
+  },
+  {
+   "type": "room",
+   "layer": "ROOMS",
+   "name": "KITCHEN",
+   "pts": [
+    [
+     0.25,
+     23.75
+    ],
+    [
+     0.25,
+     10.25
+    ],
+    [
+     13.75,
+     10.25
+    ],
+    [
+     13.75,
+     23.75
+    ]
+   ],
+   "auto": true,
+   "cx": 7,
+   "cy": 17,
+   "area": 182.25
+  },
+  {
+   "type": "room",
+   "layer": "ROOMS",
+   "name": "LIVING",
+   "pts": [
+    [
+     0.25,
+     9.75
+    ],
+    [
+     0.25,
+     0.25
+    ],
+    [
+     13.75,
+     0.25
+    ],
+    [
+     13.75,
+     9.75
+    ]
+   ],
+   "auto": true,
+   "cx": 7,
+   "cy": 5,
+   "area": 128.25
+  },
+  {
+   "type": "grid",
+   "layer": "GRID",
+   "x": 0,
+   "y": 0,
+   "cols": 3,
+   "rows": 2,
+   "cx": 12,
+   "ry": 12,
+   "rot": 0,
+   "bubble": 1.1
+  },
+  {
+   "type": "insert",
+   "layer": "FIXTURES",
+   "name": "Stove",
+   "def": "sym:Stove",
+   "x": 2.5,
+   "y": 22,
+   "rot": 0,
+   "swing": "L",
+   "flip": 1,
+   "scale": 1,
+   "host": null,
+   "cl": null,
+   "frags": null
+  },
+  {
+   "type": "insert",
+   "layer": "FIXTURES",
+   "name": "Fridge",
+   "def": "sym:Fridge",
+   "x": 5.5,
+   "y": 22,
+   "rot": 90,
+   "swing": "L",
+   "flip": 1,
+   "scale": 1,
+   "host": null,
+   "cl": null,
+   "frags": null
+  },
+  {
+   "type": "table",
+   "layer": "SCHEDULES",
+   "x": 38,
+   "y": 16,
+   "colW": [
+    3.2,
+    3.5,
+    2.8,
+    4.2
+   ],
+   "rowH": 0.85,
+   "title": "DOOR SCHEDULE",
+   "cells": [
+    [
+     "MARK",
+     "WIDTH",
+     "SWING",
+     "WALL"
+    ],
+    [
+     "D01",
+     "3'-0\"",
+     "L",
+     "SOUTH"
+    ],
+    [
+     "D02",
+     "2'-6\"",
+     "R",
+     "INT-Y"
+    ],
+    [
+     "D03",
+     "2'-6\"",
+     "L",
+     "INT-X"
+    ]
+   ]
+  },
+  {
+   "type": "table",
+   "layer": "SCHEDULES",
+   "x": 38,
+   "y": 8,
+   "colW": [
+    3.2,
+    3.5,
+    2.8,
+    4.2
+   ],
+   "rowH": 0.85,
+   "title": "WINDOW SCHEDULE",
+   "cells": [
+    [
+     "MARK",
+     "WIDTH",
+     "THK",
+     "WALL"
+    ],
+    [
+     "W01",
+     "3'-0\"",
+     "6\"",
+     "NORTH"
+    ],
+    [
+     "W02",
+     "4'-0\"",
+     "6\"",
+     "EAST"
+    ]
+   ]
+  },
+  {
+   "type": "table",
+   "layer": "SCHEDULES",
+   "x": 38,
+   "y": 0,
+   "colW": [
+    5,
+    4,
+    3.5,
+    4
+   ],
+   "rowH": 0.85,
+   "title": "ROOM SCHEDULE",
+   "cells": [
+    [
+     "ROOM",
+     "AREA",
+     "SF",
+     "FINISH"
+    ],
+    [
+     "BEDROOM",
+     "505'-3\"²",
+     "505.3 SF",
+     "LIVE"
+    ],
+    [
+     "KITCHEN",
+     "182'-3\"²",
+     "182.3 SF",
+     "LIVE"
+    ],
+    [
+     "LIVING",
+     "128'-3\"²",
+     "128.3 SF",
+     "LIVE"
+    ]
+   ]
+  }
+ ],
+ "userBlocks": [],
+ "dimStyles": [
+  {
+   "name": "ARCH",
+   "textHeight": 0.8,
+   "offset": 2,
+   "ext": 0.3,
+   "arrow": "tick",
+   "tickSize": 0.4,
+   "precision": "1/2",
+   "layer": "DIMS",
+   "continueGap": 0
+  },
+  {
+   "name": "ARROW",
+   "textHeight": 0.7,
+   "offset": 2,
+   "ext": 0.25,
+   "arrow": "arrow",
+   "tickSize": 0.45,
+   "precision": "1/2",
+   "layer": "DIMS",
+   "continueGap": 0
+  },
+  {
+   "name": "DECIMAL",
+   "textHeight": 0.7,
+   "offset": 2,
+   "ext": 0.25,
+   "arrow": "arrow",
+   "tickSize": 0.4,
+   "precision": "decimal",
+   "layer": "DIMS",
+   "continueGap": 0
+  }
+ ],
+ "currentDimStyle": "ARCH",
+ "layouts": [
+  {
+   "id": "G001",
+   "name": "G-001 Cover & Index",
+   "sheet": "archd",
+   "ppf": 13.5,
+   "titleBlock": true,
+   "viewports": [
+    {
+     "px": 0.5,
+     "py": 2.15,
+     "pw": 28.2,
+     "ph": 21.35,
+     "mx": 49.01199999999999,
+     "my": 12,
+     "ppf": 13.5,
+     "id": 1,
+     "name": "COVER",
+     "drawingType": "plan"
+    }
+   ],
+   "kind": "cover",
+   "section": null,
+   "sheetNumber": "G-001",
+   "annotations": [
+    {
+     "kind": "table",
+     "x": 31.9,
+     "y": 21.96,
+     "table": {
+      "type": "table",
+      "layer": "SCHEDULES",
+      "x": 0,
+      "y": 0,
+      "colW": [
+       1.35,
+       2.25
+      ],
+      "rowH": 0.22,
+      "title": "DRAWING INDEX",
+      "cells": [
+       [
+        "SHEET",
+        "TITLE"
+       ],
+       [
+        "G-001",
+        "Cover & Index"
+       ],
+       [
+        "A-101",
+        "Overall"
+       ],
+       [
+        "A-102",
+        "Kitchen"
+       ],
+       [
+        "A-103",
+        "Living"
+       ],
+       [
+        "A-104",
+        "Bedroom"
+       ]
+      ]
+     },
+     "layer": "SCHEDULES"
+    },
+    {
+     "kind": "table",
+     "x": 31.15,
+     "y": 20.199999999999996,
+     "table": {
+      "type": "table",
+      "layer": "SCHEDULES",
+      "x": 0,
+      "y": 0,
+      "colW": [
+       1.5,
+       1.15,
+       0.8,
+       0.9
+      ],
+      "rowH": 0.22,
+      "title": "ROOM SCHEDULE",
+      "cells": [
+       [
+        "ROOM",
+        "AREA",
+        "SF",
+        "FINISH"
+       ],
+       [
+        "BEDROOM",
+        "505'-3\"²",
+        "505.3 SF",
+        "LIVE"
+       ],
+       [
+        "KITCHEN",
+        "182'-3\"²",
+        "182.3 SF",
+        "LIVE"
+       ],
+       [
+        "LIVING",
+        "128'-3\"²",
+        "128.3 SF",
+        "LIVE"
+       ]
+      ]
+     },
+     "layer": "SCHEDULES"
+    },
+    {
+     "kind": "table",
+     "x": 31.9,
+     "y": 12.940000000000001,
+     "table": {
+      "type": "table",
+      "layer": "SCHEDULES",
+      "x": 0,
+      "y": 0,
+      "colW": [
+       1.35,
+       2.25
+      ],
+      "rowH": 0.22,
+      "title": "GENERAL LEGEND",
+      "cells": [
+       [
+        "ITEM",
+        "MEANING"
+       ],
+       [
+        "LAYERS",
+        ""
+       ],
+       [
+        "WALLS",
+        "Structure"
+       ],
+       [
+        "DOORS",
+        "Openings"
+       ],
+       [
+        "FIXTURES",
+        "Equipment"
+       ],
+       [
+        "DIMS",
+        "Dimensions"
+       ],
+       [
+        "TEXT",
+        "Notes & labels"
+       ],
+       [
+        "HATCH",
+        "Finishes"
+       ],
+       [
+        "CENTER",
+        "Centerlines"
+       ],
+       [
+        "SCHEDULES",
+        "Schedules"
+       ],
+       [
+        "ROOMS",
+        "Rooms / areas"
+       ],
+       [
+        "GRID",
+        "Column grid"
+       ],
+       [
+        "SYMBOLS",
+        ""
+       ],
+       [
+        "D01",
+        "D01 · 3'-0\" L"
+       ],
+       [
+        "D02",
+        "D02 · 2'-6\" R"
+       ],
+       [
+        "D03",
+        "D03 · 2'-6\" L"
+       ],
+       [
+        "W01",
+        "W01 · 3'-0\""
+       ],
+       [
+        "W02",
+        "W02 · 4'-0\""
+       ],
+       [
+        "Stove",
+        "Stove"
+       ],
+       [
+        "Fridge",
+        "Fridge"
+       ],
+       [
+        "PARTS / CALLOUTS",
+        ""
+       ],
+       [
+        "1",
+        "KITCHEN"
+       ],
+       [
+        "2",
+        "BEDROOM"
+       ],
+       [
+        "3",
+        "LIVING"
+       ],
+       [
+        "HATCH",
+        ""
+       ],
+       [
+        "ANSI31",
+        "Brick / 45° hatch"
+       ],
+       [
+        "NET",
+        "Grid / net"
+       ],
+       [
+        "NOTES",
+        ""
+       ],
+       [
+        "1.",
+        "Envelope 36'-7\" x 26'-0\"."
+       ],
+       [
+        "2.",
+        "See the legend for rooms, symbols, finishes."
+       ],
+       [
+        "3.",
+        "Do not scale. Dims in feet-inches."
+       ]
+      ]
+     },
+     "layer": "SCHEDULES"
+    }
+   ]
+  },
+  {
+   "id": "A101",
+   "name": "A-101 Overall",
+   "sheet": "archd",
+   "ppf": 18,
+   "titleBlock": true,
+   "viewports": [
+    {
+     "px": 0.5,
+     "py": 2.15,
+     "pw": 31,
+     "ph": 21.35,
+     "mx": 49.01199999999999,
+     "my": 12,
+     "ppf": 18,
+     "id": 1,
+     "name": "PLAN",
+     "drawingType": "plan"
+    }
+   ],
+   "kind": "overall",
+   "section": {
+    "bbox": [
+     -0.25,
+     -1,
+     36.33,
+     25
+    ],
+    "name": "Overall",
+    "source": "overall"
+   },
+   "sheetNumber": "A-101",
+   "annotations": [
+    {
+     "kind": "table",
+     "x": 31.9,
+     "y": 16.68,
+     "table": {
+      "type": "table",
+      "layer": "SCHEDULES",
+      "x": 0,
+      "y": 0,
+      "colW": [
+       1.35,
+       2.25
+      ],
+      "rowH": 0.22,
+      "title": "LEGEND",
+      "cells": [
+       [
+        "ITEM",
+        "MEANING"
+       ],
+       [
+        "LAYERS",
+        ""
+       ],
+       [
+        "WALLS",
+        "Structure"
+       ],
+       [
+        "DOORS",
+        "Openings"
+       ],
+       [
+        "FIXTURES",
+        "Equipment"
+       ],
+       [
+        "DIMS",
+        "Dimensions"
+       ],
+       [
+        "TEXT",
+        "Notes & labels"
+       ],
+       [
+        "HATCH",
+        "Finishes"
+       ],
+       [
+        "CENTER",
+        "Centerlines"
+       ],
+       [
+        "ROOMS",
+        "Rooms / areas"
+       ],
+       [
+        "GRID",
+        "Column grid"
+       ],
+       [
+        "SYMBOLS",
+        ""
+       ],
+       [
+        "D01",
+        "D01 · 3'-0\" L"
+       ],
+       [
+        "D02",
+        "D02 · 2'-6\" R"
+       ],
+       [
+        "D03",
+        "D03 · 2'-6\" L"
+       ],
+       [
+        "W01",
+        "W01 · 3'-0\""
+       ],
+       [
+        "W02",
+        "W02 · 4'-0\""
+       ],
+       [
+        "Stove",
+        "Stove"
+       ],
+       [
+        "Fridge",
+        "Fridge"
+       ],
+       [
+        "PARTS / CALLOUTS",
+        ""
+       ],
+       [
+        "1",
+        "KITCHEN"
+       ],
+       [
+        "2",
+        "BEDROOM"
+       ],
+       [
+        "3",
+        "LIVING"
+       ],
+       [
+        "HATCH",
+        ""
+       ],
+       [
+        "ANSI31",
+        "Brick / 45° hatch"
+       ],
+       [
+        "NET",
+        "Grid / net"
+       ],
+       [
+        "NOTES",
+        ""
+       ],
+       [
+        "1.",
+        "Envelope 36'-7\" x 26'-0\"."
+       ],
+       [
+        "2.",
+        "See the legend for rooms, symbols, finishes."
+       ],
+       [
+        "3.",
+        "Do not scale. Dims in feet-inches."
+       ]
+      ]
+     },
+     "layer": "SCHEDULES"
+    }
+   ]
+  },
+  {
+   "id": "A102",
+   "name": "A-102 Kitchen",
+   "sheet": "archd",
+   "ppf": 18,
+   "titleBlock": true,
+   "viewports": [
+    {
+     "px": 0.5,
+     "py": 2.15,
+     "pw": 31,
+     "ph": 21.35,
+     "mx": 48.861999999999995,
+     "my": 17,
+     "ppf": 18,
+     "id": 1,
+     "name": "PLAN",
+     "drawingType": "plan"
+    }
+   ],
+   "kind": "section",
+   "section": {
+    "bbox": [
+     -0.55,
+     9.45,
+     14.55,
+     24.55
+    ],
+    "name": "KITCHEN",
+    "source": "room"
+   },
+   "sheetNumber": "A-102",
+   "annotations": [
+    {
+     "kind": "table",
+     "x": 31.9,
+     "y": 18.22,
+     "table": {
+      "type": "table",
+      "layer": "SCHEDULES",
+      "x": 0,
+      "y": 0,
+      "colW": [
+       1.35,
+       2.25
+      ],
+      "rowH": 0.22,
+      "title": "LEGEND",
+      "cells": [
+       [
+        "ITEM",
+        "MEANING"
+       ],
+       [
+        "LAYERS",
+        ""
+       ],
+       [
+        "WALLS",
+        "Structure"
+       ],
+       [
+        "DOORS",
+        "Openings"
+       ],
+       [
+        "FIXTURES",
+        "Equipment"
+       ],
+       [
+        "DIMS",
+        "Dimensions"
+       ],
+       [
+        "TEXT",
+        "Notes & labels"
+       ],
+       [
+        "HATCH",
+        "Finishes"
+       ],
+       [
+        "ROOMS",
+        "Rooms / areas"
+       ],
+       [
+        "GRID",
+        "Column grid"
+       ],
+       [
+        "SYMBOLS",
+        ""
+       ],
+       [
+        "D03",
+        "D03 · 2'-6\" L"
+       ],
+       [
+        "Stove",
+        "Stove"
+       ],
+       [
+        "Fridge",
+        "Fridge"
+       ],
+       [
+        "THIS SHEET",
+        ""
+       ],
+       [
+        "1",
+        "KITCHEN"
+       ],
+       [
+        "HATCH",
+        ""
+       ],
+       [
+        "ANSI31",
+        "Brick / 45° hatch"
+       ],
+       [
+        "NET",
+        "Grid / net"
+       ],
+       [
+        "NOTES",
+        ""
+       ],
+       [
+        "1.",
+        "Envelope 36'-7\" x 26'-0\"."
+       ],
+       [
+        "2.",
+        "See the legend for rooms, symbols, finishes."
+       ],
+       [
+        "3.",
+        "Do not scale. Dims in feet-inches."
+       ]
+      ]
+     },
+     "layer": "SCHEDULES"
+    }
+   ]
+  },
+  {
+   "id": "A103",
+   "name": "A-103 Living",
+   "sheet": "archd",
+   "ppf": 18,
+   "titleBlock": true,
+   "viewports": [
+    {
+     "px": 0.5,
+     "py": 2.15,
+     "pw": 31,
+     "ph": 21.35,
+     "mx": 48.861999999999995,
+     "my": 5,
+     "ppf": 18,
+     "id": 1,
+     "name": "PLAN",
+     "drawingType": "plan"
+    }
+   ],
+   "kind": "section",
+   "section": {
+    "bbox": [
+     -0.55,
+     -0.55,
+     14.55,
+     10.55
+    ],
+    "name": "LIVING",
+    "source": "room"
+   },
+   "sheetNumber": "A-103",
+   "annotations": [
+    {
+     "kind": "table",
+     "x": 31.9,
+     "y": 18.44,
+     "table": {
+      "type": "table",
+      "layer": "SCHEDULES",
+      "x": 0,
+      "y": 0,
+      "colW": [
+       1.35,
+       2.25
+      ],
+      "rowH": 0.22,
+      "title": "LEGEND",
+      "cells": [
+       [
+        "ITEM",
+        "MEANING"
+       ],
+       [
+        "LAYERS",
+        ""
+       ],
+       [
+        "WALLS",
+        "Structure"
+       ],
+       [
+        "DOORS",
+        "Openings"
+       ],
+       [
+        "DIMS",
+        "Dimensions"
+       ],
+       [
+        "TEXT",
+        "Notes & labels"
+       ],
+       [
+        "HATCH",
+        "Finishes"
+       ],
+       [
+        "ROOMS",
+        "Rooms / areas"
+       ],
+       [
+        "GRID",
+        "Column grid"
+       ],
+       [
+        "SYMBOLS",
+        ""
+       ],
+       [
+        "D01",
+        "D01 · 3'-0\" L"
+       ],
+       [
+        "D02",
+        "D02 · 2'-6\" R"
+       ],
+       [
+        "D03",
+        "D03 · 2'-6\" L"
+       ],
+       [
+        "THIS SHEET",
+        ""
+       ],
+       [
+        "1",
+        "LIVING"
+       ],
+       [
+        "HATCH",
+        ""
+       ],
+       [
+        "ANSI31",
+        "Brick / 45° hatch"
+       ],
+       [
+        "NET",
+        "Grid / net"
+       ],
+       [
+        "NOTES",
+        ""
+       ],
+       [
+        "1.",
+        "Envelope 36'-7\" x 26'-0\"."
+       ],
+       [
+        "2.",
+        "See the legend for rooms, symbols, finishes."
+       ],
+       [
+        "3.",
+        "Do not scale. Dims in feet-inches."
+       ]
+      ]
+     },
+     "layer": "SCHEDULES"
+    }
+   ]
+  },
+  {
+   "id": "A104",
+   "name": "A-104 Bedroom",
+   "sheet": "archd",
+   "ppf": 18,
+   "titleBlock": true,
+   "viewports": [
+    {
+     "px": 0.5,
+     "py": 2.15,
+     "pw": 31,
+     "ph": 21.35,
+     "mx": 55.971999999999994,
+     "my": 12,
+     "ppf": 18,
+     "id": 1,
+     "name": "PLAN",
+     "drawingType": "plan"
+    }
+   ],
+   "kind": "section",
+   "section": {
+    "bbox": [
+     13.45,
+     -0.55,
+     36.55,
+     24.55
+    ],
+    "name": "BEDROOM",
+    "source": "room"
+   },
+   "sheetNumber": "A-104",
+   "annotations": [
+    {
+     "kind": "table",
+     "x": 31.9,
+     "y": 18,
+     "table": {
+      "type": "table",
+      "layer": "SCHEDULES",
+      "x": 0,
+      "y": 0,
+      "colW": [
+       1.35,
+       2.25
+      ],
+      "rowH": 0.22,
+      "title": "LEGEND",
+      "cells": [
+       [
+        "ITEM",
+        "MEANING"
+       ],
+       [
+        "LAYERS",
+        ""
+       ],
+       [
+        "WALLS",
+        "Structure"
+       ],
+       [
+        "DOORS",
+        "Openings"
+       ],
+       [
+        "DIMS",
+        "Dimensions"
+       ],
+       [
+        "TEXT",
+        "Notes & labels"
+       ],
+       [
+        "HATCH",
+        "Finishes"
+       ],
+       [
+        "CENTER",
+        "Centerlines"
+       ],
+       [
+        "ROOMS",
+        "Rooms / areas"
+       ],
+       [
+        "GRID",
+        "Column grid"
+       ],
+       [
+        "SYMBOLS",
+        ""
+       ],
+       [
+        "D01",
+        "D01 · 3'-0\" L"
+       ],
+       [
+        "D02",
+        "D02 · 2'-6\" R"
+       ],
+       [
+        "W01",
+        "W01 · 3'-0\""
+       ],
+       [
+        "W02",
+        "W02 · 4'-0\""
+       ],
+       [
+        "THIS SHEET",
+        ""
+       ],
+       [
+        "1",
+        "BEDROOM"
+       ],
+       [
+        "HATCH",
+        ""
+       ],
+       [
+        "ANSI31",
+        "Brick / 45° hatch"
+       ],
+       [
+        "NET",
+        "Grid / net"
+       ],
+       [
+        "NOTES",
+        ""
+       ],
+       [
+        "1.",
+        "Envelope 36'-7\" x 26'-0\"."
+       ],
+       [
+        "2.",
+        "See the legend for rooms, symbols, finishes."
+       ],
+       [
+        "3.",
+        "Do not scale. Dims in feet-inches."
+       ]
+      ]
+     },
+     "layer": "SCHEDULES"
+    }
+   ]
+  }
+ ],
+ "currentLayout": "G001",
+ "space": "model",
+ "dxfVer": "R12"
+}
