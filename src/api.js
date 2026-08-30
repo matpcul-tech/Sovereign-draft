@@ -16,6 +16,7 @@ import { serializeProject, validateProject } from './io/project.js';
 import { generateDraft, realizeDocument } from './ai/draft.js';
 import { isDwgBuffer, parseDwg } from './io/dwg.js';
 import { buildSVG } from './io/svg.js';
+import { toHTML } from './io/html.js';
 import { cabin24x36 } from './core/demo.js';
 
 export function makeEnsureLayer(layers){
@@ -202,4 +203,4 @@ export function sampleCabin(){
   }));
 }
 
-export { parseDXF, sniffDrawing, openDXF, buildDXF, buildPDF, buildAllSheetsPDF, buildSVG, generateSheetSet, cabin24x36 };
+export { parseDXF, sniffDrawing, openDXF, buildDXF, buildPDF, buildAllSheetsPDF, buildSVG, generateSheetSet, cabin24x36, toHTML };

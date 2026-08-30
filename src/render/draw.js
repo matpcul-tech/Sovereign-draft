@@ -15,6 +15,7 @@ import { sheetOf, modelToPaper } from '../core/layout.js';
 import { titleBlockModel, drawingTitleOf, viewportClearOfTitle } from '../core/titleblock.js';
 import { SNAP_KIND } from '../core/osnap.js';
 import { hatchLines } from '../core/hatch.js';
+import { entsInBBox } from '../core/legend.js';
 import { arcFrom3 } from '../core/modify.js';
 import { wallFrags } from '../core/walls.js';
 
@@ -44,12 +45,13 @@ export function draw(){
   drawModel();
 }
 
-function drawModel(clipToS, clipScl){
+function drawModel(clipToS, clipScl, only){
   const toS = clipToS || W2S;
   const scl = clipScl || state.view.scale;
   const ms = selMembers(), selSet = {};
   ms.forEach(e => { selSet[e.id] = 1; });
-  for (const e of state.entities){
+  const list = only || state.entities;
+  for (const e of list){
     const L = layerByName(e.layer);
     if (L && !L.visible) continue;
     drawEnt(ctx, e, L ? L.color : '#e8e4dd', !clipToS && !!selSet[e.id], toS, scl);
@@ -152,7 +154,7 @@ function drawPaper(){
       const p = modelToPaper(vp0, x, y);
       return p2s(p[0], p[1]);
     };
-    drawModel(toS, pxPerFt);
+    drawModel(toS, pxPerFt, (L.section && L.section.bbox) ? entsInBBox(state.entities, L.section.bbox, 0.4) : null);
     ctx.restore();
     ctx.strokeStyle = '#8fa3c0'; ctx.lineWidth = 1;
     ctx.strokeRect(tl[0], tl[1], vp0.pw * scl, vp0.ph * scl);

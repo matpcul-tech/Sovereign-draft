@@ -47,7 +47,7 @@ function roomSections(entities){
     });
     return {
       name: r.name || 'ROOM',
-      bbox: padBBox(bb, 0.8),
+      bbox: padBBox(bb, 0.4),
       source: 'room',
       area: r.area,
       cx: (bb[0] + bb[2]) / 2,
@@ -262,7 +262,7 @@ export function generateSheetSet(entities, layers, opts){
   detected.sections.forEach((sec, i) => {
     const num = 'A-' + String(102 + i);
     const title = sheetTitle(sec.name);
-    const fit = padForLabels(sec.bbox, body);
+    const fit = padForLabels(sec.bbox, body, 'section');
     layouts.push(buildSheet({
       id: 'A' + (102 + i),
       sheetNumber: num,
