@@ -13,9 +13,16 @@ Touch-first 2D CAD for schematic-to-CD architectural drafting. Runs entirely in 
 | `S` | Symbols / blocks | `M` | Measure |
 | `Q` | Erase | `V` | Select |
 | `H` | Pan | `F` | Zoom fit |
-| `/` | Focus command line | | |
+| `/` | Focus command line | `EL` | Ellipse |
+| `RC` | Revision cloud | `LE` | Leader |
+| `IMG` | Image underlay | `XL` | Construction line |
+| `GRID` | Column grid | | |
 
-**Wall mode** draws two parallel faces + caps. Thickness chip: 4″ / 6″ / 8″. Doors and windows are **dynamic INSERT blocks**: stretch the width grip, tap the diamond to flip swing, type `2'6"` with the door selected. They recut the host wall. **Explode** (`XP`) yields ordinary lines and arcs. Fixtures (stove, bed, …) are the same INSERT type with rotate + flip grips.
+**Wall mode** draws two parallel faces + caps. Thickness chip: 4″ / 6″ / 8″. Walls **heal as you draw** — L-corners miter and T-junctions recut automatically. Doors and windows are **dynamic INSERT blocks**: stretch the width grip, tap the diamond to flip swing, type `2'6"` with the door selected. They recut the host wall. **Explode** (`XP`) yields ordinary lines and arcs. Fixtures (stove, bed, …) are the same INSERT type with rotate + flip grips.
+
+**Live rooms** (`ROOMS`): closed wall loops become named rooms with live SF. Turn auto-rooms on and the labels follow as walls move. Text inside a loop names the room.
+
+**Column grid** (`GRID`): tap two corners. Letter bubbles along X, numbers along Y, CENTER linetype. Explode to lines + circles + text.
 
 ## Modify
 
@@ -26,7 +33,12 @@ Touch-first 2D CAD for schematic-to-CD architectural drafting. Runs entirely in 
 | `N` | Chamfer | `I` | Mirror |
 | `G` | Scale | `W` | Move |
 | `U` | Copy | `Y` | Rectangular array |
-| `J` | Join | `XP` | Explode block |
+| `ARP` | Polar array | `J` | Join |
+| `XP` | Explode block | `ST` | Stretch |
+| `MA` | Match properties | `AA` | Area |
+| `LI` | List object | `CLN` | Heal wall joints |
+| `OV` | Overkill | `TO` | Quantity takeoff |
+| `LAYISO` | Isolate layers | `UNISO` | Unisolate |
 
 Fillet / chamfer / offset / scale accept a typed radius or factor at the command line before the second pick. Live prompt example: `FILLET Specify radius <0'-6">:`.
 
@@ -42,11 +54,39 @@ While a command is live:
 | `#24,36` | Absolute coordinates |
 | `10,20` | Absolute coordinates |
 
-`F3` SNAP · `F8` ORTHO · `F10` POLAR (15°) · `Esc` cancel · `Enter` finish polyline / join.
+`F3` SNAP · `F8` ORTHO · `F10` POLAR (15°) · `Esc` cancel · `Enter` / `Space` finish polyline, or **repeat last command** when idle.
 
 ## Dim styles
 
-Named styles (`ARCH` tick / `ARROW` / `DECIMAL`) with text height, offset, tick vs arrow, precision (½″ / ¼″ / decimal) and layer. Tools: aligned, continue, baseline. DXF export still explodes dimensions to R12 LINE+TEXT.
+Named styles (`ARCH` tick / `ARROW` / `DECIMAL`) with text height, offset, tick vs arrow, precision (½″ / ¼″ / decimal) and layer. Tools: aligned, continue, baseline, **angular** (`DAN`), **radius** (`DRA`), **diameter** (`DDI`). Linear dims **bind to wall ends** and follow when the wall moves. DXF export still explodes dimensions to R12 LINE+TEXT.
+
+## Construction documents
+
+Door / window / room **schedules** (`SCH` or Sheet → Place schedules) auto-tag inserts `D01`, `W01` and drop a live `table` entity. Explode a table into lines + text. Export a door takeoff as CSV from the Sheet menu.
+
+**Image underlay** (`IMG` / Trace image): pick a photo, tap two corners. `CAL` then two taps + a typed length scales the raster to a known dimension. Underlays live on the `UNDERLAY` layer (`plot` off so they don't print).
+
+**Stretch** (`ST`): crossing-window the vertices to move, then pick a displacement. Walls, polylines, hatches, ellipses and inserts all stretch.
+
+**Match properties** (`MA`): tap a source, then tap destinations to copy layer / linetype / lineweight.
+
+**Inquiry:** `AA` area (including hatches and ellipses), `LI` list, `ID` coordinates.
+
+**Revision cloud** (`RC`) and **leader** (`LE`) for review sets. **Ellipse** (`EL`) for round rooms / tubs.
+
+**Clean / heal walls** (`CLN`) miters L-corners onto the centerline intersection and recuts T-junctions.
+
+**Overkill** (`OV`) drops zero-length and duplicate lines without touching walls, inserts, dims, hatches or rooms.
+
+**Quantity takeoff** (`TO`) places a live table: wall LF, door/window counts, room SF.
+
+**Layer isolate** (`LAYISO` / `UNISO`) hides every layer except the selection.
+
+The sample cabin now includes live rooms, a 12′ column grid, tagged doors, a door / window / room schedule, associative overall dims, and the original dashed centerline.
+
+**SVG** export (`SVG` or Sheet menu) for Illustrator / web. Object snaps include **TAN** from the last point onto a circle.
+
+Layers lock (click the padlock — locked objects can't be selected) and a **P** plot flag (off = skip in PDF / SVG).
 
 ## Paper space
 

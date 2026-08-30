@@ -4,10 +4,9 @@
  */
 import { arcPoints, dimGeom } from '../core/geometry.js';
 import { fmtFtIn } from '../core/format.js';
-import { membersBBox } from '../core/entities.js';
+import { membersBBox, explodeForIO } from '../core/entities.js';
 import { hatchLines } from '../core/hatch.js';
 import { sheetOf } from '../core/layout.js';
-import { expandInsert } from '../core/dynblock.js';
 
 export const SCALE_LADDER = [
   { ppf: 72,   lbl: '1" = 1\'-0"' },
@@ -66,8 +65,9 @@ function wrapPDF(stream, pageW, pageH){
 function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts){
   const list = [];
   visible.forEach(e => {
-    if (e.type === 'insert') list.push(...expandInsert(e));
-    else list.push(e);
+    if (e.type === 'insert' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
+      explodeForIO(e).forEach(f => list.push(f));
+    } else list.push(e);
   });
   list.forEach(e => {
     const isDim = e.layer === 'DIMS';

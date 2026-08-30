@@ -4,7 +4,7 @@
 import { state, layerByName, selMembers, activeLayout } from '../core/state.js';
 import { vp, W2S, S2W } from '../core/viewport.js';
 import { membersBBox, gripPts } from '../core/entities.js';
-import { dist, polarSnap } from '../core/geometry.js';
+import { dist, polarSnap, ellipsePoints, cloudPoints } from '../core/geometry.js';
 import { fmtFtIn } from '../core/format.js';
 import { drawEnt, strokePathOn } from './ent.js';
 import { ix } from '../interaction.js';
@@ -68,7 +68,7 @@ function drawModel(clipToS, clipScl){
   if (ix.snapMark){
     const s = W2S(ix.snapMark[0], ix.snapMark[1]);
     const kind = ix.snapMark[2];
-    ctx.strokeStyle = kind === 1 ? '#00d4b8' : (kind === 3 ? '#e8e4dd' : (kind === 5 ? '#c45a3c' : '#d4a843'));
+    ctx.strokeStyle = kind === 1 ? '#00d4b8' : (kind === 3 ? '#e8e4dd' : (kind === 5 ? '#c45a3c' : (kind === 6 ? '#4ade80' : '#d4a843')));
     ctx.lineWidth = 1.5;
     if (kind === 2){ ctx.beginPath(); ctx.arc(s[0], s[1], 6, 0, Math.PI * 2); ctx.stroke(); }
     else if (kind === 3){
@@ -76,6 +76,10 @@ function drawModel(clipToS, clipScl){
       ctx.moveTo(s[0] - 6, s[1] - 6); ctx.lineTo(s[0] + 6, s[1] + 6);
       ctx.moveTo(s[0] + 6, s[1] - 6); ctx.lineTo(s[0] - 6, s[1] + 6);
       ctx.stroke();
+    } else if (kind === 6){
+      ctx.beginPath();
+      ctx.moveTo(s[0], s[1] - 7); ctx.lineTo(s[0] + 6, s[1] + 4); ctx.lineTo(s[0] - 6, s[1] + 4);
+      ctx.closePath(); ctx.stroke();
     } else ctx.strokeRect(s[0] - 5, s[1] - 5, 10, 10);
     const label = SNAP_KIND[kind] || '';
     if (label){
@@ -207,21 +211,34 @@ function drawPreview(){
     ctx.strokeRect(Math.min(drag.s0[0], drag.cur[0]), Math.min(drag.s0[1], drag.cur[1]),
       Math.abs(drag.cur[0] - drag.s0[0]), Math.abs(drag.cur[1] - drag.s0[1]));
   }
+  if (drag && drag.kind === 'stretchbox' && drag.cur){
+    ctx.strokeStyle = '#00d4b8';
+    ctx.setLineDash([4, 3]);
+    ctx.strokeRect(Math.min(drag.s0[0], drag.cur[0]), Math.min(drag.s0[1], drag.cur[1]),
+      Math.abs(drag.cur[0] - drag.s0[0]), Math.abs(drag.cur[1] - drag.s0[1]));
+  }
   if (drag && drag.kind === 'draw' && drag.p2){
     const p1 = drag.p1, p2 = drag.p2;
-    if (tool === 'line' || tool === 'dim' || tool === 'dimali' || tool === 'measure' || tool === 'wall'){
+    if (tool === 'line' || tool === 'dim' || tool === 'dimali' || tool === 'measure' || tool === 'wall' || tool === 'xline'){
       if (tool === 'wall'){
         ctx.setLineDash([]);
         const fr = wallFrags(p1[0], p1[1], p2[0], p2[1], state.wallTh, state.currentLayer);
         fr.forEach(f => strokePath([[f.x1, f.y1], [f.x2, f.y2]]));
       } else {
         if (tool === 'measure') ctx.strokeStyle = '#00d4b8';
-        strokePath([p1, p2]);
+        if (tool === 'xline'){
+          const dx = p2[0] - p1[0], dy = p2[1] - p1[1];
+          const L = Math.hypot(dx, dy) || 1;
+          const ux = dx / L, uy = dy / L;
+          strokePath([[p1[0] - ux * 80, p1[1] - uy * 80], [p1[0] + ux * 80, p1[1] + uy * 80]]);
+        } else {
+          strokePath([p1, p2]);
+        }
       }
       const d = dist(p1[0], p1[1], p2[0], p2[1]);
       let a = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) * 180 / Math.PI;
       if (a < 0) a += 360;
-      previewLabel(p1, p2, tool === 'measure' ? (fmtFtIn(d) + ' · ' + Math.round(a) + '°') : fmtFtIn(d));
+      previewLabel(p1, p2, fmtFtIn(d) + ' · ' + Math.round(a) + '°');
     } else if (tool === 'rect'){
       strokePath([[p1[0], p1[1]], [p2[0], p1[1]], [p2[0], p2[1]], [p1[0], p2[1]]], true);
       previewLabel(p1, p2, fmtFtIn(Math.abs(p2[0] - p1[0])) + ' × ' + fmtFtIn(Math.abs(p2[1] - p1[1])));
@@ -229,11 +246,28 @@ function drawPreview(){
       const c = W2S(p1[0], p1[1]), r = dist(p1[0], p1[1], p2[0], p2[1]) * state.view.scale;
       ctx.beginPath(); ctx.arc(c[0], c[1], r, 0, Math.PI * 2); ctx.stroke();
       previewLabel(p1, p2, 'R ' + fmtFtIn(dist(p1[0], p1[1], p2[0], p2[1])));
+    } else if (tool === 'ellipse'){
+      const ell = { cx: p1[0], cy: p1[1], rx: Math.abs(p2[0] - p1[0]), ry: Math.abs(p2[1] - p1[1]), rot: 0 };
+      strokePath(ellipsePoints(ell), true);
+      previewLabel(p1, p2, fmtFtIn(ell.rx) + ' × ' + fmtFtIn(ell.ry));
+    } else if (tool === 'image'){
+      strokePath([[p1[0], p1[1]], [p2[0], p1[1]], [p2[0], p2[1]], [p1[0], p2[1]]], true);
+      previewLabel(p1, p2, fmtFtIn(Math.abs(p2[0] - p1[0])) + ' × ' + fmtFtIn(Math.abs(p2[1] - p1[1])));
+    } else if (tool === 'grid'){
+      strokePath([[p1[0], p1[1]], [p2[0], p1[1]], [p2[0], p2[1]], [p1[0], p2[1]]], true);
+      previewLabel(p1, p2, fmtFtIn(Math.abs(p2[0] - p1[0])) + ' × ' + fmtFtIn(Math.abs(p2[1] - p1[1])) + ' grid');
+    } else if (tool === 'arraypolar'){
+      strokePath([p1, p2]);
+      const c = W2S(p1[0], p1[1]);
+      ctx.beginPath(); ctx.arc(c[0], c[1], 6, 0, Math.PI * 2); ctx.stroke();
+      previewLabel(p1, p2, (state.arrayCount || 6) + ' @ ' + (state.arrayFill || 360) + '°');
+    } else if (tool === 'stretch' || tool === 'calibrate'){
+      strokePath([p1, p2]);
     } else if (tool === 'mirror' || tool === 'move' || tool === 'copy' || tool === 'rotate' || tool === 'scale'){
       strokePath([p1, p2]);
     }
   }
-  if (tool === 'arc' && ix.arcPts && ix.arcPts.length){
+  if ((tool === 'arc' || tool === 'dimang') && ix.arcPts && ix.arcPts.length){
     if (ix.arcPts.length === 1 && ix.hoverPt) strokePath([ix.arcPts[0], ix.hoverPt]);
     if (ix.arcPts.length === 2){
       const p3 = ix.hoverPt || ix.arcPts[1];
@@ -246,9 +280,12 @@ function drawPreview(){
     ctx.setLineDash([]);
     for (const p of ix.arcPts){ const s = W2S(p[0], p[1]); ctx.fillStyle = col; ctx.fillRect(s[0] - 3, s[1] - 3, 6, 6); }
   }
-  if ((tool === 'poly' || tool === 'hatch') && ix.polyPts.length){
-    if (ix.polyPts.length > 1) strokePath(ix.polyPts);
-    if (ix.hoverPt){
+  if ((tool === 'poly' || tool === 'hatch' || tool === 'cloud' || tool === 'leader') && ix.polyPts.length){
+    const pts = tool === 'cloud' && ix.polyPts.length > 2
+      ? cloudPoints(ix.hoverPt ? ix.polyPts.concat([ix.hoverPt]) : ix.polyPts)
+      : ix.polyPts;
+    if (pts.length > 1) strokePath(pts, tool === 'cloud');
+    if (ix.hoverPt && tool !== 'cloud'){
       strokePath([ix.polyPts[ix.polyPts.length - 1], ix.hoverPt]);
       previewLabel(ix.polyPts[ix.polyPts.length - 1], ix.hoverPt,
         fmtFtIn(dist(ix.polyPts[ix.polyPts.length - 1][0], ix.polyPts[ix.polyPts.length - 1][1], ix.hoverPt[0], ix.hoverPt[1])));

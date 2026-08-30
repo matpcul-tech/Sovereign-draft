@@ -5,7 +5,18 @@ import { defaultLayouts } from '../core/layout.js';
 
 export const AUTOSAVE_KEY = 'sovereign-draft.autosave.v1';
 
+function stripHeavy(entities){
+  return (entities || []).map(e => {
+    if (e.type !== 'image' || !e.src || String(e.src).length < 120000) return e;
+    const c = Object.assign({}, e);
+    delete c.src;
+    c.srcOmitted = true;
+    return c;
+  });
+}
+
 export function serializeProject(state, pretty){
+  const entities = pretty ? state.entities : stripHeavy(state.entities);
   return JSON.stringify({
     app: 'sovereign-draft',
     v: PROJECT_VERSION,
@@ -13,7 +24,7 @@ export function serializeProject(state, pretty){
     idSeq: state.idSeq,
     gSeq: state.gSeq,
     layers: state.layers,
-    entities: state.entities,
+    entities,
     userBlocks: state.userBlocks,
     dimStyles: state.dimStyles,
     currentDimStyle: state.currentDimStyle,
@@ -56,6 +67,12 @@ export function applyProject(state, p){
   if (p.currentLayout) state.currentLayout = p.currentLayout;
   if (p.space) state.space = p.space;
   if (p.dxfVer) state.dxfVer = p.dxfVer;
+  ['SCHEDULES', 'UNDERLAY'].forEach(n => {
+    if (!state.layers.find(l => l.name === n)){
+      const d = defaultLayers().find(l => l.name === n);
+      if (d) state.layers.push(Object.assign({}, d));
+    }
+  });
   if (!state.layers.find(l => l.name === state.currentLayer))
     state.currentLayer = state.layers[0] ? state.layers[0].name : 'WALLS';
   state.selIds = [];

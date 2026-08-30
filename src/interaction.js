@@ -17,5 +17,11 @@ export const ix = {
   hatchPts: [],
   dimLast: null,
   dimBase: null,
-  openingKind: 'door'
+  openingKind: 'door',
+  stretchBox: null,
+  matchSrc: null,
+  imageSrc: null,
+  schedKind: 'door',
+  pendingLeader: null,
+  calibratePts: []
 };

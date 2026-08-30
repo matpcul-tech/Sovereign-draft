@@ -181,6 +181,31 @@ export function dimGeom(e){
   };
 }
 
+export function angularGeom(e){
+  const a1 = Math.atan2(e.y1 - e.y2, e.x1 - e.x2);
+  const a2 = Math.atan2(e.y3 - e.y2, e.x3 - e.x2);
+  let span = a2 - a1;
+  while (span > Math.PI) span -= Math.PI * 2;
+  while (span < -Math.PI) span += Math.PI * 2;
+  const r = Math.abs(e.off) || 2;
+  const steps = Math.max(8, Math.ceil(Math.abs(span) * 18 / Math.PI));
+  const arc = [];
+  for (let i = 0; i <= steps; i++){
+    const a = a1 + span * i / steps;
+    arc.push([e.x2 + Math.cos(a) * r, e.y2 + Math.sin(a) * r]);
+  }
+  const midA = a1 + span / 2;
+  return {
+    vertex: [e.x2, e.y2],
+    a1, a2, span, r,
+    pA: arc[0],
+    pB: arc[arc.length - 1],
+    arc,
+    mid: [e.x2 + Math.cos(midA) * r, e.y2 + Math.sin(midA) * r],
+    value: Math.abs(span) * 180 / Math.PI
+  };
+}
+
 export function copyStyle(from, to){
   if (!from || !to) return to;
   if (from.lt) to.lt = from.lt;
@@ -188,3 +213,68 @@ export function copyStyle(from, to){
   if (from.layer) to.layer = from.layer;
   return to;
 }
+
+export function ellipsePoints(e, n){
+  n = n || 48;
+  const rot = (e.rot || 0) * Math.PI / 180;
+  const c = Math.cos(rot), s = Math.sin(rot);
+  const rx = e.rx || 0, ry = e.ry || 0;
+  const pts = [];
+  for (let i = 0; i < n; i++){
+    const t = (i / n) * Math.PI * 2;
+    const lx = rx * Math.cos(t), ly = ry * Math.sin(t);
+    pts.push([e.cx + lx * c - ly * s, e.cy + lx * s + ly * c]);
+  }
+  return pts;
+}
+
+/* Scalloped revision-cloud polyline. `amp` is bulge radius in feet. */
+export function cloudPoints(pts, amp){
+  amp = amp == null ? 0.4 : amp;
+  if (!pts || pts.length < 3) return pts || [];
+  const out = [];
+  const n = pts.length;
+  for (let i = 0; i < n; i++){
+    const a = pts[i], b = pts[(i + 1) % n];
+    const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.sqrt(dx * dx + dy * dy) || 1;
+    const steps = Math.max(2, Math.round(L / Math.max(amp * 1.8, 0.25)));
+    const nx = -dy / L, ny = dx / L;
+    for (let k = 0; k < steps; k++){
+      const t0 = k / steps, t1 = (k + 1) / steps;
+      const p0 = [a[0] + dx * t0, a[1] + dy * t0];
+      const p1 = [a[0] + dx * t1, a[1] + dy * t1];
+      const mid = [(p0[0] + p1[0]) / 2 + nx * amp, (p0[1] + p1[1]) / 2 + ny * amp];
+      for (let s = 0; s <= 4; s++){
+        const u = s / 4, o = 1 - u;
+        out.push([
+          o * o * p0[0] + 2 * o * u * mid[0] + u * u * p1[0],
+          o * o * p0[1] + 2 * o * u * mid[1] + u * u * p1[1]
+        ]);
+      }
+    }
+  }
+  return out;
+}
+
+/* Tangent points on a circle from an external point. kind 6 = TAN. */
+export function tanPoints(e, from){
+  if (!from || e.type !== 'circle' || !e.r) return [];
+  const dx = from[0] - e.cx, dy = from[1] - e.cy;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d <= e.r + 1e-6) return [];
+  const base = Math.atan2(dy, dx);
+  const th = Math.acos(e.r / d);
+  return [1, -1].map(s => {
+    const a = base + s * th;
+    return [e.cx + e.r * Math.cos(a), e.cy + e.r * Math.sin(a), 6];
+  });
+}
+
+export function imageCorners(e){
+  const rot = (e.rot || 0) * Math.PI / 180;
+  const c = Math.cos(rot), s = Math.sin(rot);
+  const w = e.w || 1, h = e.h || 1;
+  const pts = [[0, 0], [w, 0], [w, h], [0, h]];
+  return pts.map(p => [e.x + p[0] * c - p[1] * s, e.y + p[0] * s + p[1] * c]);
+}
+
