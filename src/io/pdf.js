@@ -9,6 +9,7 @@ import { hatchLines, hatchPlan, ppfToScaleFactor } from '../core/hatch.js';
 import { helveticaWidth } from '../core/textmetrics.js';
 import { sheetLabel } from '../core/document.js';
 import { tableFrags } from '../core/schedule.js';
+import { detailBubbleText } from '../core/sheetspace.js';
 import { sheetOf } from '../core/layout.js';
 
 export const SCALE_LADDER = [
@@ -278,6 +279,23 @@ function layoutPage(entities, opts){
     }
     if (a.leader && a.leader.length === 2){
       P(f2(IX(a.leader[0][0])) + ' ' + f2(IY(a.leader[0][1])) + ' m ' + f2(IX(a.leader[1][0])) + ' ' + f2(IY(a.leader[1][1])) + ' l S');
+    }
+    if (a.kind === 'detail'){
+      /* The standard bubble: a circle split by its horizontal diameter, view
+       * number over sheet number. */
+      const cx = IX(a.x), cy = IY(a.y), r = (a.r || 0.28) * 72;
+      const k = r * 0.5523;
+      P(f2(cx + r) + ' ' + f2(cy) + ' m ' +
+        f2(cx + r) + ' ' + f2(cy + k) + ' ' + f2(cx + k) + ' ' + f2(cy + r) + ' ' + f2(cx) + ' ' + f2(cy + r) + ' c ' +
+        f2(cx - k) + ' ' + f2(cy + r) + ' ' + f2(cx - r) + ' ' + f2(cy + k) + ' ' + f2(cx - r) + ' ' + f2(cy) + ' c ' +
+        f2(cx - r) + ' ' + f2(cy - k) + ' ' + f2(cx - k) + ' ' + f2(cy - r) + ' ' + f2(cx) + ' ' + f2(cy - r) + ' c ' +
+        f2(cx + k) + ' ' + f2(cy - r) + ' ' + f2(cx + r) + ' ' + f2(cy - k) + ' ' + f2(cx + r) + ' ' + f2(cy) + ' c S');
+      P(f2(cx - r) + ' ' + f2(cy) + ' m ' + f2(cx + r) + ' ' + f2(cy) + ' l S');
+      const t = detailBubbleText(opts.sheets || [layout], a);
+      const ts = (a.size || 0.12) * 72;
+      textAt(cx - helveticaWidth(t.top, ts, true) / 2, cy + ts * 0.35, ts, t.top, 0, true, 0.08);
+      textAt(cx - helveticaWidth(t.bottom, ts, true) / 2, cy - ts * 1.15, ts, t.bottom, 0, true, 0.08);
+      return;
     }
     textAt(IX(a.x), IY(a.y), Math.max((a.size || 0.12) * 72, 4), a.text || '', 0, false, 0.1);
   });

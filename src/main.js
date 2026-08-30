@@ -24,7 +24,7 @@ import { makeLayout, makeViewport, fitViewport, SHEETS } from './core/layout.js'
 import { membersBBox } from './core/entities.js';
 import { addSheet, addViewToSheet, normalizeSheets, findSheet } from './core/document.js';
 import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys, markScheduleCSV } from './core/keynote.js';
-import { placeInMargin, makeTableAnnotation, addAnnotation } from './core/sheetspace.js';
+import { placeInMargin, makeTableAnnotation, addAnnotation, makeDetailCallout, danglingDetails, detailBubbleText } from './core/sheetspace.js';
 import { cabin24x36 } from './core/demo.js';
 
 const $ = id => document.getElementById(id);
@@ -527,6 +527,25 @@ function wireUi(){
     state.layouts[idx].viewports.forEach(v => fitViewport(v, bb));
     renderLayouts(); renderSpaceTabs(); afterChange();
     toast('View ' + state.layouts[idx].viewports.length + ' added to ' + (updated.sheetNumber || updated.name));
+  });
+
+  $('btnAddDetail') && $('btnAddDetail').addEventListener('click', () => {
+    const L = activeLayout();
+    if (!L){ toast('Open a sheet first'); return; }
+    if (state.layouts.length < 2){ toast('Add a second sheet to reference'); return; }
+    const i = state.layouts.findIndex(x => x.id === L.id);
+    const target = state.layouts[(i + 1) % state.layouts.length];
+    const slot = placeInMargin(L, [0.6, 0.6]);
+    if (!slot){ toast('No room for a callout on this sheet'); return; }
+    pushUndo();
+    const bubble = makeDetailCallout(slot.x + 0.3, slot.y + 0.3, {
+      sheetId: target.id,
+      viewId: (target.viewports[0] && target.viewports[0].id) || 1
+    });
+    state.layouts[i] = addAnnotation(L, bubble);
+    renderLayouts(); afterChange();
+    const t = detailBubbleText(state.layouts, bubble);
+    toast('Detail ' + t.top + ' on ' + t.bottom);
   });
 
   $('mKeynotes') && $('mKeynotes').addEventListener('click', () => {

@@ -205,6 +205,7 @@ export function shellHTML(){
   <div id="layoutlist"></div>
   <button class="addlayer" id="btnAddSheet">+ New sheet</button>
   <button class="addlayer" id="btnAddView">+ Add view to this sheet</button>
+  <button class="addlayer" id="btnAddDetail">+ Detail callout to next sheet</button>
   <h4>Sheet size</h4>
   <div id="sheetSizes" class="chiprow">
     <button class="chip" data-sheet="letter">Letter</button>

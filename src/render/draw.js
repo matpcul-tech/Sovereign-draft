@@ -4,6 +4,7 @@
 import { tableFrags } from '../core/schedule.js';
 import { scaleLabel } from '../io/pdf.js';
 import { sheetLabel } from '../core/document.js';
+import { detailBubbleText } from '../core/sheetspace.js';
 import { state, layerByName, selMembers, activeLayout } from '../core/state.js';
 import { vp, W2S, S2W } from '../core/viewport.js';
 import { membersBBox, gripPts } from '../core/entities.js';
@@ -179,6 +180,18 @@ function drawPaper(){
     if (a.leader && a.leader.length === 2){
       const p0 = p2s(a.leader[0][0], a.leader[0][1]), p1 = p2s(a.leader[1][0], a.leader[1][1]);
       ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
+    }
+    if (a.kind === 'detail'){
+      const c = p2s(a.x, a.y);
+      const r = (a.r || 0.28) * scl;
+      ctx.beginPath(); ctx.arc(c[0], c[1], r, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(c[0] - r, c[1]); ctx.lineTo(c[0] + r, c[1]); ctx.stroke();
+      const t = detailBubbleText(state.layouts || [], a);
+      ctx.font = '600 ' + Math.max(7, (a.size || 0.12) * scl) + 'px Outfit, system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom'; ctx.fillText(t.top, c[0], c[1] - r * 0.12);
+      ctx.textBaseline = 'top'; ctx.fillText(t.bottom, c[0], c[1] + r * 0.12);
+      return;
     }
     const q = p2s(a.x, a.y);
     ctx.font = Math.max(8, (a.size || 0.12) * scl) + 'px Outfit, system-ui';

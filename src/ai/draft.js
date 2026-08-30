@@ -14,7 +14,7 @@ import { makeInsert, locateInsert } from '../core/dynblock.js';
 import { rulesFor, closeDimChains, placeLabel, textBox, dimObstacles, polygonArea, centroidOf, assertNoImpliedFill } from '../core/annotate.js';
 import { makeLayout, makeViewport, fitViewport, PLOT_SCALES, SHEETS } from '../core/layout.js';
 import { normalizeSheets, defaultSheetNumber } from '../core/document.js';
-import { placeInMargin, makeTableAnnotation, addAnnotation } from '../core/sheetspace.js';
+import { placeInMargin, makeTableAnnotation, addAnnotation, makeDetailCallout } from '../core/sheetspace.js';
 import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys } from '../core/keynote.js';
 import { membersBBox } from '../core/entities.js';
 
@@ -63,12 +63,14 @@ export const AI_SCHEMA_SPEC =
 ' "sheets":[{"number":"A-1","name":"OVERALL ELEVATION","size":"archd",\n' +
 '   "views":[{"name":"SOUTH ELEVATION","scale":"1/16","drawingType":"elevation",\n' +
 '             "extents":[x0,y0,x1,y1]}],\n' +
-'   "annotations":["keynoteLegend"]}]\n' +
+'   "annotations":["keynoteLegend"],\n' +
+'   "details":[{"x":6.0,"y":4.0,"sheet":"A-2","view":1}]}]\n' +
 'size is letter, tabloid or archd. scale is an architectural fraction such as\n' +
 '1/16, 1/8, 1/4, 1/2 or 1. extents is the model rectangle that view shows.\n' +
 'annotations may list keynoteLegend and schedule; both are derived from the\n' +
-'marks you set, so mark the parts you want listed. Omit sheets entirely for a\n' +
-'single drawing.';
+'marks you set, so mark the parts you want listed. details are cross reference\n' +
+'bubbles in paper inches on this sheet pointing at a view on another sheet.\n' +
+'Omit sheets entirely for a single drawing.';
 
 export const AI_SPEC = AI_SCHEMA_SPEC;
 
@@ -545,7 +547,7 @@ export function schemaToSheets(schema, entities){
   const sheets = normalizeSheets(built);
 
   /* Derived annotations, scoped per sheet. Both read the marks already set. */
-  return sheets.map((sheet, i) => {
+  const withAnnotations = sheets.map((sheet, i) => {
     const wanted = (proposals[i] && proposals[i].annotations) || [];
     let out = sheet;
     (Array.isArray(wanted) ? wanted : [wanted]).forEach(w => {
@@ -569,6 +571,27 @@ export function schemaToSheets(schema, entities){
         const slot = placeInMargin(out, size);
         if (slot) out = addAnnotation(out, makeTableAnnotation(slot.x, slot.y, t));
       }
+    });
+    return out;
+  });
+
+  return attachDetails(withAnnotations, proposals);
+}
+
+/* Cross references are resolved after every sheet exists, so a bubble on A-1
+ * can point at A-2 even though A-2 was not built yet when A-1 was read. */
+function attachDetails(sheets, proposals){
+  const byNumber = {};
+  sheets.forEach(s => { byNumber[String(s.sheetNumber).toUpperCase()] = s.id; });
+  return sheets.map((sheet, i) => {
+    const wanted = (proposals[i] && proposals[i].details) || [];
+    let out = sheet;
+    (Array.isArray(wanted) ? wanted : []).slice(0, 12).forEach(d => {
+      if (!d) return;
+      const sheetId = byNumber[String(d.sheet || d.sheetNumber || '').toUpperCase()];
+      if (!sheetId) return;
+      const viewId = Number(d.view != null ? d.view : d.viewId) || 1;
+      out = addAnnotation(out, makeDetailCallout(num(d.x), num(d.y), { sheetId, viewId }));
     });
     return out;
   });

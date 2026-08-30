@@ -55,10 +55,12 @@ export function annotationRect(a){
 
 function estimateWidth(a){
   if (a.kind === 'table' && a.table) return (a.table.colW || []).reduce((s, c) => s + c, 0);
+  if (a.kind === 'detail') return (a.r || DETAIL_BUBBLE_R) * 2;
   return boxWidth(a.text || '', a.size || 0.12);
 }
 function estimateHeight(a){
   if (a.kind === 'table' && a.table) return (a.table.cells || []).length * (a.table.rowH || 0.22) + (a.table.title ? (a.table.rowH || 0.22) : 0);
+  if (a.kind === 'detail') return (a.r || DETAIL_BUBBLE_R) * 2;
   return (a.size || 0.12) * 1.4;
 }
 
@@ -160,6 +162,64 @@ export function placeLabelOnSheet(sheet, view, modelAnchor, text, opts){
     layer: o.layer,
     leader: [[anchorPaper[0], anchorPaper[1]], tip]
   });
+}
+
+/* ---------- detail callouts and cross references ----------
+ * The standard bubble: a circle split by a horizontal line, view number over
+ * sheet number. It holds a target rather than a rendered string, so renaming
+ * a sheet updates every reference to it and a broken reference is detectable
+ * instead of silently reading as stale text.
+ */
+export const DETAIL_BUBBLE_R = 0.28;   /* inches */
+
+export function makeDetailCallout(x, y, target, opts){
+  const o = opts || {};
+  return {
+    kind: 'detail', x, y,
+    r: o.r || DETAIL_BUBBLE_R,
+    size: o.size || 0.12,
+    target: { sheetId: (target && target.sheetId) || null, viewId: (target && target.viewId) != null ? (target.viewId) : 1 },
+    leader: o.leader || null,
+    layer: o.layer || 'NOTES'
+  };
+}
+
+/* Resolve a target against the document. Returns null when it points at a
+ * sheet or view that does not exist, which is what makes a dangling
+ * reference reportable rather than invisible. */
+export function resolveDetailTarget(sheets, target){
+  if (!target || !target.sheetId) return null;
+  const sheet = (sheets || []).find(s => s && s.id === target.sheetId);
+  if (!sheet) return null;
+  const views = sheet.viewports || [];
+  const view = views.find(v => v.id === target.viewId) || null;
+  if (!view) return null;
+  return {
+    sheet, view,
+    sheetNumber: sheet.sheetNumber || '',
+    viewId: view.id,
+    viewName: view.name || ''
+  };
+}
+
+/* What a bubble prints: view number over sheet number. */
+export function detailBubbleText(sheets, ann){
+  const hit = resolveDetailTarget(sheets, ann && ann.target);
+  if (!hit) return { top: '?', bottom: '?', resolved: false };
+  return { top: String(hit.viewId), bottom: hit.sheetNumber, resolved: true };
+}
+
+/* Every callout across the document whose target does not resolve. */
+export function danglingDetails(sheets){
+  const out = [];
+  (sheets || []).forEach(s => {
+    (s.annotations || []).forEach(a => {
+      if (a && a.kind === 'detail' && !resolveDetailTarget(sheets, a.target)){
+        out.push({ sheetId: s.id, sheetNumber: s.sheetNumber, target: a.target });
+      }
+    });
+  });
+  return out;
 }
 
 /* Whether a paper rectangle is clear of everything already on the sheet. */
