@@ -41,6 +41,10 @@ export const AI_SCHEMA_SPEC =
 'centerlines: construction axes. callouts: leader plus label, used instead of\n' +
 'room names. hatchRegions: only where a cut face is genuinely hatched.\n' +
 'Square-foot area tags are emitted for plan only.\n' +
+'Any profile, callout or fixture may carry "mark":"E-1" and\n' +
+'"attrs":{"type":"MERLIN 1D","material":"...","size":"...","qty":1}.\n' +
+'Mark repeated parts so they can be scheduled. Nine identical engines are\n' +
+'either nine items marked E-1 through E-9, or one item marked E with qty 9.\n' +
 'Units are decimal feet. Y axis points up. Origin near (0,0). All coordinates >= 0.\n' +
 'walls: centerlines. th is thickness in feet (0.333, 0.5 or 0.667). Close exterior loops.\n' +
 'openings: wall is the 0-based index into walls; t is 0..1 along the centerline; w is opening width in feet.\n' +
@@ -87,6 +91,24 @@ export function serializeForAI(entities){
 }
 
 function num(v){ v = Number(v); return isFinite(v) ? v : 0; }
+
+/* Copy a mark and attributes onto a realized entity. Absent stays absent, so
+ * an unmarked entity serializes exactly as it did before marks existed. */
+function applyMark(ent, src){
+  if (!src) return ent;
+  if (src.mark) ent.mark = String(src.mark).toUpperCase().slice(0, 12);
+  const a = src.attrs || src.attributes;
+  if (a && typeof a === 'object'){
+    const out = {};
+    Object.keys(a).forEach(k => {
+      const v = a[k];
+      if (v == null || v === '') return;
+      out[String(k).slice(0, 24)] = typeof v === 'number' ? v : String(v).slice(0, 64);
+    });
+    if (Object.keys(out).length) ent.attributes = out;
+  }
+  return ent;
+}
 
 export function extractItems(text){
   const r = extractResponse(text);
@@ -241,13 +263,13 @@ export function schemaToEntities(schema, ensureLayer){
     const name = (SYMBOLS.find(s => s.name.toLowerCase() === String(fx.kind || '').toLowerCase()) || {}).name;
     if (!name) return;
     const [x, y] = snap6(num(fx.x), num(fx.y));
-    fresh.push(makeInsert({
+    fresh.push(applyMark(makeInsert({
       def: 'sym:' + name,
       name,
       layer: 'FIXTURES',
       x, y,
       rot: num(fx.rot) || 0
-    }));
+    }), fx));
   });
 
   /* The geometry pass emits no text. A room entity carries its own single
@@ -287,11 +309,11 @@ export function schemaToEntities(schema, ensureLayer){
     if (pr.fill && !rules.impliedHatch){
       console.warn('[ai] dropped fill on a profile: not valid on a ' + drawingType);
     }
-    fresh.push({
+    fresh.push(applyMark({
       type: 'profile', layer: ensureLayer('PROFILE'),
       pts: pr.pts.map(p => snap6(num(p[0]), num(p[1]))),
       fill: rules.impliedHatch ? (pr.fill || null) : null
-    });
+    }, pr));
   });
 
   (schema.centerlines || []).forEach(cn => {
@@ -342,11 +364,11 @@ export function schemaToEntities(schema, ensureLayer){
     const anchor = snap6(num(src[0]), num(src[1]));
     const spot = placeLabel({ content, size: 0.8, pts: [], obstacles: taken, extents: ext, anchor });
     taken.push(spot.box);
-    fresh.push({
+    fresh.push(applyMark({
       type: 'callout', layer: ensureLayer('NOTES'),
       anchor, pts: spot.leader || [anchor, [spot.x, spot.y]],
       content, textH: 0.8
-    });
+    }, co));
   });
 
   /* Nothing downstream may reintroduce a fill the drawing type forbids. */

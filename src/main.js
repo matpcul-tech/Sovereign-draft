@@ -23,6 +23,7 @@ import { shellHTML } from './shell.js';
 import { makeLayout, makeViewport, fitViewport, SHEETS } from './core/layout.js';
 import { membersBBox } from './core/entities.js';
 import { addSheet, addViewToSheet, normalizeSheets, findSheet } from './core/document.js';
+import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys, markScheduleCSV } from './core/keynote.js';
 import { cabin24x36 } from './core/demo.js';
 
 const $ = id => document.getElementById(id);
@@ -513,6 +514,32 @@ function wireUi(){
     state.layouts[idx].viewports.forEach(v => fitViewport(v, bb));
     renderLayouts(); renderSpaceTabs(); afterChange();
     toast('View ' + state.layouts[idx].viewports.length + ' added to ' + (updated.sheetNumber || updated.name));
+  });
+
+  $('mKeynotes') && $('mKeynotes').addEventListener('click', () => {
+    closeSheets();
+    const sheet = state.space !== 'model' ? activeLayout() : null;
+    const rows = keynoteRows(state.entities, sheet);
+    if (!rows.length){ toast('Nothing is marked yet'); return; }
+    const bb = membersBBox(state.entities);
+    pushUndo();
+    addEntity(buildKeynoteLegend(state.entities, sheet, [bb[2] + 3, bb[3]]));
+    afterChange();
+    toast(rows.length + ' keynote' + (rows.length === 1 ? '' : 's') + (sheet ? ' on ' + (sheet.sheetNumber || sheet.name) : ''));
+  });
+
+  $('mMarkSched') && $('mMarkSched').addEventListener('click', () => {
+    closeSheets();
+    const sheet = state.space !== 'model' ? activeLayout() : null;
+    const groups = collectMarks(state.entities);
+    if (!groups.length){ toast('Nothing is marked yet'); return; }
+    const cols = attributeKeys(state.entities).slice(0, 3);
+    const bb = membersBBox(state.entities);
+    pushUndo();
+    addEntity(buildMarkSchedule(state.entities, sheet, [bb[2] + 3, bb[1] + 14], { columns: cols.length ? cols : undefined }));
+    afterChange();
+    const total = groups.reduce((n, g) => n + g.qty, 0);
+    toast(groups.length + ' mark' + (groups.length === 1 ? '' : 's') + ', ' + total + ' total');
   });
 
   $('mExportAllPDF') && $('mExportAllPDF').addEventListener('click', () => {

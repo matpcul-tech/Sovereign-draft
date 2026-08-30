@@ -243,6 +243,8 @@ export function shellHTML(){
   <button class="mrow" id="mExportPNG"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Export PNG<small>with title block</small></button>
   <button class="mrow" id="mLayouts"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="1"/><path d="M3 16h18"/></svg>Layouts<small>paper space</small></button>
   <button class="mrow" id="mSchedules"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 4v16"/></svg>Place schedules<small>door · window · room</small></button>
+  <button class="mrow" id="mKeynotes"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="19" cy="15" r="3"/></svg>Keynote legend<small>this sheet</small></button>
+  <button class="mrow" id="mMarkSched"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>Mark schedule<small>marks + qty</small></button>
   <button class="mrow" id="mSchedCSV"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 4v16M4 9h16M4 14h16"/></svg>Door schedule CSV<small>takeoff</small></button>
   <button class="mrow" id="mCleanup"><svg viewBox="0 0 24 24"><path d="M4 20V10h6M14 4v10h6"/></svg>Heal wall joints<small>L-corners + T-junctions</small></button>
   <button class="mrow" id="mRooms"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4z"/><path d="M16 16h4v4h-4z"/></svg>Detect rooms<small>live area from walls</small></button>
