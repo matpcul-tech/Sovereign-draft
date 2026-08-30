@@ -69,9 +69,13 @@ Requirements: HTTPS (for the service worker and installability), no server-side 
 
 ### GitHub Pages
 
-`.github/workflows/deploy.yml` builds and publishes on every push to **`main`**, and can also be run on demand from the Actions tab. Publishing from a different branch is a one-line change to the workflow's `branches:` list.
+`.github/workflows/deploy.yml` builds and publishes on every push to the repository's **default branch**, and can also be run on demand from the Actions tab.
 
-**One-time setup:** turn Pages on under **Settings → Pages → Build and deployment → Source: GitHub Actions**. Until that is done the deploy job fails at `configure-pages` with *"Please verify that the repository has Pages enabled"*; the workflow cannot do it for you, because creating a Pages site needs admin rights that the workflow's `GITHUB_TOKEN` does not carry. Once the setting is on, the next push deploys with no further changes, and the published URL appears on the run's `deploy` job.
+It targets the default branch because GitHub restricts the `github-pages` environment to that branch: a deploy triggered from any other branch is rejected before its first step runs, with the `deploy` job failing in about a second having executed nothing. Pointing the trigger at a fixed branch name that is *not* the default produces a deadlock — the branch that runs the workflow is not allowed to deploy, and the branch that is allowed never runs it. Deploying from the default branch keeps those the same branch and survives a rename.
+
+**One-time setup:** turn Pages on under **Settings → Pages → Build and deployment → Source: GitHub Actions**. Until that is done the deploy job fails at `configure-pages` with *"Please verify that the repository has Pages enabled"*; the workflow cannot do it for you, because creating a Pages site needs admin rights that the workflow's `GITHUB_TOKEN` does not carry. Once the setting is on, the next push to the default branch deploys with no further changes, and the published URL appears on the run's `deploy` job.
+
+To publish from a branch that is not the default (say, keep `main` as trunk while some other branch is default), widen the `github-pages` environment instead: **Settings → Environments → github-pages → Deployment branches**.
 
 ### Serving from a subdirectory
 
