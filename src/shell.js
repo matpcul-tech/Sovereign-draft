@@ -161,7 +161,7 @@ export function shellHTML(){
   <button class="chip on" id="chipCtx" style="margin-top:10px">Sheet context: ON</button>
   <button class="primary" id="btnGenerate">Generate blueprint</button>
   <div id="aistatus"></div>
-  <div class="subtle">Claude returns walls, openings, fixtures, rooms and dims — then we snap to a 6" grid, hatch rooms and dimension. AI only adds; undo drops a pass. Key stays in this browser and is sent only to api.anthropic.com.</div>
+  <div class="subtle">Drafts plans, elevations, sections and parts. Say what you want and Claude picks the drawing type, so a rocket comes back as an outline with callouts, not as a floor plan. AI only adds; undo drops a pass. Key stays in this browser and is sent only to api.anthropic.com.</div>
   <button class="linkish" id="btnAISettings">AI settings…</button>
 </div>
 <div class="sheet" id="sheetSettings">

@@ -21,7 +21,7 @@ function flatten(entities){
     else if (e.type === 'table') out.push(...tableFrags(e));
     else if (e.type === 'ellipse') out.push({ type: 'poly', closed: true, pts: ellipsePoints(e), layer: e.layer, lt: e.lt });
     else if (e.type === 'cloud') out.push({ type: 'poly', closed: true, pts: cloudPoints(e.pts || []), layer: e.layer, lt: e.lt });
-    else if (e.type === 'grid' || e.type === 'xline' || e.type === 'room'){
+    else if (e.type === 'grid' || e.type === 'xline' || e.type === 'room' || e.type === 'profile' || e.type === 'centerline' || e.type === 'callout' || e.type === 'hatchRegion'){
       explodeForIO(e).forEach(f => out.push(f));
     } else if (e.type === 'leader'){
       if (e.pts && e.pts.length > 1) out.push({ type: 'poly', closed: false, pts: e.pts, layer: e.layer });

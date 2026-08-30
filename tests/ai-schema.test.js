@@ -25,7 +25,11 @@ describe('constrained AI schema', () => {
     expect(ents.filter(e => e.kind === 'wall').length).toBeGreaterThan(4);
     expect(ents.some(e => e.type === 'hatch')).toBe(true);
     expect(ents.some(e => e.type === 'dim')).toBe(true);
-    expect(ents.some(e => e.content === 'KITCHEN')).toBe(true);
+    /* The room name now rides on a room entity; the geometry pass emits no
+     * loose text, so the name is never stamped twice. */
+    const kitchen = ents.find(e => e.type === 'room' && e.name === 'KITCHEN');
+    expect(kitchen).toBeTruthy();
+    expect(ents.some(e => e.type === 'text')).toBe(false);
     expect(ents.some(e => e.type === 'insert' && e.def === 'door')).toBe(true);
     expect(ents.some(e => e.type === 'insert' && e.def === 'sym:Sink')).toBe(true);
   });

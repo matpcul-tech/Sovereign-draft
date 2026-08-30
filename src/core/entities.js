@@ -15,6 +15,10 @@
  *   {type:'room',   layer, name, pts, cx,cy, area, auto}
  *   {type:'grid',   layer, x,y, cols,rows, cx,ry, rot, bubble}
  *   {type:'xline',  layer, x1,y1,x2,y2}  infinite construction line
+ *   {type:'profile',   layer, pts, fill}      closed outline, no wall semantics
+ *   {type:'centerline',layer, pts}            construction geometry, non-printing
+ *   {type:'callout',   layer, anchor,pts,content,textH}  leader + boxed label
+ *   {type:'hatchRegion',layer, pts, pattern}  explicit region plus pattern
  * Optional: lt (linetype), lw (mm lineweight), block group `g`, numeric `id`.
  * Walls are groups of lines tagged kind:'wall'. INSERT is a live parametric
  * block (no `g`) expanded at draw/hit/osnap/export; explode yields fragments.
@@ -25,6 +29,50 @@ import { expandInsert, insertGrips } from './dynblock.js';
 import { tableFrags, tableCorners } from './schedule.js';
 import { dimLabel } from './dimStyle.js';
 import { expandGrid } from './grid.js';
+
+/* Composite drafting entities used by non-building drawings. Each reduces to
+ * primitives, so hit testing, bounds and every exporter run on the expansion
+ * instead of needing a bespoke branch per type.
+ */
+export const COMPOSITE_TYPES = ['profile', 'centerline', 'callout', 'hatchRegion'];
+
+export function isComposite(e){ return !!e && COMPOSITE_TYPES.indexOf(e.type) >= 0; }
+
+export function expandComposite(e){
+  if (e.type === 'profile'){
+    const out = [];
+    if (e.fill && e.pts && e.pts.length > 2){
+      out.push({ type: 'hatch', layer: e.layer, pts: e.pts, pattern: e.fill === true ? 'ANSI31' : String(e.fill), scale: 1, angle: 0 });
+    }
+    if (e.pts && e.pts.length > 1){
+      out.push({ type: 'poly', closed: true, pts: e.pts, layer: e.layer, lt: e.lt, lw: e.lw });
+    }
+    return out;
+  }
+  if (e.type === 'centerline'){
+    if (!e.pts || e.pts.length < 2) return [];
+    return [{ type: 'poly', closed: false, pts: e.pts, layer: e.layer || 'DEFPOINTS', lt: e.lt || 'CENTER', lw: e.lw }];
+  }
+  if (e.type === 'hatchRegion'){
+    if (!e.pts || e.pts.length < 3) return [];
+    return [{ type: 'hatch', layer: e.layer, pts: e.pts, pattern: e.pattern || 'ANSI31', scale: e.scale || 1, angle: e.angle || 0 }];
+  }
+  if (e.type === 'callout'){
+    const out = [];
+    const pts = e.pts && e.pts.length > 1 ? e.pts : null;
+    if (pts) out.push({ type: 'poly', closed: false, pts, layer: e.layer, lt: e.lt });
+    const tip = pts ? pts[pts.length - 1] : (e.anchor || [0, 0]);
+    const h = e.textH || 0.8;
+    const w = String(e.content || '').length * h * 0.58;
+    out.push({ type: 'poly', closed: true, layer: e.layer, pts: [
+      [tip[0], tip[1] - h * 0.35], [tip[0] + w + h * 0.4, tip[1] - h * 0.35],
+      [tip[0] + w + h * 0.4, tip[1] + h * 1.05], [tip[0], tip[1] + h * 1.05]
+    ] });
+    out.push({ type: 'text', layer: e.layer, x: tip[0] + h * 0.2, y: tip[1], size: h, content: String(e.content || '') });
+    return out;
+  }
+  return [e];
+}
 
 export function spanXline(e, reach){
   reach = reach == null ? 400 : reach;
@@ -44,6 +92,7 @@ export function spanXline(e, reach){
 
 export function flattenEnt(e){
   if (!e) return [];
+  if (isComposite(e)) return expandComposite(e);
   if (e.type === 'insert') return expandInsert(e);
   if (e.type === 'grid') return expandGrid(e);
   if (e.type === 'xline') return [spanXline(e)];
@@ -52,6 +101,7 @@ export function flattenEnt(e){
 
 export function explodeForIO(e){
   if (!e) return [];
+  if (isComposite(e)) return expandComposite(e);
   if (e.type === 'insert') return expandInsert(e);
   if (e.type === 'table') return tableFrags(e);
   if (e.type === 'ellipse') return [{ type: 'poly', closed: true, pts: ellipsePoints(e), layer: e.layer, lt: e.lt, lw: e.lw }];
@@ -107,6 +157,11 @@ function hitPath(pts, w, tol, closed){
 
 /* Snap candidates: [x, y, kind] where kind 0=end, 1=mid, 2=center. */
 export function entPoints(e){
+  if (isComposite(e)){
+    const out = [];
+    expandComposite(e).forEach(f => { entPoints(f).forEach(p => out.push(p)); });
+    return out;
+  }
   if (e.type === 'insert'){
     const p = [];
     flattenEnt(e).forEach(f => p.push(...entPoints(f)));
@@ -145,6 +200,7 @@ export function entPoints(e){
 
 /* Hit test one entity against world point w with world-space tolerance. */
 export function entHit(e, w, tol){
+  if (isComposite(e)) return expandComposite(e).some(f => entHit(f, w, tol));
   if (e.type === 'insert') return flattenEnt(e).some(f => entHit(f, w, tol));
   if (e.type === 'grid') return flattenEnt(e).some(f => entHit(f, w, tol));
   if (e.type === 'xline'){
@@ -189,6 +245,11 @@ export function entHit(e, w, tol){
 }
 
 export function translateEnt(e, dx, dy){
+  if (isComposite(e)){
+    if (e.pts) e.pts = e.pts.map(p => [p[0] + dx, p[1] + dy]);
+    if (e.anchor) e.anchor = [e.anchor[0] + dx, e.anchor[1] + dy];
+    return;
+  }
   if (e.type === 'line' || e.type === 'dim'){
     e.x1 += dx; e.y1 += dy; e.x2 += dx; e.y2 += dy;
     if (e.x3 != null){ e.x3 += dx; e.y3 += dy; }
@@ -208,6 +269,7 @@ export function translateEnt(e, dx, dy){
 }
 
 export function entBBox(e, bb){
+  if (isComposite(e)){ expandComposite(e).forEach(f => entBBox(f, bb)); return; }
   function add(x, y){ if (x < bb[0]) bb[0] = x; if (y < bb[1]) bb[1] = y; if (x > bb[2]) bb[2] = x; if (y > bb[3]) bb[3] = y; }
   if (e.type === 'insert'){ flattenEnt(e).forEach(f => entBBox(f, bb)); add(e.x, e.y); return; }
   if (e.type === 'grid'){ flattenEnt(e).forEach(f => entBBox(f, bb)); return; }

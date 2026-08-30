@@ -11,16 +11,36 @@ import { alignedDim } from '../core/dimStyle.js';
 import { SYMBOLS } from '../core/symbols.js';
 import { filletLines } from '../core/modify.js';
 import { makeInsert, locateInsert } from '../core/dynblock.js';
+import { rulesFor, closeDimChains, placeLabel, textBox, dimObstacles, polygonArea, centroidOf } from '../core/annotate.js';
 
 export const AI_SCHEMA_SPEC =
 'You are the drafting engine inside a professional 2D CAD application. Convert the request into constrained architectural geometry.\n' +
 'Respond with ONLY minified JSON, no markdown, no code fences, no commentary.\n' +
 'Schema:\n' +
-'{"walls":[{"a":[x1,y1,x2,y2],"th":0.5}],\n' +
+'{"drawingType":"plan"|"elevation"|"section"|"part"|"diagram",\n' +
+' "walls":[{"a":[x1,y1,x2,y2],"th":0.5}],\n' +
 ' "openings":[{"kind":"door"|"window","wall":0,"t":0.5,"w":3,"swing":"L"|"R"}],\n' +
 ' "fixtures":[{"kind":"Toilet"|"Sink"|"Tub"|"Shower"|"Stove"|"Fridge"|"Bed"|"Sofa"|"Stairs"|"Table","x":0,"y":0,"rot":0}],\n' +
 ' "rooms":[{"name":"KITCHEN","pts":[[x,y],...]}],\n' +
-' "dims":[{"a":[x1,y1,x2,y2]}]}\n' +
+' "dims":[{"a":[x1,y1,x2,y2]}],\n' +
+' "profiles":[{"pts":[[x,y],...],"fill":"ANSI31"}],\n' +
+' "centerlines":[{"pts":[[x,y],...]}],\n' +
+' "callouts":[{"anchor":[x,y],"pts":[[x,y],[x,y]],"text":"NOSE CONE"}],\n' +
+' "hatchRegions":[{"pts":[[x,y],...],"pattern":"ANSI31"}]}\n' +
+'drawingType is REQUIRED. Choose it from the request:\n' +
+'  floor plan, site plan, layout, footprint -> plan\n' +
+'  front view, side view, elevation -> elevation\n' +
+'  cutaway, cross section -> section\n' +
+'  a machine, vehicle, assembly, or object with no building semantics -> part\n' +
+'  flow, schematic, wiring -> diagram\n' +
+'When the request is ambiguous, use plan.\n' +
+'walls, openings, rooms and fixtures are BUILDING ONLY. For elevation, part or\n' +
+'diagram emit profiles, centerlines, callouts and hatchRegions instead; any\n' +
+'wall, door or window you send for those types is discarded.\n' +
+'profiles: closed outlines of solid masses. No thickness, no openings, no swing.\n' +
+'centerlines: construction axes. callouts: leader plus label, used instead of\n' +
+'room names. hatchRegions: only where a cut face is genuinely hatched.\n' +
+'Square-foot area tags are emitted for plan only.\n' +
 'Units are decimal feet. Y axis points up. Origin near (0,0). All coordinates >= 0.\n' +
 'walls: centerlines. th is thickness in feet (0.333, 0.5 or 0.667). Close exterior loops.\n' +
 'openings: wall is the 0-based index into walls; t is 0..1 along the centerline; w is opening width in feet.\n' +
@@ -32,6 +52,16 @@ export const AI_SCHEMA_SPEC =
 export const AI_SPEC = AI_SCHEMA_SPEC;
 
 function snap6(x, y){ return snapGrid(x, y, 0.5); }
+
+export const DRAWING_TYPES = ['plan', 'elevation', 'section', 'part', 'diagram'];
+
+/* Resolve the model's drawingType. Missing or unrecognized values fall back to
+ * plan, so existing plan behavior stays the default.
+ */
+export function normalizeDrawingType(v){
+  const s = String(v == null ? '' : v).trim().toLowerCase();
+  return DRAWING_TYPES.indexOf(s) >= 0 ? s : 'plan';
+}
 
 export function serializeForAI(entities){
   const out = [];
@@ -75,7 +105,8 @@ export function extractResponse(text){
   if (Array.isArray(obj.e) || Array.isArray(obj.entities)){
     return { legacy: true, items: obj.e || obj.entities, raw: obj };
   }
-  if (obj.walls || obj.rooms || obj.fixtures || obj.dims || obj.openings){
+  if (obj.walls || obj.rooms || obj.fixtures || obj.dims || obj.openings || obj.drawingType){
+    obj.drawingType = normalizeDrawingType(obj.drawingType);
     return { legacy: false, schema: obj, raw: obj };
   }
   throw new Error('Empty drawing returned');
@@ -126,7 +157,18 @@ export function itemsToEntities(items, ensureLayer){
 /* Realize a constrained schema into entities. Never mutates existing ones. */
 export function schemaToEntities(schema, ensureLayer){
   const fresh = [];
-  const walls = Array.isArray(schema.walls) ? schema.walls : [];
+  /* One resolved value drives every downstream pass. */
+  const drawingType = normalizeDrawingType(schema.drawingType);
+  const rules = rulesFor(drawingType);
+  /* Hard gate, not a prompt request: a model that ignores the schema still
+   * cannot put a wall, door or window on an elevation, part or diagram. */
+  const rawWalls = Array.isArray(schema.walls) ? schema.walls : [];
+  const rawOpenings = Array.isArray(schema.openings) ? schema.openings : [];
+  if (!rules.building && (rawWalls.length || rawOpenings.length)){
+    console.warn('[ai] dropped ' + rawWalls.length + ' wall(s) and ' + rawOpenings.length +
+      ' opening(s): not valid on a ' + drawingType);
+  }
+  const walls = rules.building ? rawWalls : [];
   const wallGroups = [];
   walls.forEach((w, i) => {
     if (!w || !w.a || w.a.length < 4) return;
@@ -165,7 +207,8 @@ export function schemaToEntities(schema, ensureLayer){
     }
   }
 
-  (schema.openings || []).forEach(o => {
+  const openings = rules.building ? rawOpenings : [];
+  openings.forEach(o => {
     if (!o) return;
     const wg = wallGroups[o.wall];
     if (!wg) return;
@@ -178,7 +221,8 @@ export function schemaToEntities(schema, ensureLayer){
       name: kind === 'window' ? 'Window' : 'Door',
       layer: 'DOORS',
       width: w,
-      swing: o.swing === 'R' ? 'R' : 'L',
+      swing: rules.doorSwings ? (o.swing === 'R' ? 'R' : 'L') : null,
+      noSwing: !rules.doorSwings,
       host: wg.g, t, cl, th: wg.th
     });
     locateInsert(ins, cl);
@@ -193,7 +237,7 @@ export function schemaToEntities(schema, ensureLayer){
     wg.members = add;
   });
 
-  (schema.fixtures || []).forEach(fx => {
+  (rules.building ? (schema.fixtures || []) : []).forEach(fx => {
     const name = (SYMBOLS.find(s => s.name.toLowerCase() === String(fx.kind || '').toLowerCase()) || {}).name;
     if (!name) return;
     const [x, y] = snap6(num(fx.x), num(fx.y));
@@ -206,21 +250,96 @@ export function schemaToEntities(schema, ensureLayer){
     }));
   });
 
-  (schema.rooms || []).forEach(r => {
+  /* The geometry pass emits no text. A room entity carries its own single
+   * label, so a name is never stamped twice. */
+  (rules.roomLabels ? (schema.rooms || []) : []).forEach(r => {
     if (!r || !Array.isArray(r.pts) || r.pts.length < 3) return;
     const pts = r.pts.map(p => snap6(num(p[0]), num(p[1])));
-    const h = makeHatch(pts, { layer: ensureLayer('HATCH'), pattern: 'ANSI31' });
-    if (h) fresh.push(h);
+    if (rules.impliedHatch){
+      const h = makeHatch(pts, { layer: ensureLayer('HATCH'), pattern: 'ANSI31' });
+      if (h) fresh.push(h);
+    }
     const c = polyCentroid(pts);
-    fresh.push({ type: 'text', layer: 'TEXT', x: c[0], y: c[1], size: 1.2, content: String(r.name || 'ROOM').toUpperCase() });
+    fresh.push({
+      type: 'room', layer: ensureLayer('ROOMS'),
+      name: String(r.name || 'ROOM').toUpperCase(),
+      pts, cx: c[0], cy: c[1],
+      area: rules.areaTags ? polygonArea(pts) : 0
+    });
   });
 
-  (schema.dims || []).forEach(d => {
-    if (!d || !d.a || d.a.length < 4) return;
-    const a = snap6(num(d.a[0]), num(d.a[1]));
-    const b = snap6(num(d.a[2]), num(d.a[3]));
-    if (dist(a[0], a[1], b[0], b[1]) < 0.5) return;
-    fresh.push(alignedDim(a, b, 2));
+  /* Explicit regions are the only hatch a section or part ever gets. */
+  (schema.hatchRegions || []).forEach(hr => {
+    if (!hr || !Array.isArray(hr.pts) || hr.pts.length < 3) return;
+    fresh.push({
+      type: 'hatchRegion', layer: ensureLayer('HATCH'),
+      pts: hr.pts.map(p => snap6(num(p[0]), num(p[1]))),
+      pattern: String(hr.pattern || 'ANSI31')
+    });
+  });
+
+  (schema.profiles || []).forEach(pr => {
+    if (!pr || !Array.isArray(pr.pts) || pr.pts.length < 3) return;
+    fresh.push({
+      type: 'profile', layer: ensureLayer('PROFILE'),
+      pts: pr.pts.map(p => snap6(num(p[0]), num(p[1]))),
+      fill: pr.fill || null
+    });
+  });
+
+  (schema.centerlines || []).forEach(cn => {
+    if (!cn || !Array.isArray(cn.pts) || cn.pts.length < 2) return;
+    fresh.push({
+      type: 'centerline', layer: ensureLayer('DEFPOINTS'),
+      pts: cn.pts.map(p => snap6(num(p[0]), num(p[1])))
+    });
+  });
+
+  /* Dimensions: the chain is reconciled before anything is drawn, so the
+   * overall always equals the sum of its segments. */
+  if (rules.dims){
+    const segs = [];
+    (schema.dims || []).forEach(d => {
+      if (!d || !d.a || d.a.length < 4) return;
+      const a = snap6(num(d.a[0]), num(d.a[1]));
+      const b = snap6(num(d.a[2]), num(d.a[3]));
+      if (dist(a[0], a[1], b[0], b[1]) < 0.5) return;
+      segs.push({ a, b });
+    });
+    closeDimChains(segs).forEach(sg => fresh.push(alignedDim(sg.a, sg.b, 2)));
+  }
+
+  /* Labels last, so dimensions and each other are already on the sheet to test
+   * against. Centroid first, then outside the extents with a leader, stepping
+   * to the next free side on collision. Text never lands on a dim line. */
+  const labelExt = [1e9, 1e9, -1e9, -1e9];
+  fresh.forEach(e => entBBox(e, labelExt));
+  const taken = labelExt[0] < 1e8 ? dimObstacles(fresh.filter(e => e.type === 'dim')) : [];
+  const ext = labelExt[0] < 1e8 ? labelExt : [0, 0, 1, 1];
+
+  fresh.filter(e => e.type === 'room').forEach(r => {
+    const label = r.name + (r.area ? '  ' + Math.round(r.area) + ' SF' : '');
+    const spot = placeLabel({ content: label, size: 1.0, pts: r.pts, obstacles: taken, extents: ext, anchor: [r.cx, r.cy] });
+    taken.push(spot.box);
+    /* expandRoom draws the label from cx/cy, so steer it rather than adding text. */
+    r.cx = spot.x + 1.6;
+    r.cy = spot.y + 0.3;
+  });
+
+  (rules.callouts ? (schema.callouts || []) : []).forEach(co => {
+    if (!co) return;
+    const content = String(co.text || co.content || '').trim();
+    if (!content) return;
+    const src = Array.isArray(co.anchor) ? co.anchor : (Array.isArray(co.pts) && co.pts.length ? co.pts[0] : null);
+    if (!src) return;
+    const anchor = snap6(num(src[0]), num(src[1]));
+    const spot = placeLabel({ content, size: 0.8, pts: [], obstacles: taken, extents: ext, anchor });
+    taken.push(spot.box);
+    fresh.push({
+      type: 'callout', layer: ensureLayer('NOTES'),
+      anchor, pts: spot.leader || [anchor, [spot.x, spot.y]],
+      content, textH: 0.8
+    });
   });
 
   if (!fresh.length) throw new Error('Nothing drawable in the response');

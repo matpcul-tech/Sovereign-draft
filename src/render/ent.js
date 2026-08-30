@@ -5,7 +5,7 @@ import { arcPoints, dimGeom, ellipsePoints, cloudPoints, angularGeom } from '../
 import { fmtFtIn } from '../core/format.js';
 import { dashFor, lwToPx } from '../core/style.js';
 import { hatchLines } from '../core/hatch.js';
-import { flattenEnt, spanXline } from '../core/entities.js';
+import { flattenEnt, spanXline, isComposite, expandComposite} from '../core/entities.js';
 import { tableFrags } from '../core/schedule.js';
 import { dimLabel } from '../core/dimStyle.js';
 import { expandGrid } from '../core/grid.js';
@@ -31,6 +31,10 @@ function applyStroke(c, e, color, sel, scl){
 }
 
 export function drawEnt(c, e, color, sel, toS, scl, bg){
+  if (isComposite(e)){
+    expandComposite(e).forEach(f => drawEnt(c, f, color, sel, toS, scl, bg));
+    return;
+  }
   applyStroke(c, e, color, sel, scl);
   if (e.type === 'line') strokePathOn(c, toS, [[e.x1, e.y1], [e.x2, e.y2]]);
   else if (e.type === 'poly') strokePathOn(c, toS, e.pts, e.closed);
