@@ -3,7 +3,7 @@ import { cabin24x36 } from '../src/core/demo.js';
 import { defaultLayers } from '../src/core/state.js';
 import { detectSections, generateSheetSet, legendForLayout, sheetTitle } from '../src/core/sheetset.js';
 import { buildLegend, collectCallouts, entsInBBox, isCalloutText } from '../src/core/legend.js';
-import { makeLayout, sheetOf } from '../src/core/layout.js';
+import { makeLayout, sheetOf, TITLE_BLOCK_H, SHEET_MARGIN } from '../src/core/layout.js';
 import { buildAllSheetsPDF } from '../src/io/pdf.js';
 import { membersBBox } from '../src/core/entities.js';
 
@@ -128,13 +128,14 @@ describe('legend from a bbox', () => {
   });
 });
 
-describe('default plan layout is unchanged', () => {
-  it('A-1 still fills the sheet inside its margins', () => {
+describe('default plan layout clears the issued title block', () => {
+  it('A-1 fills the sheet above the stamp', () => {
     const L = makeLayout({ id: 'A1', name: 'A-1 Floor Plan', sheet: 'archd' });
     const sh = sheetOf(L.sheet);
     const vp = L.viewports[0];
-    expect(vp.pw).toBeCloseTo(sh.w - 1);
-    expect(vp.ph).toBeCloseTo(sh.h - 0.5 * 2 - 0.9);
+    expect(vp.pw).toBeCloseTo(sh.w - SHEET_MARGIN * 2);
+    expect(vp.py).toBeCloseTo(SHEET_MARGIN + TITLE_BLOCK_H);
+    expect(vp.ph).toBeCloseTo(sh.h - SHEET_MARGIN * 2 - TITLE_BLOCK_H);
   });
 });
 

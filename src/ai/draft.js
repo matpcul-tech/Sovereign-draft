@@ -15,7 +15,7 @@ import { rulesFor, closeDimChains, placeLabel, textBox, dimObstacles, polygonAre
 import { makeLayout, makeViewport, fitViewport, PLOT_SCALES, SHEETS } from '../core/layout.js';
 import { normalizeSheets, defaultSheetNumber } from '../core/document.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation, makeDetailCallout } from '../core/sheetspace.js';
-import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys } from '../core/keynote.js';
+import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys, paperKeynoteColW, paperScheduleColW } from '../core/keynote.js';
 import { membersBBox } from '../core/entities.js';
 
 export const AI_SCHEMA_SPEC =
@@ -555,16 +555,17 @@ export function schemaToSheets(schema, entities){
       if (kind.indexOf('keynote') >= 0 || kind.indexOf('legend') >= 0){
         const rows = keynoteRows(entities, out);
         if (!rows.length) return;
-        const t = buildKeynoteLegend(entities, out, [0, 0], { colW: [0.55, 2.1] });
+        const colW = paperKeynoteColW();
+        const t = buildKeynoteLegend(entities, out, [0, 0], { colW });
         t.rowH = 0.22;
-        const slot = placeInMargin(out, [2.65, (t.cells.length + 1) * 0.22]);
+        const slot = placeInMargin(out, [colW.reduce((a,b)=>a+b,0), (t.cells.length + 1) * 0.22]);
         if (slot) out = addAnnotation(out, makeTableAnnotation(slot.x, slot.y, t));
       } else if (kind.indexOf('sched') >= 0){
         if (!collectMarks(entities).length) return;
         const cols = attributeKeys(entities).slice(0, 3);
         const t = buildMarkSchedule(entities, out, [0, 0], {
           columns: cols.length ? cols : undefined,
-          colW: [0.55, 0.45].concat((cols.length ? cols : ['type', 'material', 'size']).map(() => 0.85))
+          colW: paperScheduleColW(cols.length ? cols : undefined)
         });
         t.rowH = 0.22;
         const size = [t.colW.reduce((a, b) => a + b, 0), (t.cells.length + 1) * t.rowH];

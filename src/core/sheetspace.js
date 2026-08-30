@@ -9,12 +9,10 @@
  * block have taken their space. Label placement that gives up on fitting
  * inside a view falls back to a slot and runs a leader across.
  */
-import { modelToPaper } from './layout.js';
+import { modelToPaper, sheetOf, SHEET_MARGIN, TITLE_BLOCK_H } from './layout.js';
 import { boxWidth } from './textmetrics.js';
-import { sheetOf } from './layout.js';
 
-export const SHEET_MARGIN = 0.5;      /* inches of clear edge */
-export const TITLE_BLOCK_H = 0.9;     /* inches along the bottom */
+export { SHEET_MARGIN, TITLE_BLOCK_H };
 export const SLOT_GAP = 0.12;
 
 /* Paper rectangle a viewport occupies, as [x0, y0, x1, y1] in inches. */

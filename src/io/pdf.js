@@ -11,6 +11,7 @@ import { sheetLabel } from '../core/document.js';
 import { tableFrags } from '../core/schedule.js';
 import { detailBubbleText } from '../core/sheetspace.js';
 import { sheetOf } from '../core/layout.js';
+import { titleBlockModel, drawingTitleOf, fitPaperText, viewportClearOfTitle } from '../core/titleblock.js';
 
 export const SCALE_LADDER = [
   { ppf: 72,   lbl: '1" = 1\'-0"' },
@@ -30,7 +31,7 @@ export function scaleLabel(ppf){
 }
 
 export function pdfSafe(s){
-  s = String(s).replace(/½/g, ' 1/2').replace(/¼/g, ' 1/4').replace(/¾/g, ' 3/4').replace(/×/g, 'x').replace(/Δ/g, 'd').replace(/·/g, '-').replace(/°/g, ' deg');
+  s = String(s).replace(/½/g, ' 1/2').replace(/¼/g, ' 1/4').replace(/¾/g, ' 3/4').replace(/×/g, 'x').replace(/Δ/g, 'd').replace(/·/g, '-').replace(/°/g, ' deg').replace(/©/g, '(c)');
   let out = '';
   for (let i = 0; i < s.length; i++){
     const ch = s[i], cd = s.charCodeAt(i);
@@ -235,7 +236,8 @@ function layoutPage(entities, opts){
     P('BT /' + (bold ? 'F2' : 'F1') + ' ' + f2(size) + ' Tf ' + f2(gray == null ? 0.08 : gray) + ' g ' + f2(co) + ' ' + f2(si) + ' ' + f2(-si) + ' ' + f2(co) + ' ' + f2(px) + ' ' + f2(py) + ' Tm (' + pdfSafe(str) + ') Tj ET');
   }
   const ppf = layout.ppf || 18;
-  for (const vp0 of layout.viewports){
+  for (const vpRaw of layout.viewports){
+    const vp0 = viewportClearOfTitle(vpRaw);
     const VX = vp0.px * 72, VY = vp0.py * 72, VW = vp0.pw * 72, VH = vp0.ph * 72;
     const vppf = vp0.ppf || ppf;
     const TX = x => VX + VW / 2 + (x - vp0.mx) * vppf;
@@ -256,8 +258,6 @@ function layoutPage(entities, opts){
     P(f2(VX) + ' ' + f2(VY) + ' ' + f2(VW) + ' ' + f2(VH) + ' re W n');
     drawEntities(P, f2, TX, TY, visible, vppf, textAt, seg, path, circlePts);
     P('Q');
-    P('0.2 G 0.8 w');
-    P(f2(VX) + ' ' + f2(VY) + ' ' + f2(VW) + ' ' + f2(VH) + ' re S');
   }
   /* Sheet space annotations. Coordinates are paper inches, so a legend keeps
    * its size and position whatever scale the views are drawn at. */
@@ -266,13 +266,17 @@ function layoutPage(entities, opts){
     const IX = v => v * 72, IY = v => v * 72;
     P('0.6 w 0.08 G');
     if (a.kind === 'table' && a.table){
-      const t = Object.assign({}, a.table, { x: a.x, y: a.y });
-      const ts = (t.rowH || 0.22) / 0.85;
+      const t = Object.assign({}, a.table, { x: a.x, y: a.y, fromTop: true });
+      const paper = (t.rowH || 0.85) < 0.4;
+      const ts = paper ? 1 : ((t.rowH || 0.22) / 0.85);
       tableFrags(t).forEach(f => {
         if (f.type === 'line'){
           P(f2(IX(f.x1)) + ' ' + f2(IY(f.y1)) + ' m ' + f2(IX(f.x2)) + ' ' + f2(IY(f.y2)) + ' l S');
         } else if (f.type === 'text'){
-          textAt(IX(f.x), IY(f.y), Math.max(f.size * ts * 72, 4), f.content || '', 0, false, 0.1);
+          const sz = Math.max(f.size * ts * 72, 5);
+          let str = f.content || '';
+          if (f.maxW) str = fitPaperText(str, sz, f.maxW, false);
+          textAt(IX(f.x), IY(f.y), sz, str, 0, false, 0.1);
         }
       });
       return;
@@ -301,18 +305,46 @@ function layoutPage(entities, opts){
   });
 
   if (layout.titleBlock !== false){
-    const tbY = 36, tbH = 54, tbX = 36, tbW = pageW - 72;
-    P('0.08 G 1.2 w');
-    P(f2(tbX) + ' ' + f2(tbY) + ' ' + f2(tbW) + ' ' + f2(tbH) + ' re S');
-    const name = (opts.projectName || 'SOVEREIGN DRAFT').toUpperCase();
-    textAt(tbX + 10, tbY + 32, 16, name, 0, true, 0.05);
-    textAt(tbX + 10, tbY + 14, 9, (opts.dateStr || new Date().toLocaleDateString()) + '   units: feet', 0, false, 0.35);
-    textAt(tbX + tbW * 0.55, tbY + 14, 10, 'SCALE: ' + scaleLabel(ppf), 0, false, 0.15);
     const total = opts.sheetCount || 1;
-    const label = (layout.name || sheetLabel(layout.sheetNumber, 0, 1)) + (total > 1 ? '  OF ' + total : '');
-    textAt(tbX + tbW - 12, tbY + 32, 11, label, 0, true, 0.15);
+    const vpPpf = (layout.viewports && layout.viewports[0] && layout.viewports[0].ppf) || ppf;
+    const model = titleBlockModel(layout.sheet, {
+      firm: opts.firm,
+      projectName: opts.projectName,
+      drawingTitle: drawingTitleOf(layout),
+      sheetNumber: layout.sheetNumber || '',
+      sheetCount: total,
+      scale: scaleLabel(vpPpf),
+      dateStr: opts.dateStr || new Date().toLocaleDateString(),
+      year: opts.year
+    });
+    paintTitleBlock(P, f2, textAt, model);
   }
   return { stream: C.join('\n'), pageW, pageH, ppf };
+}
+
+
+function paintTitleBlock(P, f2, textAt, model){
+  const IX = v => v * 72, IY = v => v * 72;
+  P('0.08 G 1.5 w');
+  P(f2(IX(model.inner.x)) + ' ' + f2(IY(model.inner.y)) + ' ' + f2(IX(model.inner.w)) + ' ' + f2(IY(model.inner.h)) + ' re S');
+  P('1.15 w');
+  P(f2(IX(model.border.x)) + ' ' + f2(IY(model.border.y)) + ' ' + f2(IX(model.border.w)) + ' ' + f2(IY(model.border.h)) + ' re S');
+  P('1 g');
+  P(f2(IX(model.x)) + ' ' + f2(IY(model.y)) + ' ' + f2(IX(model.w)) + ' ' + f2(IY(model.h)) + ' re f');
+  P('0.08 G 1.1 w');
+  P(f2(IX(model.x)) + ' ' + f2(IY(model.y)) + ' ' + f2(IX(model.w)) + ' ' + f2(IY(model.h)) + ' re S');
+  (model.cells || []).forEach(c => {
+    P(f2(IX(c.x)) + ' ' + f2(IY(c.y)) + ' ' + f2(IX(c.w)) + ' ' + f2(IY(c.h)) + ' re S');
+  });
+  (model.labels || []).forEach(L => {
+    const sz = L.size * 72;
+    const str = fitPaperText(L.text, sz, L.maxW, L.bold);
+    if (!str) return;
+    let px = IX(L.x), py = IY(L.y);
+    if (L.align === 'center') px -= helveticaWidth(str, sz, L.bold) / 2;
+    if (L.align === 'right') px -= helveticaWidth(str, sz, L.bold);
+    textAt(px, py, sz, str, 0, L.bold, L.gray);
+  });
 }
 
 export function buildLayoutPDF(entities, opts){
