@@ -66,6 +66,58 @@ export function sheetLabel(sheetNumber, index, total){
   return 'SHEET ' + num + ' OF ' + total;
 }
 
+/* ---------- sheet and view creation ---------- */
+
+/* Next free sheet number in the A-N series. */
+export function nextSheetNumber(sheets){
+  const used = new Set((sheets || []).map(s => s && s.sheetNumber));
+  for (let i = 0; i < 500; i++){
+    const n = defaultSheetNumber(i);
+    if (!used.has(n)) return n;
+  }
+  return defaultSheetNumber((sheets || []).length);
+}
+
+/* A new sheet, normalized, carrying one view unless views are supplied.
+ * makeSheetLayout is injected so this module stays free of layout.js. */
+export function addSheet(sheets, makeSheetLayout, opts){
+  const list = Array.isArray(sheets) ? sheets.slice() : [];
+  const o = opts || {};
+  const number = o.sheetNumber || nextSheetNumber(list);
+  const layout = makeSheetLayout(Object.assign({}, o, {
+    id: o.id || ('S' + number.replace(/[^A-Za-z0-9]/g, '')),
+    name: o.name || number
+  }));
+  layout.sheetNumber = number;
+  list.push(normalizeSheet(layout, list.length));
+  return list;
+}
+
+export function removeSheet(sheets, id){
+  const list = (sheets || []).filter(s => s && s.id !== id);
+  /* Never leave a document with no sheet. */
+  return list.length ? list.map((s, i) => normalizeSheet(s, i)) : (sheets || []).slice();
+}
+
+/* Add a view to a sheet. The viewport geometry is supplied by the caller,
+ * which is what already knows the sheet size and margins. */
+export function addViewToSheet(sheet, viewport, opts){
+  if (!sheet) return sheet;
+  const o = opts || {};
+  const views = Array.isArray(sheet.viewports) ? sheet.viewports.slice() : [];
+  const v = Object.assign({}, viewport, {
+    id: views.length + 1,
+    name: o.name || null,
+    drawingType: o.drawingType || 'plan'
+  });
+  views.push(normalizeView(v, views.length, sheet));
+  return Object.assign({}, sheet, { viewports: views });
+}
+
+export function findSheet(sheets, id){
+  return (sheets || []).find(s => s && s.id === id) || null;
+}
+
 /* ---------- entity marks and attributes ----------
  * Both are optional and are never written onto an entity that does not have
  * them. Phase D collects these into keynote legends and schedules; nothing

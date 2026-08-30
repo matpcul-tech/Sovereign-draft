@@ -39,15 +39,35 @@ export function pdfSafe(s){
   return out;
 }
 
-function wrapPDF(stream, pageW, pageH){
+/* One page per entry: [{ stream, pageW, pageH }].
+ * Object numbering is 1 catalog, 2 pages, then page and contents in pairs,
+ * then the two fonts. With a single page that is objects 3,4,5,6, which is
+ * exactly the layout the single page writer used, so the bytes are unchanged.
+ */
+export function wrapPDFPages(pages){
+  const n = pages.length;
+  const fontR = 3 + n * 2, fontB = 4 + n * 2;
+  const kids = pages.map((_, i) => (3 + i * 2) + ' 0 R').join(' ');
   const objs = [
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj',
-    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj',
-    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pageW + ' ' + pageH + '] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>\nendobj',
-    '4 0 obj\n<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream\nendobj',
-    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj',
-    '6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj'
+    '2 0 obj\n<< /Type /Pages /Kids [' + kids + '] /Count ' + n + ' >>\nendobj'
   ];
+  pages.forEach((pg, i) => {
+    const pageNum = 3 + i * 2, contentNum = 4 + i * 2;
+    objs.push(pageNum + ' 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pg.pageW + ' ' + pg.pageH +
+      '] /Contents ' + contentNum + ' 0 R /Resources << /Font << /F1 ' + fontR + ' 0 R /F2 ' + fontB + ' 0 R >> >> >>\nendobj');
+    objs.push(contentNum + ' 0 obj\n<< /Length ' + pg.stream.length + ' >>\nstream\n' + pg.stream + '\nendstream\nendobj');
+  });
+  objs.push(fontR + ' 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj');
+  objs.push(fontB + ' 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj');
+  return assemblePDF(objs);
+}
+
+function wrapPDF(stream, pageW, pageH){
+  return wrapPDFPages([{ stream, pageW, pageH }]);
+}
+
+function assemblePDF(objs){
   let pdf = '%PDF-1.4\n';
   const offsets = [0];
   for (const o of objs){
@@ -197,7 +217,9 @@ export function buildPDF(entities, opts){
   return { pdf: wrapPDF(C.join('\n'), 792, 612), ppf, clipped };
 }
 
-export function buildLayoutPDF(entities, opts){
+/* Produces one page's content stream rather than a finished document, so a
+ * sheet set can be assembled from many of them. */
+function layoutPage(entities, opts){
   const layout = opts.layout;
   const sh = sheetOf(layout.sheet);
   const pageW = Math.round(sh.w * 72), pageH = Math.round(sh.h * 72);
@@ -247,5 +269,24 @@ export function buildLayoutPDF(entities, opts){
     const label = (layout.name || sheetLabel(layout.sheetNumber, 0, 1)) + (total > 1 ? '  OF ' + total : '');
     textAt(tbX + tbW - 12, tbY + 32, 11, label, 0, true, 0.15);
   }
-  return { pdf: wrapPDF(C.join('\n'), pageW, pageH), ppf, clipped: false };
+  return { stream: C.join('\n'), pageW, pageH, ppf };
+}
+
+export function buildLayoutPDF(entities, opts){
+  const pg = layoutPage(entities, opts);
+  return { pdf: wrapPDFPages([pg]), ppf: pg.ppf, clipped: false };
+}
+
+/* Every sheet in the document, one page each, in one file. Sheet numbering and
+ * the sheet count in each title block come from the position in this list. */
+export function buildAllSheetsPDF(entities, opts){
+  const o = opts || {};
+  const sheets = Array.isArray(o.sheets) ? o.sheets.filter(Boolean) : [];
+  if (!sheets.length) return buildPDF(entities, o);
+  const pages = sheets.map((layout, i) => layoutPage(entities, Object.assign({}, o, {
+    layout,
+    sheetIndex: i,
+    sheetCount: sheets.length
+  })));
+  return { pdf: wrapPDFPages(pages), pages: pages.length, ppf: pages[0].ppf, clipped: false };
 }

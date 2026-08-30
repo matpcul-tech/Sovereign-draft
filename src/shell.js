@@ -203,6 +203,8 @@ export function shellHTML(){
 <div class="sheet" id="sheetLayouts">
   <h3><i>Layouts</i></h3>
   <div id="layoutlist"></div>
+  <button class="addlayer" id="btnAddSheet">+ New sheet</button>
+  <button class="addlayer" id="btnAddView">+ Add view to this sheet</button>
   <h4>Sheet size</h4>
   <div id="sheetSizes" class="chiprow">
     <button class="chip" data-sheet="letter">Letter</button>
@@ -236,6 +238,7 @@ export function shellHTML(){
   <button class="mrow" id="mSaveJSON"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg>Save project<small>.json</small></button>
   <button class="mrow" id="mExportDXF"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export DXF<small>R12 / R2000 · feet</small></button>
   <button class="mrow" id="mExportPDF"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>Export PDF<small>to print scale</small></button>
+  <button class="mrow" id="mExportAllPDF"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v12"/><path d="M16 7H9a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V11z"/><path d="M16 7v4h4"/></svg>Export all sheets<small>one PDF</small></button>
   <button class="mrow" id="mExportSVG"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 16c1.5-4 6.5-4 8 0"/></svg>Export SVG<small>for Illustrator / web</small></button>
   <button class="mrow" id="mExportPNG"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Export PNG<small>with title block</small></button>
   <button class="mrow" id="mLayouts"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="1"/><path d="M3 16h18"/></svg>Layouts<small>paper space</small></button>

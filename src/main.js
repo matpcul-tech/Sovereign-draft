@@ -13,15 +13,16 @@ import { renderLayers } from './ui/layersPanel.js';
 import { toast } from './ui/toast.js';
 import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90, placeAllSchedules, exportScheduleCSV, applyCleanup, applyOverkill, applyRooms, applyTakeoff } from './actions.js';
 import { buildDXF, sniffDrawing, openDXF } from './io/dxf.js';
-import { buildPDF, scaleLabel } from './io/pdf.js';
+import { buildPDF, buildAllSheetsPDF, scaleLabel } from './io/pdf.js';
 import { renderPNG } from './io/png.js';
 import { serializeProject, validateProject, applyProject, autosave, loadAutosave } from './io/project.js';
 import { buildSVG } from './io/svg.js';
 import { generateDraft, realizeResponse, serializeForAI } from './ai/draft.js';
 import { loadAISettings, saveAISettings } from './ai/settings.js';
 import { shellHTML } from './shell.js';
-import { makeLayout, fitViewport, SHEETS } from './core/layout.js';
+import { makeLayout, makeViewport, fitViewport, SHEETS } from './core/layout.js';
 import { membersBBox } from './core/entities.js';
+import { addSheet, addViewToSheet, normalizeSheets, findSheet } from './core/document.js';
 import { cabin24x36 } from './core/demo.js';
 
 const $ = id => document.getElementById(id);
@@ -479,6 +480,57 @@ function wireUi(){
   $('hintSample') && $('hintSample').addEventListener('click', () => $('mSample') && $('mSample').click());
 
   $('mLayouts') && $('mLayouts').addEventListener('click', () => { renderLayouts(); openSheet('sheetLayouts'); });
+
+  $('btnAddSheet') && $('btnAddSheet').addEventListener('click', () => {
+    pushUndo();
+    const prev = activeLayout();
+    state.layouts = addSheet(state.layouts, makeLayout, {
+      sheet: prev ? prev.sheet : 'archd',
+      ppf: prev ? prev.ppf : 18
+    });
+    const added = state.layouts[state.layouts.length - 1];
+    state.currentLayout = added.id;
+    state.space = added.id;
+    const bb = membersBBox(state.entities.length ? state.entities : [{ type: 'line', x1: 0, y1: 0, x2: 1, y2: 1 }]);
+    added.viewports.forEach(v => fitViewport(v, bb));
+    renderLayouts(); renderSpaceTabs(); afterChange();
+    toast('Sheet ' + added.sheetNumber + ' added');
+  });
+
+  $('btnAddView') && $('btnAddView').addEventListener('click', () => {
+    const L = activeLayout();
+    if (!L){ toast('No sheet selected'); return; }
+    pushUndo();
+    const vp = makeViewport(L.sheet, L.ppf);
+    /* Stack the new view under the existing ones so it does not cover them. */
+    const n = L.viewports.length;
+    vp.ph = Math.max(1.5, vp.ph / (n + 1));
+    L.viewports.forEach((v, i) => { v.ph = vp.ph; v.py = makeViewport(L.sheet, L.ppf).py + (n - i) * vp.ph; });
+    const updated = addViewToSheet(L, vp, { drawingType: 'plan' });
+    const idx = state.layouts.findIndex(x => x.id === L.id);
+    state.layouts[idx] = updated;
+    const bb = membersBBox(state.entities.length ? state.entities : [{ type: 'line', x1: 0, y1: 0, x2: 1, y2: 1 }]);
+    state.layouts[idx].viewports.forEach(v => fitViewport(v, bb));
+    renderLayouts(); renderSpaceTabs(); afterChange();
+    toast('View ' + state.layouts[idx].viewports.length + ' added to ' + (updated.sheetNumber || updated.name));
+  });
+
+  $('mExportAllPDF') && $('mExportAllPDF').addEventListener('click', () => {
+    closeSheets();
+    if (!state.entities.length){ toast('Nothing to export yet'); return; }
+    const bb = membersBBox(state.entities);
+    state.layouts.forEach(L => L.viewports.forEach(v => { if (v.mx === 0 && v.my === 0) fitViewport(v, bb); }));
+    const { pdf, pages } = buildAllSheetsPDF(state.entities, {
+      sheets: state.layouts,
+      layerVisible: name => {
+        const L = layerByName(name);
+        return !L || (L.visible !== false && L.plot !== false);
+      },
+      projectName: state.projectName
+    });
+    download(fileSlug() + '-sheets.pdf', pdf, 'application/pdf');
+    toast(pages + ' sheet' + (pages === 1 ? '' : 's') + ' exported');
+  });
   $('mSchedules') && $('mSchedules').addEventListener('click', () => {
     closeSheets();
     placeAllSchedules();
@@ -523,17 +575,7 @@ function wireUi(){
   });
   $('mHistory') && $('mHistory').addEventListener('click', () => { renderHistory(); openSheet('sheetHistory'); });
 
-  document.querySelectorAll('#spacetabs .stab').forEach(b => {
-    b.addEventListener('click', () => {
-      if (b.dataset.space === 'model') state.space = 'model';
-      else {
-        state.space = state.currentLayout;
-        const L = activeLayout();
-        if (L && L.viewports[0]) fitViewport(L.viewports[0], membersBBox(state.entities.length ? state.entities : [{ type: 'line', x1: 0, y1: 0, x2: 1, y2: 1 }]));
-      }
-      syncCtx(); draw();
-    });
-  });
+  renderSpaceTabs();
 
   document.querySelectorAll('#sheetSizes .chip').forEach(b => {
     b.addEventListener('click', () => {
@@ -584,6 +626,35 @@ function requireLayout(){
   } };
 }
 
+/* Sheet navigator: Model plus one tab per sheet, rebuilt whenever the sheet
+ * set changes so adding a sheet is immediately reachable. */
+function renderSpaceTabs(){
+  const box = $('spacetabs'); if (!box) return;
+  box.innerHTML = '';
+  const mk = (label, space, on) => {
+    const b = document.createElement('button');
+    b.className = 'stab' + (on ? ' on' : '');
+    b.textContent = label;
+    b.dataset.space = space;
+    b.addEventListener('click', () => goToSpace(space));
+    box.appendChild(b);
+  };
+  mk('Model', 'model', state.space === 'model');
+  state.layouts.forEach(L => mk(L.sheetNumber || L.name, L.id, state.space === L.id));
+}
+
+function goToSpace(space){
+  if (space === 'model'){ state.space = 'model'; }
+  else {
+    state.currentLayout = space;
+    state.space = space;
+    const L = activeLayout();
+    const bb = membersBBox(state.entities.length ? state.entities : [{ type: 'line', x1: 0, y1: 0, x2: 1, y2: 1 }]);
+    if (L) L.viewports.forEach(v => { if (v.mx === 0 && v.my === 0) fitViewport(v, bb); });
+  }
+  renderSpaceTabs(); syncCtx(); draw();
+}
+
 function renderLayouts(){
   const box = $('layoutlist'); if (!box) return;
   box.innerHTML = '';
@@ -595,7 +666,7 @@ function renderLayouts(){
     r.addEventListener('click', () => {
       state.currentLayout = L.id;
       state.space = L.id;
-      renderLayouts(); syncCtx(); draw();
+      renderLayouts(); renderSpaceTabs(); syncCtx(); draw();
     });
     box.appendChild(r);
   });
