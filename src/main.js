@@ -17,7 +17,7 @@ import { buildPDF, buildAllSheetsPDF, scaleLabel } from './io/pdf.js';
 import { renderPNG } from './io/png.js';
 import { serializeProject, validateProject, applyProject, autosave, loadAutosave } from './io/project.js';
 import { buildSVG } from './io/svg.js';
-import { generateDraft, realizeResponse, serializeForAI } from './ai/draft.js';
+import { generateDraft, realizeResponse, realizeDocument, serializeForAI } from './ai/draft.js';
 import { loadAISettings, saveAISettings } from './ai/settings.js';
 import { shellHTML } from './shell.js';
 import { makeLayout, makeViewport, fitViewport, SHEETS } from './core/layout.js';
@@ -250,13 +250,25 @@ function wireUi(){
         apiKey: settings.apiKey,
         model: settings.model
       });
-      const fresh = realizeResponse(text, ensureLayer);
+      const doc = realizeDocument(text, ensureLayer);
+      const fresh = doc.entities;
       pushUndo();
       fresh.forEach(e => addEntity(e));
+      /* A returned sheet set replaces the current one. Geometry is not
+       * duplicated: each sheet is a window onto what was just drawn. */
+      if (doc.sheets && doc.sheets.length){
+        state.layouts = doc.sheets;
+        state.currentLayout = doc.sheets[0].id;
+        state.space = 'model';
+        renderSpaceTabs();
+      }
       afterChange();
-      st.textContent = 'Added ' + fresh.length + ' entities.';
+      const sheetNote = doc.sheets && doc.sheets.length
+        ? ' across ' + doc.sheets.length + ' sheet' + (doc.sheets.length === 1 ? '' : 's')
+        : '';
+      st.textContent = 'Added ' + fresh.length + ' entities' + sheetNote + '.';
       closeSheets(); zoomFit(); draw();
-      toast('Drafted ' + fresh.length + ' entities. Undo removes them.');
+      toast('Drafted ' + fresh.length + ' entities' + sheetNote + '. Undo removes them.');
     } catch (err){
       const msg = err && err.status === 401 ? 'API key rejected — check it in AI settings'
         : err && err.status === 429 ? 'Rate limited — wait a moment and retry'

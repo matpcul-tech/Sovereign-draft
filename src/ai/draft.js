@@ -12,6 +12,11 @@ import { SYMBOLS } from '../core/symbols.js';
 import { filletLines } from '../core/modify.js';
 import { makeInsert, locateInsert } from '../core/dynblock.js';
 import { rulesFor, closeDimChains, placeLabel, textBox, dimObstacles, polygonArea, centroidOf, assertNoImpliedFill } from '../core/annotate.js';
+import { makeLayout, makeViewport, fitViewport, PLOT_SCALES, SHEETS } from '../core/layout.js';
+import { normalizeSheets, defaultSheetNumber } from '../core/document.js';
+import { placeInMargin, makeTableAnnotation, addAnnotation } from '../core/sheetspace.js';
+import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys } from '../core/keynote.js';
+import { membersBBox } from '../core/entities.js';
 
 export const AI_SCHEMA_SPEC =
 'You are the drafting engine inside a professional 2D CAD application. Convert the request into constrained architectural geometry.\n' +
@@ -51,7 +56,19 @@ export const AI_SCHEMA_SPEC =
 'fixtures.kind must be one of the names above. rot is degrees CCW.\n' +
 'rooms: closed polygon of interior corners (not wall centerlines). One hatch + label per room.\n' +
 'dims: overall exterior dimensions and major room sizes. 4 to 10 of them.\n' +
-'Stay under 40 walls. Do not emit raw leftover lines. Output must be valid JSON.';
+'Stay under 40 walls. Do not emit raw leftover lines. Output must be valid JSON.\n' +
+'\n' +
+'You may also return a sheet set. Geometry is drawn once at true size; a sheet\n' +
+'is a window onto it at a scale, so sheets are cheap and nothing is redrawn:\n' +
+' "sheets":[{"number":"A-1","name":"OVERALL ELEVATION","size":"archd",\n' +
+'   "views":[{"name":"SOUTH ELEVATION","scale":"1/16","drawingType":"elevation",\n' +
+'             "extents":[x0,y0,x1,y1]}],\n' +
+'   "annotations":["keynoteLegend"]}]\n' +
+'size is letter, tabloid or archd. scale is an architectural fraction such as\n' +
+'1/16, 1/8, 1/4, 1/2 or 1. extents is the model rectangle that view shows.\n' +
+'annotations may list keynoteLegend and schedule; both are derived from the\n' +
+'marks you set, so mark the parts you want listed. Omit sheets entirely for a\n' +
+'single drawing.';
 
 export const AI_SPEC = AI_SCHEMA_SPEC;
 
@@ -439,4 +456,136 @@ export async function generateDraft({ prompt, contextText, apiKey, model }){
     extractResponse(text);
     return text;
   }
+}
+
+
+/* ---------- sheet set ---------- */
+
+/* "1/16", "1/4\" = 1'-0\"" or 18 all resolve to points per model foot. */
+export function parseScale(v){
+  if (typeof v === 'number' && isFinite(v) && v > 0){
+    return nearestPlotScale(v);
+  }
+  const s = String(v == null ? '' : v).trim();
+  const frac = s.match(/(\d+)\s*\/\s*(\d+)/);
+  if (frac){
+    const inches = Number(frac[1]) / Number(frac[2]);
+    if (inches > 0) return nearestPlotScale(inches * 72);
+  }
+  const whole = s.match(/^(\d+(?:\.\d+)?)/);
+  if (whole){
+    const n = Number(whole[1]);
+    /* A bare small number is inches per foot; a large one is already ppf. */
+    return nearestPlotScale(n <= 4 ? n * 72 : n);
+  }
+  return 18;
+}
+
+function nearestPlotScale(ppf){
+  let best = PLOT_SCALES[0].ppf, bestD = Infinity;
+  PLOT_SCALES.forEach(s => {
+    const d = Math.abs(s.ppf - ppf);
+    if (d < bestD){ bestD = d; best = s.ppf; }
+  });
+  return best;
+}
+
+function sheetSizeKey(v){
+  const s = String(v == null ? '' : v).toLowerCase().replace(/[^a-z]/g, '');
+  if (s.indexOf('tabloid') >= 0 || s === 'b') return 'tabloid';
+  if (s.indexOf('letter') >= 0 || s === 'a') return 'letter';
+  if (SHEETS[s]) return s;
+  return 'archd';
+}
+
+/* Turn the model's sheet proposals into real sheets, with views windowed onto
+ * geometry that already exists. Nothing is redrawn. */
+export function schemaToSheets(schema, entities){
+  const proposals = Array.isArray(schema && schema.sheets) ? schema.sheets : [];
+  if (!proposals.length) return [];
+  const all = membersBBox(entities.length ? entities : [{ type: 'line', x1: 0, y1: 0, x2: 1, y2: 1 }]);
+
+  const built = proposals.slice(0, 12).map((sp, i) => {
+    const size = sheetSizeKey(sp && sp.size);
+    const number = (sp && sp.number) ? String(sp.number).toUpperCase().slice(0, 8) : defaultSheetNumber(i);
+    const views = Array.isArray(sp && sp.views) && sp.views.length ? sp.views : [{}];
+    const layout = makeLayout({
+      id: 'AI' + number.replace(/[^A-Za-z0-9]/g, ''),
+      name: (sp && sp.name) ? String(sp.name).toUpperCase().slice(0, 40) : number,
+      sheet: size,
+      ppf: parseScale(views[0] && views[0].scale)
+    });
+    layout.sheetNumber = number;
+    layout.viewports = views.slice(0, 4).map((v, vi) => {
+      const vp = makeViewport(size, parseScale(v && v.scale));
+      /* Stack views down the sheet so they do not sit on top of each other. */
+      if (views.length > 1){
+        const base = makeViewport(size, vp.ppf);
+        vp.ph = base.ph / views.length;
+        vp.py = base.py + (views.length - 1 - vi) * vp.ph;
+      }
+      const ext = Array.isArray(v && v.extents) && v.extents.length >= 4
+        ? [num(v.extents[0]), num(v.extents[1]), num(v.extents[2]), num(v.extents[3])]
+        : all;
+      const win = [Math.min(ext[0], ext[2]), Math.min(ext[1], ext[3]), Math.max(ext[0], ext[2]), Math.max(ext[1], ext[3])];
+      if (v && v.scale){
+        /* Honor the scale the model asked for and centre on the extents. */
+        vp.mx = (win[0] + win[2]) / 2;
+        vp.my = (win[1] + win[3]) / 2;
+      } else {
+        fitViewport(vp, win);
+      }
+      vp.name = (v && v.name) ? String(v.name).toUpperCase().slice(0, 40) : null;
+      vp.drawingType = normalizeDrawingType(v && v.drawingType ? v.drawingType : schema.drawingType);
+      return vp;
+    });
+    return layout;
+  });
+
+  const sheets = normalizeSheets(built);
+
+  /* Derived annotations, scoped per sheet. Both read the marks already set. */
+  return sheets.map((sheet, i) => {
+    const wanted = (proposals[i] && proposals[i].annotations) || [];
+    let out = sheet;
+    (Array.isArray(wanted) ? wanted : [wanted]).forEach(w => {
+      const kind = String(w || '').toLowerCase();
+      if (kind.indexOf('keynote') >= 0 || kind.indexOf('legend') >= 0){
+        const rows = keynoteRows(entities, out);
+        if (!rows.length) return;
+        const t = buildKeynoteLegend(entities, out, [0, 0], { colW: [0.55, 2.1] });
+        t.rowH = 0.22;
+        const slot = placeInMargin(out, [2.65, (t.cells.length + 1) * 0.22]);
+        if (slot) out = addAnnotation(out, makeTableAnnotation(slot.x, slot.y, t));
+      } else if (kind.indexOf('sched') >= 0){
+        if (!collectMarks(entities).length) return;
+        const cols = attributeKeys(entities).slice(0, 3);
+        const t = buildMarkSchedule(entities, out, [0, 0], {
+          columns: cols.length ? cols : undefined,
+          colW: [0.55, 0.45].concat((cols.length ? cols : ['type', 'material', 'size']).map(() => 0.85))
+        });
+        t.rowH = 0.22;
+        const size = [t.colW.reduce((a, b) => a + b, 0), (t.cells.length + 1) * t.rowH];
+        const slot = placeInMargin(out, size);
+        if (slot) out = addAnnotation(out, makeTableAnnotation(slot.x, slot.y, t));
+      }
+    });
+    return out;
+  });
+}
+
+/* The document the model returned: geometry plus an optional sheet set.
+ * realizeResponse stays entity only so existing callers are untouched. */
+export function realizeDocument(text, ensureLayer){
+  const extracted = extractResponse(text);
+  if (extracted.legacy){
+    return { entities: itemsToEntities(extracted.items, ensureLayer), sheets: [], drawingType: 'plan' };
+  }
+  const schema = extracted.schema;
+  const entities = schemaToEntities(schema, ensureLayer);
+  return {
+    entities,
+    sheets: schemaToSheets(schema, entities),
+    drawingType: normalizeDrawingType(schema.drawingType)
+  };
 }

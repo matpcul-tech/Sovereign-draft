@@ -2,6 +2,8 @@
  * paper-space layouts.
  */
 import { tableFrags } from '../core/schedule.js';
+import { scaleLabel } from '../io/pdf.js';
+import { sheetLabel } from '../core/document.js';
 import { state, layerByName, selMembers, activeLayout } from '../core/state.js';
 import { vp, W2S, S2W } from '../core/viewport.js';
 import { membersBBox, gripPts } from '../core/entities.js';
@@ -196,10 +198,12 @@ function drawPaper(){
     ctx.fillText((state.projectName || 'SOVEREIGN DRAFT').toUpperCase(), t0[0] + 10, midY - 6);
     ctx.font = Math.max(9, scl * 0.16) + 'px Outfit, system-ui';
     ctx.fillStyle = '#43536f';
-    const scaleLbl = (L.ppf === 18 ? '1/4" = 1\'-0"' : (L.ppf === 9 ? '1/8" = 1\'-0"' : L.ppf + ' pt/ft'));
-    ctx.fillText(L.name + '   ·   SCALE ' + scaleLbl, t0[0] + 10, midY + 10);
+    /* The full scale ladder, not three hardcoded cases, so 1/16 and 1/2 read
+     * as architectural scales rather than as points per foot. */
+    ctx.fillText(L.name + '   ·   SCALE ' + scaleLabel(L.viewports[0] ? (L.viewports[0].ppf || L.ppf) : L.ppf), t0[0] + 10, midY + 10);
     ctx.textAlign = 'right';
-    ctx.fillText('SHEET ' + (L.name.split(' ')[0] || 'A-1'), t1[0] - 10, midY);
+    /* The sheet number, not the first word of the sheet name. */
+    ctx.fillText(sheetLabel(L.sheetNumber, 0, (state.layouts || []).length), t1[0] - 10, midY);
   }
   void ox; void oy;
 }
