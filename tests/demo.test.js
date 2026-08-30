@@ -18,13 +18,14 @@ describe('24×36 cabin sample', () => {
     expect(cl.lt).toBe('CENTER');
   });
 
-  it('exports a LibreCAD-friendly R12 DXF with LTYPE and layers', () => {
+  it('exports a standard R12 DXF with LTYPE, layers and $INSUNITS feet', () => {
     const dxf = buildDXF(ents, defaultLayers(), { ver: 'R12' });
     expect(dxf).toContain('AC1009');
     expect(dxf).toContain('LTYPE');
     expect(dxf).toContain('CENTER');
     expect(dxf).toContain('WALLS');
     expect(dxf).toContain('DOORS');
+    expect(dxf).toContain('$INSUNITS');
   });
 });
 

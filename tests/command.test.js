@@ -58,6 +58,8 @@ describe('lookupCommand', () => {
     expect(lookupCommand('XL').tool).toBe('xline');
     expect(lookupCommand('GRID').tool).toBe('grid');
     expect(lookupCommand('ROOMS').action).toBe('rooms');
+    expect(lookupCommand('OPEN').action).toBe('open');
+    expect(lookupCommand('DXFIN').action).toBe('dxfin');
   });
 });
 

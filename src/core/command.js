@@ -52,6 +52,8 @@ export const COMMANDS = {
   TAKEOFF: { aliases: ['TAKEOFF', 'TO', 'QTO'],         tool: null,     action: 'takeoff' },
   LAYISO:  { aliases: ['LAYISO', 'ISO'],                tool: null,     action: 'layiso' },
   LAYUNISO:{ aliases: ['LAYUNISO', 'UNISO'],            tool: null,     action: 'layuniso' },
+  OPEN:    { aliases: ['OPEN', 'OP'],                   tool: null,     action: 'open' },
+  DXFIN:   { aliases: ['DXFIN', 'INSERTDXF'],           tool: null,     action: 'dxfin' },
   MEASURE: { aliases: ['MEASURE', 'DIST', 'M'],         tool: 'measure', prompt: 'Specify first point' },
   ERASE:   { aliases: ['ERASE', 'ER', 'Q'],             tool: 'erase',   prompt: 'Select objects to erase' },
   SYMBOL:  { aliases: ['SYMBOL', 'BLOCK', 'S', 'INSERT'], tool: 'symbol', prompt: 'Specify insertion point' },

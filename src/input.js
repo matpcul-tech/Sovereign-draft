@@ -337,6 +337,11 @@ function onKeyDown(ev){
   const k = ev.key.toLowerCase();
   if ((ev.ctrlKey || ev.metaKey) && k === 'z' && !ev.shiftKey){ ev.preventDefault(); doUndo(); }
   else if ((ev.ctrlKey || ev.metaKey) && (k === 'y' || (k === 'z' && ev.shiftKey))){ ev.preventDefault(); doRedo(); }
+  else if ((ev.ctrlKey || ev.metaKey) && k === 'o'){
+    ev.preventDefault();
+    const el = document.getElementById('fileOpen');
+    if (el) el.click();
+  }
   else if ((ev.key === 'Delete' || ev.key === 'Backspace') && state.selIds.length){ deleteSelection(); }
   else if (ev.key === 'Escape'){
     if (anySheetOpen()){ closeSheets(); return; }
@@ -418,6 +423,16 @@ export function handleCommand(text){
   if (res.action === 'takeoff'){ applyTakeoff(); return; }
   if (res.action === 'layiso'){ layerIsolate(); return; }
   if (res.action === 'layuniso'){ layerUnisolate(); return; }
+  if (res.action === 'open'){
+    const el = document.getElementById('fileOpen');
+    if (el) el.click();
+    return;
+  }
+  if (res.action === 'dxfin'){
+    const el = document.getElementById('fileDXF');
+    if (el) el.click();
+    return;
+  }
   if (res.action === 'svg'){
     try { document.dispatchEvent(new Event('sd-export-svg')); } catch (e){ /* node */ }
     return;

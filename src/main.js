@@ -1,6 +1,6 @@
 /* Application entry: injects chrome, wires state / rendering / input. */
 import './cad.css';
-import { state, onChange, pushUndo, doUndo, doRedo, afterChange, selMembers, layerByName, ensureLayer, addLayer, entById, addEntity, OFFSETS, activeLayout } from './core/state.js';
+import { state, onChange, pushUndo, doUndo, doRedo, afterChange, selMembers, layerByName, ensureLayer, addLayer, entById, addEntity, OFFSETS, activeLayout, defaultLayers } from './core/state.js';
 import { fmtFtIn } from './core/format.js';
 import { homeView, zoomFit } from './core/viewport.js';
 import { ix } from './interaction.js';
@@ -12,7 +12,7 @@ import { openSheet, closeSheets } from './ui/sheets.js';
 import { renderLayers } from './ui/layersPanel.js';
 import { toast } from './ui/toast.js';
 import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90, placeAllSchedules, exportScheduleCSV, applyCleanup, applyOverkill, applyRooms, applyTakeoff } from './actions.js';
-import { buildDXF, parseDXF } from './io/dxf.js';
+import { buildDXF, sniffDrawing, openDXF } from './io/dxf.js';
 import { buildPDF, scaleLabel } from './io/pdf.js';
 import { renderPNG } from './io/png.js';
 import { serializeProject, validateProject, applyProject, autosave, loadAutosave } from './io/project.js';
@@ -40,7 +40,11 @@ export function boot(root){
   let autosaveTimer = null;
   onChange(() => {
     const hint = $('hint');
-    if (hint) hint.style.opacity = state.entities.length ? 0 : 1;
+    if (hint){
+      const empty = !state.entities.length;
+      hint.style.opacity = empty ? 1 : 0;
+      hint.classList.toggle('empty', empty);
+    }
     syncCtx();
     draw();
     clearTimeout(autosaveTimer);
@@ -331,39 +335,117 @@ function wireUi(){
     download(fileSlug() + '-project.json', serializeProject(state, true), 'application/json');
     toast('Project saved');
   });
-  $('mOpenJSON') && $('mOpenJSON').addEventListener('click', () => $('fileOpen').click());
-  $('fileOpen') && $('fileOpen').addEventListener('change', ev => {
-    const f = ev.target.files[0]; if (!f) return;
-    const rd = new FileReader();
-    rd.onload = () => {
+
+  function nameFromFile(filename){
+    return String(filename || 'Untitled').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim().slice(0, 80) || 'Untitled';
+  }
+  function unitsNote(insunits, units){
+    if (insunits === 1 || insunits === 4 || insunits === 5 || insunits === 6) return ' · ' + units + ' → feet';
+    return '';
+  }
+  function replaceWithEntities(ents, name){
+    pushUndo();
+    state.entities = [];
+    state.selIds = [];
+    state.userBlocks = [];
+    state.layers = defaultLayers();
+    state.idSeq = 1;
+    state.space = 'model';
+    ix.polyPts = [];
+    const prevLt = state.currentLt, prevLw = state.currentLw;
+    state.currentLt = 'CONTINUOUS';
+    state.currentLw = 0;
+    (ents || []).forEach(e => {
+      e.layer = ensureLayer(e.layer);
+      addEntity(e);
+    });
+    state.currentLt = prevLt;
+    state.currentLw = prevLw;
+    state.projectName = name || 'Untitled';
+    if ($('projName')) $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
+    closeSheets(); afterChange(); zoomFit(); draw();
+  }
+  function openDrawingText(text, filename, opts){
+    opts = opts || {};
+    const kind = sniffDrawing(text, filename);
+    if (kind === 'dwg'){
+      toast('DWG is binary — Save As DXF in the other CAD, then Open here');
+      return;
+    }
+    if (kind === 'json'){
       try {
-        const p = validateProject(JSON.parse(rd.result));
+        const p = validateProject(JSON.parse(text));
         pushUndo();
         applyProject(state, p);
         closeSheets(); afterChange(); zoomFit(); draw();
-        toast('Project opened');
+        toast('Opened ' + (p.name || 'project'));
       } catch (err){ toast('Open failed: ' + err.message); }
-    };
-    rd.readAsText(f);
+      return;
+    }
+    try {
+      const { entities, count, insunits, units } = openDXF(text, n => String(n || 'WALLS').toUpperCase().slice(0, 24));
+      if (!count){ toast('No supported objects in that file'); return; }
+      if (opts.merge){
+        pushUndo();
+        entities.forEach(e => { e.layer = ensureLayer(e.layer); addEntity(e); });
+        afterChange(); zoomFit(); draw();
+        toast('Inserted ' + count + ' objects' + unitsNote(insunits, units));
+      } else {
+        replaceWithEntities(entities, nameFromFile(filename));
+        toast('Opened ' + count + ' objects' + unitsNote(insunits, units));
+      }
+    } catch (err){ toast((opts.merge ? 'Insert' : 'Open') + ' failed: ' + err.message); }
+  }
+  function readDrawingFile(file, merge){
+    if (!file) return;
+    const n = String(file.name || '').toLowerCase();
+    if (n.endsWith('.dwg')){
+      toast('DWG is binary — Save As DXF in the other CAD, then Open here');
+      return;
+    }
+    const rd = new FileReader();
+    rd.onload = () => openDrawingText(String(rd.result || ''), file.name, { merge: !!merge });
+    rd.readAsText(file);
+  }
+
+  $('mOpenDrawing') && $('mOpenDrawing').addEventListener('click', () => $('fileOpen').click());
+  $('hintOpen') && $('hintOpen').addEventListener('click', () => $('fileOpen').click());
+  $('fileOpen') && $('fileOpen').addEventListener('change', ev => {
+    const f = ev.target.files && ev.target.files[0];
+    if (f) readDrawingFile(f, false);
     ev.target.value = '';
   });
   $('mImportDXF') && $('mImportDXF').addEventListener('click', () => $('fileDXF').click());
   $('fileDXF') && $('fileDXF').addEventListener('change', ev => {
-    const f = ev.target.files[0]; if (!f) return;
-    const rd = new FileReader();
-    rd.onload = () => {
-      closeSheets();
-      try {
-        const added = parseDXF(String(rd.result), ensureLayer);
-        if (!added.length){ toast('No supported entities found in that DXF'); return; }
-        pushUndo();
-        added.forEach(e => addEntity(e));
-        afterChange(); zoomFit(); draw();
-        toast('Imported ' + added.length + ' entities (feet assumed)');
-      } catch (err){ toast('Import failed: ' + err.message); }
-    };
-    rd.readAsText(f);
+    const f = ev.target.files && ev.target.files[0];
+    if (f) readDrawingFile(f, true);
     ev.target.value = '';
+  });
+
+  let dropDepth = 0;
+  const dropmask = $('dropmask');
+  function showDrop(on){ if (dropmask) dropmask.classList.toggle('on', !!on); }
+  document.addEventListener('dragenter', ev => {
+    const types = ev.dataTransfer && ev.dataTransfer.types;
+    if (!types || (types.contains ? !types.contains('Files') : Array.prototype.indexOf.call(types, 'Files') < 0)) return;
+    dropDepth++;
+    showDrop(true);
+    ev.preventDefault();
+  });
+  document.addEventListener('dragover', ev => {
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+    ev.preventDefault();
+  });
+  document.addEventListener('dragleave', () => {
+    dropDepth = Math.max(0, dropDepth - 1);
+    if (!dropDepth) showDrop(false);
+  });
+  document.addEventListener('drop', ev => {
+    ev.preventDefault();
+    dropDepth = 0;
+    showDrop(false);
+    const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+    if (f) readDrawingFile(f, false);
   });
 
   let newArmed = false, newTimer = null;
@@ -394,6 +476,7 @@ function wireUi(){
     afterChange(); zoomFit(); draw();
     toast('Sample cabin — live rooms, grid, associative dims');
   });
+  $('hintSample') && $('hintSample').addEventListener('click', () => $('mSample') && $('mSample').click());
 
   $('mLayouts') && $('mLayouts').addEventListener('click', () => { renderLayouts(); openSheet('sheetLayouts'); });
   $('mSchedules') && $('mSchedules').addEventListener('click', () => {
@@ -530,4 +613,5 @@ if (typeof document !== 'undefined'){
     }
   }
 }
+
 
