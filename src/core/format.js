@@ -1,8 +1,26 @@
 /* Architectural feet-and-inches formatting and parsing.
- * World units are decimal feet. Display rounds to a style's precision.
+ * World units are decimal feet. Display can be ft, m, or mm.
  */
 
+let _units = 'ft';
+export function displayUnits(){ return _units; }
+export function setDisplayUnits(u){
+  const s = String(u || 'ft').toLowerCase();
+  _units = (s === 'mm' || s === 'm') ? s : 'ft';
+  return _units;
+}
+
+function fmtMetric(ft, units){
+  const neg = ft < 0;
+  const abs = Math.abs(Number(ft) || 0);
+  if (units === 'm'){
+    return (neg ? '-' : '') + (Math.round(abs * 0.3048 * 1000) / 1000) + ' m';
+  }
+  return (neg ? '-' : '') + Math.round(abs * 304.8) + ' mm';
+}
+
 export function fmtFtIn(ft, precision){
+  if (_units === 'mm' || _units === 'm') return fmtMetric(ft, _units);
   const neg = ft < 0; ft = Math.abs(ft);
   const step = precision === '1/4' ? 4 : (precision === 'decimal' ? null : 2);
   if (step == null){
@@ -35,12 +53,14 @@ export function fmtFtIn(ft, precision){
 }
 
 /* Parse a length typed at the command line.
- *   10        → 10 ft
+ *   10        → 10 ft (or mm/m when display units are metric)
  *   12'6"     → 12.5
  *   12'-6"    → 12.5
  *   6"        → 0.5
  *   0'-6"     → 0.5
  *   3.25      → 3.25
+ *   2400mm    → 2400 millimetres
+ *   3.6m      → 3.6 metres
  */
 export function parseLength(s){
   if (s == null) return NaN;
@@ -54,6 +74,14 @@ export function parseLength(s){
     }
     return parseFloat(n);
   };
+  if (/mm$/i.test(s)){
+    const n = parseFloat(s);
+    return isFinite(n) ? n / 304.8 : NaN;
+  }
+  if (/[0-9.]m$/i.test(s) && !s.includes("'")){
+    const n = parseFloat(s);
+    return isFinite(n) ? n / 0.3048 : NaN;
+  }
   if (s.includes("'") || s.includes('"')){
     let feet = 0, inches = 0;
     const m = s.match(/^(-)?(?:(\d+(?:\.\d+)?)')?(?:-)?(?:(\d+(?:\.\d+)?(?:\/\d+)?)")?$/);
@@ -65,7 +93,10 @@ export function parseLength(s){
     return sign * (feet + inches / 12);
   }
   const n = parseFloat(s);
-  return isFinite(n) ? n : NaN;
+  if (!isFinite(n)) return NaN;
+  if (_units === 'mm') return n / 304.8;
+  if (_units === 'm') return n / 0.3048;
+  return n;
 }
 
 /* Parse "x,y" with optional length syntax on each component. */

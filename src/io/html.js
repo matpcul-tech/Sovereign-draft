@@ -1,16 +1,17 @@
-/* A drawing you can email. No server, no seat — one HTML file with the SVG,
- * the sheet index, the schedule, and the JSON so it can be opened again.
+/* A drawing you can email. No server, no seat — one HTML file with a page
+ * per sheet, the schedule, and the JSON so it can be opened again.
  */
 import { buildSVG } from './svg.js';
 import { collectParts, buildingSchedule } from '../core/spec.js';
 import { serializeProject } from './project.js';
+import { entsInBBox } from '../core/legend.js';
 
 function esc(s){
   return String(s == null ? '' : s)
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"');
+    .replace(/&/g, '&' + 'amp;')
+    .replace(/</g, '&' + 'lt;')
+    .replace(/>/g, '&' + 'gt;')
+    .replace(/"/g, '&' + 'quot;');
 }
 
 function tableHtml(headers, rows){
@@ -20,13 +21,19 @@ function tableHtml(headers, rows){
   return '<table><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
 }
 
+function svgForLayout(layout, ents, layers){
+  const subset = (layout && layout.section && layout.section.bbox)
+    ? entsInBBox(ents, layout.section.bbox, 0.4)
+    : ents;
+  return buildSVG(subset && subset.length ? subset : ents, layers);
+}
+
 export function toHTML(doc, opts){
   const o = opts || {};
   const d = doc || {};
   const layers = d.layers || [];
   const ents = d.entities || [];
   const layouts = d.layouts || [];
-  const svg = buildSVG(ents, layers, o);
   const parts = collectParts(ents);
   const built = !parts.length ? buildingSchedule(ents) : null;
   const firm = d.firm || {};
@@ -44,7 +51,8 @@ export function toHTML(doc, opts){
     layouts,
     currentLayout: d.currentLayout,
     space: d.space,
-    dxfVer: d.dxfVer
+    dxfVer: d.dxfVer,
+    units: d.units
   }, true);
 
   const sheets = tableHtml(
@@ -57,6 +65,12 @@ export function toHTML(doc, opts){
     : (built && built.cells
       ? ((built.title ? '<p>' + esc(built.title) + '</p>' : '') + tableHtml(built.cells[0], built.cells.slice(1)))
       : '');
+
+  const pages = (layouts.length ? layouts : [null]).map((L, i) => {
+    const title = L ? ((L.sheetNumber || '') + ' ' + (L.name || '')).trim() : 'Model';
+    const svg = L ? svgForLayout(L, ents, layers) : buildSVG(ents, layers, o);
+    return '<article class="page" id="sheet-' + i + '"><h3>' + esc(title) + '</h3><div class="sheet">' + svg + '</div></article>';
+  }).join('\n');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -74,6 +88,8 @@ h1 span{color:var(--gold)}
 .meta{color:var(--dim);font-size:13px;text-align:right}
 main{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;padding:24px 32px 48px}
 @media(max-width:900px){main{grid-template-columns:1fr}}
+.pages{display:flex;flex-direction:column;gap:20px}
+.page h3{margin:0 0 8px;font-size:13px;letter-spacing:.12em;color:var(--gold)}
 .sheet{background:#f4efe4;border-radius:8px;padding:16px;overflow:auto}
 .sheet svg{width:100%;height:auto;display:block}
 aside h2{font-size:12px;letter-spacing:.14em;color:var(--gold);margin:0 0 10px}
@@ -82,8 +98,9 @@ table{width:100%;border-collapse:collapse;font-size:12px}
 th,td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line)}
 th{color:var(--gold);font-weight:600}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-button,.btn{background:var(--gold);color:var(--navy);border:0;border-radius:8px;padding:8px 12px;font-weight:600;cursor:pointer;text-decoration:none;font-size:13px}
+button{background:var(--gold);color:var(--navy);border:0;border-radius:8px;padding:8px 12px;font-weight:600;cursor:pointer;font-size:13px}
 footer{padding:16px 32px 32px;color:var(--dim);font-size:12px}
+@media print{aside,header .actions,footer{display:none}body{background:#fff;color:#111} .page{break-after:page}}
 </style>
 </head>
 <body>
@@ -100,7 +117,7 @@ footer{padding:16px 32px 32px;color:var(--dim);font-size:12px}
   </div>
 </header>
 <main>
-  <div class="sheet">${svg}</div>
+  <div class="pages">${pages}</div>
   <aside>
     <section>
       <h2>SHEETS</h2>

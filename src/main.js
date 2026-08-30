@@ -29,6 +29,9 @@ import { placeInMargin, makeTableAnnotation, addAnnotation, makeDetailCallout, d
 import { cabin24x36 } from './core/demo.js';
 import { loadFirm, saveFirm, defaultFirm } from './core/titleblock.js';
 import { generateSheetSet } from './core/sheetset.js';
+import { toHTML } from './io/html.js';
+import { encodeShare, decodeShare, shareUrl, tokenFromHash } from './io/share.js';
+import { setDisplayUnits } from './core/format.js';
 
 const $ = id => document.getElementById(id);
 
@@ -89,6 +92,7 @@ export function boot(root){
   wireUi();
   booted = true;
   window.__sovereign = { state, setTool, zoomFit, draw };
+  loadShareFromLocation().catch(() => {});
   return function cleanup(){
     if (unbindResize) unbindResize();
     if (typeof unbindInput === 'function') unbindInput();
@@ -100,6 +104,22 @@ export function boot(root){
 function fileSlug(){
   const n = (state.projectName || 'sovereign-draft').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   return n || 'sovereign-draft';
+}
+
+async function loadShareFromLocation(){
+  if (typeof location === 'undefined') return;
+  const token = tokenFromHash(location.hash || '');
+  if (!token) return;
+  try {
+    const text = await decodeShare(token);
+    const p = validateProject(JSON.parse(text));
+    applyProject(state, p);
+    if ($('projName')) $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
+    afterChange(); zoomFit(); draw();
+    toast('Opened shared drawing');
+  } catch (err){
+    toast('Share link could not be read');
+  }
 }
 function download(name, text, mime){
   const blob = new Blob([text], { type: mime });
@@ -368,6 +388,42 @@ function wireUi(){
   $('mExportSVG') && $('mExportSVG').addEventListener('click', exportSvg);
   document.addEventListener('sd-export-svg', exportSvg);
   document.addEventListener('sd-redraw', () => draw());
+  $('mExportHTML') && $('mExportHTML').addEventListener('click', () => {
+    closeSheets();
+    if (!state.entities.length){ toast('Nothing to export yet'); return; }
+    const html = toHTML({
+      name: state.projectName, firm: state.firm, layers: state.layers,
+      entities: state.entities, layouts: state.layouts, userBlocks: state.userBlocks,
+      dimStyles: state.dimStyles, currentDimStyle: state.currentDimStyle,
+      currentLayout: state.currentLayout, space: state.space, dxfVer: state.dxfVer,
+      units: state.units
+    });
+    download(fileSlug() + '.html', html, 'text/html');
+    toast('HTML drawing exported');
+  });
+  $('mShare') && $('mShare').addEventListener('click', async () => {
+    closeSheets();
+    if (!state.entities.length){ toast('Nothing to share yet'); return; }
+    try {
+      const json = serializeProject(state, false);
+      const token = await encodeShare(json);
+      const url = shareUrl(token);
+      if (navigator.clipboard && navigator.clipboard.writeText){
+        await navigator.clipboard.writeText(url);
+        toast('Share link copied');
+      } else {
+        toast('Share: ' + url.slice(0, 48) + '…');
+      }
+    } catch (err){
+      toast((err && err.message) || 'Share failed — export HTML instead');
+    }
+  });
+  $('stUnits') && $('stUnits').addEventListener('click', () => {
+    state.units = state.units === 'ft' ? 'mm' : (state.units === 'mm' ? 'm' : 'ft');
+    setDisplayUnits(state.units);
+    afterChange(); draw();
+    toast('Units ' + state.units);
+  });
   $('chipDxfVer') && $('chipDxfVer').addEventListener('click', function(){
     state.dxfVer = state.dxfVer === 'R12' ? 'R2000' : 'R12';
     this.textContent = state.dxfVer;

@@ -137,6 +137,7 @@ export function shellHTML(){
   <button type="button" id="stOrtho">ORTHO</button>
   <button type="button" id="stPolar">POLAR</button>
   <button type="button" id="stWall">WALL</button>
+  <button type="button" id="stUnits">FT</button>
   <span id="stSpace">MODEL</span>
 </div>
 <div id="backdrop"></div>
@@ -245,6 +246,8 @@ export function shellHTML(){
   <button class="mrow" id="mOpenDrawing"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Open drawing<small>DXF · DWG · JSON · drop a file</small></button>
   <button class="mrow" id="mImportDXF"><svg viewBox="0 0 24 24"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 3v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3"/></svg>Insert DXF<small>merge into this sheet</small></button>
   <button class="mrow" id="mSaveJSON"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg>Save project<small>.json</small></button>
+  <button class="mrow" id="mShare"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>Copy share link<small>no server · URL hash</small></button>
+  <button class="mrow" id="mExportHTML"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Export HTML<small>email a drawing</small></button>
   <button class="mrow" id="mExportDXF"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export DXF<small>R12 / R2000 · feet</small></button>
   <button class="mrow" id="mExportPDF"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>Export PDF<small>to print scale</small></button>
   <button class="mrow" id="mExportAllPDF"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v12"/><path d="M16 7H9a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V11z"/><path d="M16 7v4h4"/></svg>Export all sheets<small>one PDF</small></button>

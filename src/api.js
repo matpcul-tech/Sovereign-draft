@@ -45,7 +45,8 @@ export function createDocument(opts){
     currentDimStyle: o.currentDimStyle || 'ARCH',
     currentLayout: o.currentLayout || (o.layouts && o.layouts[0] && o.layouts[0].id) || 'A1',
     space: o.space || 'model',
-    dxfVer: o.dxfVer === 'R2000' ? 'R2000' : 'R12'
+    dxfVer: o.dxfVer === 'R2000' ? 'R2000' : 'R12',
+    units: o.units === 'mm' || o.units === 'm' ? o.units : 'ft'
   };
 }
 
@@ -190,7 +191,8 @@ export function toJSON(doc, pretty){
     layouts: d.layouts,
     currentLayout: d.currentLayout,
     space: d.space,
-    dxfVer: d.dxfVer
+    dxfVer: d.dxfVer,
+    units: d.units
   }, pretty !== false);
 }
 
@@ -204,3 +206,4 @@ export function sampleCabin(){
 }
 
 export { parseDXF, sniffDrawing, openDXF, buildDXF, buildPDF, buildAllSheetsPDF, buildSVG, generateSheetSet, cabin24x36, toHTML };
+export { encodeShare, decodeShare, shareUrl, tokenFromHash } from './io/share.js';
