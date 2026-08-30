@@ -1,6 +1,29 @@
 # Sovereign Draft
 
-Touch-first 2D CAD for schematic-to-CD architectural drafting. Runs entirely in the browser: decimal feet, Y-up, dimensions in feet-and-inches to the nearest ½″. The drawing never leaves the device until you export.
+The CAD program you open when you don’t have a license — and shouldn’t need one.
+
+Browser 2D CAD. No account, no install, no seat. Decimal feet, Y-up, dimensions to the nearest ½″. The drawing stays on the device until you export. A sentence can become a sheet set; a JSON file can live in git next to the code.
+
+This is how we democratize CAD: the 80% of drawings that are plans, elevations, and diagrams, at zero cost, with an AutoCAD-shaped command line so it still feels like CAD.
+
+## What it is
+
+| You get | You don’t |
+|---|---|
+| 2D drafting in the browser (PWA) | 3D solids, CAM, or CATIA |
+| Command line (`L`, `TR`, `@8<45`, F8) | Native DWG (open DXF instead) |
+| Issued sheets: title block, copyright, multi-page PDF | Shop-floor GD&T / welding maps |
+| `SHEETSET` — cover, overall, one page per room or part | A substitute for a professional of record |
+| AI first pass (your Anthropic key) | Invented materials or pretended tolerances |
+| JSON you can diff in git + DXF in/out | A server that holds your drawings |
+
+A cabin floor plan with walls, doors, rooms, dims, and a G-001/A-101 set is the job. A rocket silhouette with a parts table is a general arrangement, not a build spec — we will not pretend otherwise.
+
+## Cost
+
+The editor is free. Geometry is local. The only optional network call is `api.anthropic.com` with **your** key. No seat, no trial, no watermark.
+
+Later we may charge for hosted AI (so you don’t paste a key) and share links. Never for drawing.
 
 ## Draw
 
@@ -83,7 +106,7 @@ Door / window / room **schedules** (`SCH` or Sheet → Place schedules) auto-tag
 
 **Layer isolate** (`LAYISO` / `UNISO`) hides every layer except the selection.
 
-The sample cabin now includes live rooms, a 12′ column grid, tagged doors, a door / window / room schedule, associative overall dims, and the original dashed centerline.
+The sample cabin includes live rooms, a 12′ column grid, tagged doors, a door / window / room schedule, associative overall dims, and a dashed centerline.
 
 **SVG** export (`SVG` or Sheet menu) for Illustrator / web. Object snaps include **TAN** from the last point onto a circle.
 
@@ -91,15 +114,23 @@ Layers lock (click the padlock — locked objects can't be selected) and a **P**
 
 ## Paper space
 
-One model space + N layouts. Each layout has a sheet (Letter / Tabloid / Arch D), plot scale, and viewports that clip + scale model geometry. PDF export plots an **issued sheet**: double border, a title block (ISSUED BY / PROJECT / DRAWING TITLE / SCALE / SHEET), and your company copyright. Set the firm name, copyright line and “drawn by” in the Sheet menu — they stamp every page and stay on this device.
+One model space + N layouts. Each layout has a sheet (Letter / Tabloid / Arch D / Arch D portrait), plot scale, and viewports that clip + scale model geometry. PDF export plots an **issued sheet**: double border, a title block (ISSUED BY / PROJECT / DRAWING TITLE / SCALE / SHEET), and your company copyright. Set the firm name, copyright line and “drawn by” in the Sheet menu — they stamp every page and stay on this device.
 
-**Sheet set** (`SHEETSET` / `SS`, or Sheet → Generate sheets) splits the model into a real CAD sheet set: **G-001** cover with a drawing index and a **parts schedule** (mark, qty, description, size), **A-101** overall, and one sheet per room or labeled section with that sheet's specifications. Envelope dimensions (overall height and width) are stamped when the model has none, so the print can be built from. Each page still carries a legend of the layers, symbols and callouts in that view. Export all sheets as one PDF from the Sheet menu. PageUp / PageDown walks the set.
+**Sheet set** (`SHEETSET` / `SS`, or Sheet → Generate sheets) splits the model into pages:
 
-## DXF
+- **G-001** cover — drawing index plus a parts schedule (mark, qty, description, size) or a room schedule on floor plans
+- **A-101** overall
+- **A-102…** one sheet per room or labeled section, with that sheet’s specifications
 
-Sovereign Draft **is the editor**. Open a `.dxf` (or drop it on the sheet) and it becomes the drawing — no second CAD required.
+Envelope dimensions (overall height and width) are stamped when the model has none. Each page carries a legend of the layers, symbols and callouts in that view. Quantities come from marks and `x9`-style labels; sizes come from the station or from attributes you (or the AI) actually set. Materials stay blank unless named. Export all sheets as one PDF from the Sheet menu. PageUp / PageDown walks the set.
 
-**Open** (`OPEN`, Sheet → Open drawing, or drop a file) replaces the sheet. **Insert DXF** (`DXFIN`) merges into the current drawing. `.json` project files open the same way. `.dwg` is binary and cannot be read; Save As DXF in the other program, then Open here.
+A sheet set is a general arrangement plus a schedule. It is not a manufacturing package.
+
+## Files
+
+The project JSON is the source of truth — plain objects, diffable in git, next to the repo. DXF and PDF are exports.
+
+**Open** (`OPEN`, Sheet → Open drawing, or drop a file) replaces the sheet. **Insert DXF** (`DXFIN`) merges into the current drawing. `.json` project files open the same way. `.dwg` is binary and cannot be read yet; Save As DXF in the other program, then Open here.
 
 **Units.** World units are decimal feet, Y-up. The writer stamps `$INSUNITS=2`. The reader honors `$INSUNITS` (inches, mm, cm, meters → feet). If the header is missing and coordinates look like millimetres (max > 2000), they are scaled to feet; otherwise feet are assumed. A 36 ft cabin is never auto-scaled.
 
@@ -110,17 +141,9 @@ Sovereign Draft **is the editor**. Open a `.dxf` (or drop it on the sheet) and i
 
 Key lives in `localStorage`, calls only `api.anthropic.com`, **adds only** — undo drops a pass. Sheet-context mode reads existing walls and appends. Invalid JSON is retried once, then toasted. Never deletes user entities.
 
-Claude is asked for this schema (not leftover raw lines):
+Claude is asked for a constrained schema (not leftover raw lines): walls, openings, fixtures, rooms, dims, profiles, centerlines, callouts. `drawingType` (`plan` / `elevation` / `section` / `part` / `diagram`) gates what is legal — a rocket does not get door swings; a floor plan does not get a nose cone.
 
-```json
-{
-  "walls": [{ "a": [x1, y1, x2, y2], "th": 0.5 }],
-  "openings": [{ "kind": "door|window", "wall": 0, "t": 0.5, "w": 3, "swing": "L|R" }],
-  "fixtures": [{ "kind": "Toilet|Sink|Tub|Shower|Stove|Fridge|Bed|Sofa|Stairs|Table", "x": 0, "y": 0, "rot": 0 }],
-  "rooms": [{ "name": "KITCHEN", "pts": [[x, y], ...] }],
-  "dims": [{ "a": [x1, y1, x2, y2] }]
-}
-```
+Mark repeated parts (`"mark":"M1D"`, `"attrs":{"qty":9,"size":"…","material":"…"}`) so they schedule. Include material only when the user named one. A drawing with no dimensions cannot be built from — the model is told to emit overall height, width, and stations.
 
 The app snaps to a 6″ grid, fillets wall corners, hatches rooms, and places overall + room dimensions.
 
@@ -147,9 +170,24 @@ Type a length (`3`, `2'6"`) with a door or window selected to set width. Propert
 
 Autosave to `localStorage`. No account, no backend. The only optional network call is `api.anthropic.com` with your key.
 
+## Where this is going
+
+The editor stays free. Next is CAD as infrastructure, not more title-block theater.
+
+1. **Library + CLI** — `import { draw, pdf, dxf } from 'sovereign-draft'` and `npx sovereign-draft plan.json --pdf`, so a developer plots sheets from CI.
+2. **Honest AI** — blank materials unless you named them; refuse a spec row with no size.
+3. **Floor plans done** — isolated rooms, untruncated tables, marks on the view that match the schedule. One vertical a builder could use.
+4. **DWG read** (one-way, wasm) — open what people already have. We still write JSON + DXF.
+5. **Embed** — a drawing in *your* docs or app, not only in ours.
+
+No 3D kernel. No seat license. Collaboration only after the kernel is something you can import.
+
 ## Development
 
 ```
-npm test          # vitest (geometry, modify, dxf, pdf, AI schema) + workspace gates
+npm test          # vitest (geometry, modify, dxf, pdf, AI schema, sheet sets)
+npm run dev       # Vite, browser CAD
 npm run build     # static PWA
 ```
+
+The kernel in `src/core` is plain JS with no DOM. That’s the split the library will use.
