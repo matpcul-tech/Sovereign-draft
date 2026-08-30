@@ -2,8 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    # The production branch. Change this list if you publish from another one.
-    branches: [main]
+    branches: ['**']
   workflow_dispatch:
 
 # Allow the workflow to publish to Pages via OIDC.
@@ -19,6 +18,16 @@ concurrency:
 
 jobs:
   build:
+    # Publish from the repository's DEFAULT branch, whatever it is named.
+    # This is not a stylistic choice: GitHub restricts the `github-pages`
+    # environment to the default branch, so a deploy from any other branch is
+    # rejected before its first step runs. Matching that rule here keeps the
+    # branch that triggers the workflow and the branch allowed to deploy the
+    # same one, and it follows automatically if the default branch is renamed
+    # or switched to main.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
