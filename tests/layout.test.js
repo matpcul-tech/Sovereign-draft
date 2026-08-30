@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeLayout, fitViewport, paperToModel, modelToPaper, sheetOf } from '../src/core/layout.js';
+import { makeLayout, fitViewport, paperToModel, modelToPaper, sheetOf, pickSheetForBBox } from '../src/core/layout.js';
 import { cabin24x36 } from '../src/core/demo.js';
 import { membersBBox } from '../src/core/entities.js';
 import { buildPDF } from '../src/io/pdf.js';
@@ -10,6 +10,14 @@ describe('layouts', () => {
   it('Arch D is 36×24', () => {
     expect(sheetOf('archd').w).toBe(36);
     expect(sheetOf('archd').h).toBe(24);
+  });
+  it('Arch D Portrait is 24×36', () => {
+    expect(sheetOf('archdp').w).toBe(24);
+    expect(sheetOf('archdp').h).toBe(36);
+  });
+  it('picks portrait paper for a tall stack and landscape for a plan', () => {
+    expect(pickSheetForBBox([0, 0, 12, 230])).toBe('archdp');
+    expect(pickSheetForBBox([0, 0, 36, 24])).toBe('archd');
   });
   it('round-trips model ↔ paper through a viewport', () => {
     const L = makeLayout({ sheet: 'archd', ppf: 18 });

@@ -496,6 +496,7 @@ function sheetSizeKey(v){
   const s = String(v == null ? '' : v).toLowerCase().replace(/[^a-z]/g, '');
   if (s.indexOf('tabloid') >= 0 || s === 'b') return 'tabloid';
   if (s.indexOf('letter') >= 0 || s === 'a') return 'letter';
+  if (s.indexOf('portrait') >= 0) return 'archdp';
   if (SHEETS[s]) return s;
   return 'archd';
 }

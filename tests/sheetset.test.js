@@ -3,7 +3,7 @@ import { cabin24x36 } from '../src/core/demo.js';
 import { defaultLayers } from '../src/core/state.js';
 import { detectSections, generateSheetSet, legendForLayout, sheetTitle } from '../src/core/sheetset.js';
 import { buildLegend, collectCallouts, entsInBBox, isCalloutText } from '../src/core/legend.js';
-import { makeLayout, sheetOf, TITLE_BLOCK_H, SHEET_MARGIN } from '../src/core/layout.js';
+import { makeLayout, sheetOf, TITLE_BLOCK_H, SHEET_MARGIN, pickSheetForBBox } from '../src/core/layout.js';
 import { buildAllSheetsPDF } from '../src/io/pdf.js';
 import { membersBBox } from '../src/core/entities.js';
 
@@ -20,6 +20,8 @@ describe('callouts', () => {
     expect(isCalloutText({ type: 'text', content: 'PAYLOAD FAIRING' })).toBe(true);
     expect(isCalloutText({ type: 'text', content: "12'-6\"" })).toBe(false);
     expect(isCalloutText({ type: 'leader', content: 'INTERSTAGE' })).toBe(true);
+    expect(isCalloutText({ type: 'callout', content: 'Merlin 1D engines x9', anchor: [12, 4] })).toBe(true);
+    expect(isCalloutText({ type: 'callout', content: 'NOSE CONE TIP', anchor: [12, 220] })).toBe(true);
   });
 });
 
@@ -110,6 +112,108 @@ describe('rocket-style callout banding', () => {
     expect(names).toContain('ENGINES');
     const layouts = generateSheetSet(ents, defaultLayers());
     expect(layouts.filter(L => L.kind === 'section').length).toBe(sections.length);
+  });
+});
+
+function falconElevation(){
+  const parts = [
+    ['NOSE CONE TIP', 220],
+    ['PAYLOAD ADAPTER', 205],
+    ['RP-1 TANK (STAGE 2)', 190],
+    ['LOX TANK (STAGE 2)', 175],
+    ['MVAC ENGINE', 160],
+    ['INTERSTAGE', 145],
+    ['GRID FINS x4', 130],
+    ['RP-1 TANK (STAGE 1)', 100],
+    ['LOX TANK (STAGE 1)', 70],
+    ['COMMON DOME BULKHEAD', 55],
+    ['HELIUM COPV', 45],
+    ['COLD GAS THRUSTERS', 35],
+    ['OCTAWEB ENGINE MOUNT', 20],
+    ['LANDING LEGS x4', 12],
+    ['MERLIN 1D ENGINES x9', 4]
+  ];
+  const ents = [
+    { type: 'line', layer: 'PROFILE', x1: 0, y1: 0, x2: 0, y2: 230 },
+    { type: 'line', layer: 'PROFILE', x1: 12, y1: 0, x2: 12, y2: 230 },
+    { type: 'line', layer: 'PROFILE', x1: 0, y1: 0, x2: 12, y2: 0 },
+    { type: 'line', layer: 'PROFILE', x1: 0, y1: 230, x2: 12, y2: 230 }
+  ];
+  parts.forEach(([name, y]) => {
+    ents.push({
+      type: 'callout', layer: 'NOTES',
+      anchor: [12, y],
+      pts: [[12, y], [22, y]],
+      content: name, textH: 0.8
+    });
+  });
+  return ents;
+}
+
+describe('AI callout elevation sheet set', () => {
+  const ents = falconElevation();
+  const layers = defaultLayers().concat([
+    { name: 'PROFILE', color: '#e8e4dd', aci: 7, visible: true },
+    { name: 'NOTES', color: '#e8e4dd', aci: 7, visible: true }
+  ]);
+
+  it('reads type:callout anchors and bands the stack', () => {
+    const { overall, sections } = detectSections(ents);
+    expect(collectCallouts(ents).length).toBe(15);
+    expect(overall[3] - overall[1]).toBeGreaterThan((overall[2] - overall[0]) * 2.2);
+    expect(sections.length).toBeGreaterThanOrEqual(2);
+    expect(sections.length).toBeLessThanOrEqual(10);
+    const blob = sections.map(s => s.name.toUpperCase()).join(' ');
+    expect(blob).toMatch(/NOSE/);
+    expect(blob).toMatch(/MERLIN|ENGINE/);
+  });
+
+  it('builds cover, overall, and per-section sheets on portrait paper', () => {
+    const layouts = generateSheetSet(ents, layers);
+    expect(layouts[0].kind).toBe('cover');
+    expect(layouts[1].kind).toBe('overall');
+    const sections = layouts.filter(L => L.kind === 'section');
+    expect(sections.length).toBeGreaterThanOrEqual(2);
+    expect(layouts.length).toBeGreaterThan(2);
+    expect(layouts.every(L => L.sheet === 'archdp')).toBe(true);
+    expect(sheetOf(layouts[0].sheet).w).toBe(24);
+    expect(sheetOf(layouts[0].sheet).h).toBe(36);
+    expect(pickSheetForBBox([0, 0, 12, 230])).toBe('archdp');
+  });
+
+  it('puts part names in the legend instead of echoing layer names', () => {
+    const layouts = generateSheetSet(ents, layers);
+    const overall = layouts.find(L => L.kind === 'overall');
+    const legend = legendForLayout(overall, ents, layers);
+    const parts = legend.items.filter(i => i.kind === 'callout').map(i => i.name.toUpperCase());
+    expect(parts.join(' ')).toMatch(/NOSE CONE/);
+    expect(parts.join(' ')).toMatch(/MERLIN|ENGINE/);
+    expect(legend.items.some(i => i.kind === 'layer' && i.name === 'PROFILE' && /outline/i.test(i.desc))).toBe(true);
+    expect(legend.items.some(i => i.kind === 'layer' && i.name === 'NOTES' && /callout/i.test(i.desc))).toBe(true);
+    const engineSheet = layouts.find(L => /MERLIN|ENGINE|OCTAWEB|LANDING/i.test(L.name));
+    expect(engineSheet).toBeTruthy();
+    const eLeg = legendForLayout(engineSheet, ents, layers);
+    const eNames = eLeg.items.filter(i => i.kind === 'callout').map(i => i.name.toUpperCase()).join(' ');
+    expect(eNames).toMatch(/MERLIN|ENGINE|OCTAWEB|LANDING|LEG/);
+    expect(eNames).not.toMatch(/NOSE CONE TIP/);
+  });
+
+  it('exports more than a cover and an overall', () => {
+    const layouts = generateSheetSet(ents, layers);
+    const { pdf, pages } = buildAllSheetsPDF(ents, {
+      sheets: layouts,
+      projectName: 'Falcon 9',
+      dateStr: '8/30/2026'
+    });
+    expect(pages).toBe(layouts.length);
+    expect(pages).toBeGreaterThan(2);
+    expect(pdf).toContain('DRAWING INDEX');
+    expect(pdf).toContain('NOSE CONE');
+    expect(pdf).toMatch(/Falcon 9/i);
+    expect(pdf).toContain('G-001');
+    expect(pdf).toContain('A-102');
+    const boxes = [...pdf.matchAll(/MediaBox \[0 0 (\d+) (\d+)\]/g)].map(m => m[1] + 'x' + m[2]);
+    expect(boxes[0]).toBe(Math.round(24 * 72) + 'x' + Math.round(36 * 72));
   });
 });
 

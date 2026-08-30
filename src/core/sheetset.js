@@ -5,7 +5,7 @@
  * placed as sheet-space annotations so they keep their size at any plot scale.
  */
 import { membersBBox } from './entities.js';
-import { makeLayout, makeViewport, fitViewport, sheetOf, PLOT_SCALES } from './layout.js';
+import { makeLayout, makeViewport, fitViewport, sheetOf, PLOT_SCALES, pickSheetForBBox } from './layout.js';
 import { normalizeSheet } from './document.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation } from './sheetspace.js';
 import { entsInBBox, collectCallouts, padBBox, buildLegend, legendToTable, indexToTable } from './legend.js';
@@ -81,6 +81,53 @@ function bandSections(callouts, overall){
   });
 }
 
+function unionBBox(a, b){
+  return [
+    Math.min(a[0], b[0]),
+    Math.min(a[1], b[1]),
+    Math.max(a[2], b[2]),
+    Math.max(a[3], b[3])
+  ];
+}
+
+function mergeSectionName(a, b){
+  const left = String(a.name || '').split(' / ')[0].split(' – ')[0];
+  const right = String(b.name || '').split(' / ').pop().split(' – ').pop();
+  if (!left) return right || 'Section';
+  if (!right || left === right) return left;
+  const n = left + ' / ' + right;
+  return n.length <= 42 ? n : left + ' +';
+}
+
+/* When a stack has more labeled parts than MAX_SECTIONS, fold neighboring
+ * bands together (smallest span first) so nose and engines both stay on the
+ * set. Dropping by bbox area used to throw away the tips. */
+function capSections(sections){
+  if (!sections || sections.length <= MAX_SECTIONS) return sections || [];
+  const out = sections.slice();
+  const cx = s => (s.bbox[0] + s.bbox[2]) / 2;
+  const cy = s => (s.bbox[1] + s.bbox[3]) / 2;
+  const xs = out.map(cx), ys = out.map(cy);
+  const dx = Math.max.apply(null, xs) - Math.min.apply(null, xs);
+  const dy = Math.max.apply(null, ys) - Math.min.apply(null, ys);
+  const vertical = dy >= dx * 0.7;
+  while (out.length > MAX_SECTIONS){
+    let bestI = 0, best = Infinity;
+    for (let i = 0; i < out.length - 1; i++){
+      const u = unionBBox(out[i].bbox, out[i + 1].bbox);
+      const span = vertical ? (u[3] - u[1]) : (u[2] - u[0]);
+      if (span < best){ best = span; bestI = i; }
+    }
+    const a = out[bestI], b = out[bestI + 1];
+    out.splice(bestI, 2, {
+      name: mergeSectionName(a, b),
+      bbox: unionBBox(a.bbox, b.bbox),
+      source: a.source || b.source || 'callout'
+    });
+  }
+  return out;
+}
+
 export function detectSections(entities){
   const overall = modelBBox(entities);
   let sections = roomSections(entities);
@@ -94,13 +141,7 @@ export function detectSections(entities){
       sections = bandSections(callouts, overall);
     }
   }
-  if (sections.length > MAX_SECTIONS){
-    sections = sections.slice().sort((a, b) => {
-      const aa = (a.bbox[2] - a.bbox[0]) * (a.bbox[3] - a.bbox[1]);
-      const ba = (b.bbox[2] - b.bbox[0]) * (b.bbox[3] - b.bbox[1]);
-      return ba - aa;
-    }).slice(0, MAX_SECTIONS);
-  }
+  sections = capSections(sections);
   return { overall, sections };
 }
 
@@ -167,8 +208,8 @@ function buildSheet(opts, bbox){
 
 export function generateSheetSet(entities, layers, opts){
   opts = opts || {};
-  const sheet = opts.sheet || 'archd';
   const detected = detectSections(entities);
+  const sheet = opts.sheet || pickSheetForBBox(detected.overall);
   const layouts = [];
 
   layouts.push(buildSheet({
