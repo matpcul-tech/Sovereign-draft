@@ -7,6 +7,7 @@ import { fmtFtIn } from '../core/format.js';
 import { membersBBox, explodeForIO } from '../core/entities.js';
 import { hatchLines, hatchPlan, ppfToScaleFactor } from '../core/hatch.js';
 import { helveticaWidth } from '../core/textmetrics.js';
+import { sheetLabel } from '../core/document.js';
 import { sheetOf } from '../core/layout.js';
 
 export const SCALE_LADDER = [
@@ -94,7 +95,13 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts)
       }
     }
     else if (e.type === 'text'){
-      textAt(TX(e.x), TY(e.y), Math.max(e.size * ppf, 4), e.content || '', 0, false, 0.1);
+      /* paperTextH is a paper space height in points and is NOT scaled by
+       * ppf, so it prints the same at every view scale. `size` stays a
+       * model height for entities authored before the document model, so
+       * existing drawings export byte for byte as they did. Phase C moves
+       * new text onto the paper value once views can differ in scale. */
+      const th = e.paperTextH ? e.paperTextH : Math.max(e.size * ppf, 4);
+      textAt(TX(e.x), TY(e.y), th, e.content || '', 0, false, 0.1);
     }
     else if (e.type === 'dim'){
       const g = dimGeom(e);
@@ -174,7 +181,10 @@ export function buildPDF(entities, opts){
   textAt(42, 66, 17, name, 0, true, 0.05);
   textAt(42, 48, 9, (opts.dateStr || new Date().toLocaleDateString()) + '   units: feet', 0, false, 0.35);
   textAt(430, 48, 10, 'SCALE: ' + scaleLabel(ppf) + (clipped ? '  (clipped to sheet)' : ''), 0, false, 0.15);
-  textAt(700, 66, 11, 'SHEET A-1', 0, true, 0.15);
+  /* With one sheet this is exactly 'SHEET A-1', which is what the
+   * pre-refactor build emitted. The count only appears once a document
+   * actually holds more than one sheet. */
+  textAt(700, 66, 11, sheetLabel(opts.sheetNumber, opts.sheetIndex || 0, opts.sheetCount || 1), 0, true, 0.15);
   let barFt = 10; if (barFt * ppf > 200) barFt = 5; if (barFt * ppf > 200) barFt = 2;
   const bwp = barFt * ppf, bx = 430, byp = 70;
   P('0.08 G 1 w');
@@ -233,7 +243,9 @@ export function buildLayoutPDF(entities, opts){
     textAt(tbX + 10, tbY + 32, 16, name, 0, true, 0.05);
     textAt(tbX + 10, tbY + 14, 9, (opts.dateStr || new Date().toLocaleDateString()) + '   units: feet', 0, false, 0.35);
     textAt(tbX + tbW * 0.55, tbY + 14, 10, 'SCALE: ' + scaleLabel(ppf), 0, false, 0.15);
-    textAt(tbX + tbW - 12, tbY + 32, 11, layout.name || 'SHEET A-1', 0, true, 0.15);
+    const total = opts.sheetCount || 1;
+    const label = (layout.name || sheetLabel(layout.sheetNumber, 0, 1)) + (total > 1 ? '  OF ' + total : '');
+    textAt(tbX + tbW - 12, tbY + 32, 11, label, 0, true, 0.15);
   }
   return { pdf: wrapPDF(C.join('\n'), pageW, pageH), ppf, clipped: false };
 }

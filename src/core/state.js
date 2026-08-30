@@ -3,6 +3,7 @@
  * owns the document.
  */
 import { deep } from './geometry.js';
+import { normalizeSheets } from './document.js';
 import { defaultDimStyles } from './dimStyle.js';
 import { defaultLayouts } from './layout.js';
 import { refreshAssocDims } from './assoc.js';
@@ -12,7 +13,7 @@ export const LAYER_COLORS = ['#00d4b8', '#c45a3c', '#d4af37', '#8fa3c0', '#4ade8
 export const GRID_SNAP = 0.5;
 export const OFFSETS = [0.5, 1, 2, 4];
 export const UNDO_LIMIT = 50;
-export const PROJECT_VERSION = 6;
+export const PROJECT_VERSION = 7;
 export const POLAR_STEP = 15;
 
 export function defaultLayers(){
@@ -67,7 +68,7 @@ export const state = {
   dxfVer: 'R12',
   dimStyles: defaultDimStyles(),
   currentDimStyle: 'ARCH',
-  layouts: defaultLayouts(),
+  layouts: normalizeSheets(defaultLayouts()),
   currentLayout: 'A1',
   space: 'model',          /* 'model' or a layout id */
   lastLen: 0,

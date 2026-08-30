@@ -1,5 +1,6 @@
 /* Project (de)serialization plus localStorage autosave. */
 import { PROJECT_VERSION, defaultLayers } from '../core/state.js';
+import { normalizeSheets, DOC_VERSION } from '../core/document.js';
 import { defaultDimStyles } from '../core/dimStyle.js';
 import { defaultLayouts } from '../core/layout.js';
 
@@ -47,7 +48,10 @@ export function validateProject(o){
     userBlocks: Array.isArray(o.userBlocks) ? o.userBlocks : [],
     dimStyles: Array.isArray(o.dimStyles) && o.dimStyles.length ? o.dimStyles : defaultDimStyles(),
     currentDimStyle: o.currentDimStyle || 'ARCH',
-    layouts: Array.isArray(o.layouts) && o.layouts.length ? o.layouts : defaultLayouts(),
+    /* Structural migration only. Entities are already true size and are
+     * passed through untouched. */
+    schemaVersion: Number(o.v) || 1,
+    layouts: normalizeSheets(Array.isArray(o.layouts) && o.layouts.length ? o.layouts : defaultLayouts()),
     currentLayout: o.currentLayout || 'A1',
     space: o.space === 'model' || o.space ? o.space : 'model',
     dxfVer: o.dxfVer === 'R2000' ? 'R2000' : 'R12'
