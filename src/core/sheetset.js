@@ -9,7 +9,7 @@
 import { membersBBox } from './entities.js';
 import { makeLayout, makeViewport, fitViewport, sheetOf, PLOT_SCALES, pickSheetForBBox, modelToPaper, inViewport } from './layout.js';
 import { normalizeSheet } from './document.js';
-import { placeInMargin, makeTableAnnotation, addAnnotation, makeNote } from './sheetspace.js';
+import { placeInMargin, makeTableAnnotation, addAnnotation, makeMarkBubble } from './sheetspace.js';
 import { entsInBBox, collectCallouts, padBBox, buildLegend, legendToTable, indexToTable } from './legend.js';
 import { bodyBBox, collectParts, partsInBBox, partsToTable, buildingSchedule, specNotes, specColW, padForLabels } from './spec.js';
 
@@ -224,7 +224,7 @@ function stampMarks(layout, parts){
   parts.forEach(p => {
     const xy = modelToPaper(vp, p.x, p.y);
     if (!inViewport(vp, xy[0], xy[1])) return;
-    out = addAnnotation(out, makeNote(xy[0] + 0.08, xy[1] + 0.08, p.mark, { size: 0.11 }));
+    out = addAnnotation(out, makeMarkBubble(xy[0], xy[1], p.mark));
   });
   return out;
 }

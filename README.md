@@ -21,7 +21,7 @@ A cabin floor plan with walls, doors, rooms, dims, and a G-001/A-101 set is the 
 
 ## Cost
 
-The editor is free. Geometry is local. The only optional network call is `api.anthropic.com` with **your** key. No seat, no trial, no watermark.
+The editor is free. MIT licensed. Geometry is local. The only optional network call is `api.anthropic.com` with **your** key. No seat, no trial, no watermark.
 
 Later we may charge for hosted AI (so you don’t paste a key) and share links. Never for drawing.
 
@@ -139,12 +139,14 @@ writeFileSync('plan.pdf', toPDF(set), 'latin1')
 ```
 
 ```
+npx --yes github:matpcul-tech/Sovereign-draft --sample --pdf cabin.pdf
 npx sovereign-draft plan.json --pdf plan.pdf
-npx sovereign-draft plan.dxf --sheets --pdf set.pdf
-npx sovereign-draft --sample --pdf cabin.pdf
+npx sovereign-draft plan.dxf --sheets --pdf set.pdf --svg set.svg
 npx sovereign-draft --prompt "24x36 cabin, 3 rooms" --pdf cabin.pdf   # needs ANTHROPIC_API_KEY
 npx sovereign-draft drawing.dwg --json drawing.json
 ```
+
+`examples/cabin.json` is the sample, committed so it diffs in git. CI plots it to PDF on every push.
 
 Embed a drawing in your page (chrome off):
 

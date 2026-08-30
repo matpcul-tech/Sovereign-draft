@@ -184,6 +184,19 @@ function drawPaper(){
       const p0 = p2s(a.leader[0][0], a.leader[0][1]), p1 = p2s(a.leader[1][0], a.leader[1][1]);
       ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
     }
+    if (a.kind === 'mark'){
+      const c = p2s(a.x, a.y);
+      const r = (a.r || 0.18) * scl;
+      ctx.fillStyle = '#e8e4dd';
+      ctx.beginPath(); ctx.arc(c[0], c[1], r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#07101f'; ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.arc(c[0], c[1], r, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#07101f';
+      ctx.font = '600 ' + Math.max(7, (a.size || 0.09) * scl) + 'px Outfit, system-ui';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(a.text || '', c[0], c[1]);
+      return;
+    }
     if (a.kind === 'detail'){
       const c = p2s(a.x, a.y);
       const r = (a.r || 0.28) * scl;

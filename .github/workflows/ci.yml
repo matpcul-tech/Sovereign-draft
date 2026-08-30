@@ -17,8 +17,17 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - run: node bin/sovereign-draft.js --sample --pdf cabin.pdf --svg cabin.svg --json examples/cabin.json
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sheets
+          path: |
+            cabin.pdf
+            cabin.svg
+            examples/cabin.json
           retention-days: 14

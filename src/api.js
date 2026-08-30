@@ -15,6 +15,7 @@ import { buildPDF, buildAllSheetsPDF } from './io/pdf.js';
 import { serializeProject, validateProject } from './io/project.js';
 import { generateDraft, realizeDocument } from './ai/draft.js';
 import { isDwgBuffer, parseDwg } from './io/dwg.js';
+import { buildSVG } from './io/svg.js';
 import { cabin24x36 } from './core/demo.js';
 
 export function makeEnsureLayer(layers){
@@ -168,6 +169,11 @@ export function toDXF(doc, opts){
   });
 }
 
+export function toSVG(doc, opts){
+  const d = doc || {};
+  return buildSVG(d.entities || [], d.layers || defaultLayers(), opts || {});
+}
+
 export function toJSON(doc, pretty){
   const d = doc || createDocument();
   return serializeProject({
@@ -196,4 +202,4 @@ export function sampleCabin(){
   }));
 }
 
-export { parseDXF, sniffDrawing, openDXF, buildDXF, buildPDF, buildAllSheetsPDF, generateSheetSet, cabin24x36 };
+export { parseDXF, sniffDrawing, openDXF, buildDXF, buildPDF, buildAllSheetsPDF, buildSVG, generateSheetSet, cabin24x36 };

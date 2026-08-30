@@ -8,7 +8,7 @@
  */
 import { readFileSync, writeFileSync } from 'fs';
 import { basename } from 'path';
-import { open, openAsync, draw, sheetset, toPDF, toDXF, toJSON, sampleCabin } from '../src/api.js';
+import { open, openAsync, draw, sheetset, toPDF, toDXF, toJSON, toSVG, sampleCabin } from '../src/api.js';
 
 function parseArgs(argv){
   const opts = { files: [] };
@@ -19,6 +19,7 @@ function parseArgs(argv){
     else if (a === '--pdf') opts.pdf = next();
     else if (a === '--dxf') opts.dxf = next();
     else if (a === '--json') opts.json = next();
+    else if (a === '--svg') opts.svg = next();
     else if (a === '--name') opts.name = next();
     else if (a === '--key') opts.apiKey = next();
     else if (a === '--model') opts.model = next();
@@ -39,6 +40,7 @@ function help(){
     '  sovereign-draft <file.json|.dxf|.dwg> --pdf out.pdf',
     '  sovereign-draft <file> --dxf out.dxf',
     '  sovereign-draft <file> --json out.json',
+    '  sovereign-draft <file> --svg out.svg',
     '  sovereign-draft --sheets <file> --pdf set.pdf',
     '  sovereign-draft --prompt "24x36 cabin" --pdf cabin.pdf',
     '  sovereign-draft --sample --pdf cabin.pdf',
@@ -70,7 +72,7 @@ async function loadDoc(opts){
 
 async function main(){
   const opts = parseArgs(process.argv.slice(2));
-  if (opts.help || (!opts.files.length && !opts.prompt && !opts.sample && !opts.pdf && !opts.dxf && !opts.json)){
+  if (opts.help || (!opts.files.length && !opts.prompt && !opts.sample && !opts.pdf && !opts.dxf && !opts.json && !opts.svg)){
     console.log(help());
     process.exit(opts.help ? 0 : 1);
   }
@@ -90,7 +92,11 @@ async function main(){
     writeFileSync(opts.json, toJSON(doc, true), 'utf8');
     console.log('wrote ' + opts.json);
   }
-  if (!opts.pdf && !opts.dxf && !opts.json){
+  if (opts.svg){
+    writeFileSync(opts.svg, toSVG(doc), 'utf8');
+    console.log('wrote ' + opts.svg);
+  }
+  if (!opts.pdf && !opts.dxf && !opts.json && !opts.svg){
     writeFileSync(1, toJSON(doc, true) + '\n');
   }
 }
