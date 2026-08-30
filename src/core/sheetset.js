@@ -7,9 +7,9 @@
  * at any plot scale.
  */
 import { membersBBox } from './entities.js';
-import { makeLayout, makeViewport, fitViewport, sheetOf, PLOT_SCALES, pickSheetForBBox } from './layout.js';
+import { makeLayout, makeViewport, fitViewport, sheetOf, PLOT_SCALES, pickSheetForBBox, modelToPaper, inViewport } from './layout.js';
 import { normalizeSheet } from './document.js';
-import { placeInMargin, makeTableAnnotation, addAnnotation } from './sheetspace.js';
+import { placeInMargin, makeTableAnnotation, addAnnotation, makeNote } from './sheetspace.js';
 import { entsInBBox, collectCallouts, padBBox, buildLegend, legendToTable, indexToTable } from './legend.js';
 import { bodyBBox, collectParts, partsInBBox, partsToTable, buildingSchedule, specNotes, specColW, padForLabels } from './spec.js';
 
@@ -47,7 +47,7 @@ function roomSections(entities){
     });
     return {
       name: r.name || 'ROOM',
-      bbox: padBBox(bb, 2.5),
+      bbox: padBBox(bb, 0.8),
       source: 'room',
       area: r.area,
       cx: (bb[0] + bb[2]) / 2,
@@ -217,6 +217,18 @@ function buildSheet(opts, bbox){
   return out;
 }
 
+function stampMarks(layout, parts){
+  const vp = layout && layout.viewports && layout.viewports[0];
+  if (!vp || !parts || !parts.length) return layout;
+  let out = layout;
+  parts.forEach(p => {
+    const xy = modelToPaper(vp, p.x, p.y);
+    if (!inViewport(vp, xy[0], xy[1])) return;
+    out = addAnnotation(out, makeNote(xy[0] + 0.08, xy[1] + 0.08, p.mark, { size: 0.11 }));
+  });
+  return out;
+}
+
 export function generateSheetSet(entities, layers, opts){
   opts = opts || {};
   const detected = detectSections(entities);
@@ -286,6 +298,12 @@ export function generateSheetSet(entities, layers, opts){
       notes: specNotes(body, out.kind === 'section' ? partsInBBox(parts, out.section && out.section.bbox, 0.5) : parts)
     });
     out = placeTable(out, legendToTable(legend, { colW }));
+    if (out.kind !== 'cover' && parts.length){
+      const scoped = out.kind === 'section'
+        ? partsInBBox(parts, out.section && out.section.bbox, 0.5)
+        : parts;
+      out = stampMarks(out, scoped);
+    }
     return out;
   });
 }

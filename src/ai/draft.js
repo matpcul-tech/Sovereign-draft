@@ -60,7 +60,8 @@ export const AI_SCHEMA_SPEC =
 'overall width (or diameter), and a station at each major labeled part.\n' +
 'A drawing with no dimensions cannot be built from.\n' +
 'Every callout SHOULD include mark plus attrs qty and size. Parse "x9" as\n' +
-'qty 9. Include material only when the user named one — never invent alloys.\n' +
+'qty 9. Include material ONLY when the user named that material in the request.\n' +
+'Never invent alloys, trade names, or certifications. If unknown, omit material.\n' +
 'Stay under 40 walls. Do not emit raw leftover lines. Output must be valid JSON.\n' +
 '\n' +
 'You may also return a sheet set. Geometry is drawn once at true size; a sheet\n' +
@@ -134,6 +135,30 @@ function applyMark(ent, src){
   return ent;
 }
 
+export function namedInPrompt(prompt, value){
+  if (!value) return false;
+  const p = String(prompt || '').toLowerCase();
+  const v = String(value).toLowerCase().trim();
+  if (v.length < 3) return false;
+  return p.indexOf(v) >= 0;
+}
+
+/* Drop materials the user did not name. A schedule that lists AL-LI 2198
+ * because the model guessed is a lie. */
+export function scrubInventedMaterials(entities, prompt){
+  if (prompt == null) return entities;
+  (entities || []).forEach(e => {
+    if (!e.attributes || e.attributes.material == null || e.attributes.material === '') return;
+    const m = String(e.attributes.material);
+    if (namedInPrompt(prompt, m)) return;
+    const first = m.split(/[/,]/)[0].trim();
+    if (first.length >= 4 && namedInPrompt(prompt, first)) return;
+    e.attributes.materialInvented = true;
+    delete e.attributes.material;
+  });
+  return entities;
+}
+
 export function extractItems(text){
   const r = extractResponse(text);
   if (r.legacy){
@@ -158,10 +183,12 @@ export function extractResponse(text){
   throw new Error('Empty drawing returned');
 }
 
-export function realizeResponse(text, ensureLayer){
+export function realizeResponse(text, ensureLayer, opts){
   const extracted = extractResponse(text);
   if (extracted.legacy) return itemsToEntities(extracted.items, ensureLayer);
-  return schemaToEntities(extracted.schema, ensureLayer);
+  const ents = schemaToEntities(extracted.schema, ensureLayer);
+  scrubInventedMaterials(ents, opts && opts.prompt);
+  return ents;
 }
 
 /* Legacy raw-item converter kept so existing tests (and older model replies) still work. */
@@ -606,13 +633,14 @@ function attachDetails(sheets, proposals){
 
 /* The document the model returned: geometry plus an optional sheet set.
  * realizeResponse stays entity only so existing callers are untouched. */
-export function realizeDocument(text, ensureLayer){
+export function realizeDocument(text, ensureLayer, opts){
   const extracted = extractResponse(text);
   if (extracted.legacy){
     return { entities: itemsToEntities(extracted.items, ensureLayer), sheets: [], drawingType: 'plan' };
   }
   const schema = extracted.schema;
   const entities = schemaToEntities(schema, ensureLayer);
+  scrubInventedMaterials(entities, opts && opts.prompt);
   return {
     entities,
     sheets: schemaToSheets(schema, entities),

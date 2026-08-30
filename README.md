@@ -11,7 +11,7 @@ This is how we democratize CAD: the 80% of drawings that are plans, elevations, 
 | You get | You don’t |
 |---|---|
 | 2D drafting in the browser (PWA) | 3D solids, CAM, or CATIA |
-| Command line (`L`, `TR`, `@8<45`, F8) | Native DWG (open DXF instead) |
+| Command line (`L`, `TR`, `@8<45`, F8) | Native DWG *write* (we read DWG, write DXF) |
 | Issued sheets: title block, copyright, multi-page PDF | Shop-floor GD&T / welding maps |
 | `SHEETSET` — cover, overall, one page per room or part | A substitute for a professional of record |
 | AI first pass (your Anthropic key) | Invented materials or pretended tolerances |
@@ -126,11 +126,42 @@ Envelope dimensions (overall height and width) are stamped when the model has no
 
 A sheet set is a general arrangement plus a schedule. It is not a manufacturing package.
 
+## Kernel, CLI, embed
+
+The editor is the app. The kernel is the product.
+
+```js
+import { open, draw, sheetset, toPDF, toDXF, toJSON } from 'sovereign-draft'
+
+const doc = open(dxfText, 'plan.dxf')
+const set = sheetset(doc)
+writeFileSync('plan.pdf', toPDF(set), 'latin1')
+```
+
+```
+npx sovereign-draft plan.json --pdf plan.pdf
+npx sovereign-draft plan.dxf --sheets --pdf set.pdf
+npx sovereign-draft --sample --pdf cabin.pdf
+npx sovereign-draft --prompt "24x36 cabin, 3 rooms" --pdf cabin.pdf   # needs ANTHROPIC_API_KEY
+npx sovereign-draft drawing.dwg --json drawing.json
+```
+
+Embed a drawing in your page (chrome off):
+
+```html
+<iframe src="embed.html?src=plan.json"></iframe>
+<!-- or -->
+<script type="module" src="/src/embed.js"></script>
+<sovereign-draft src="plan.json"></sovereign-draft>
+```
+
+`postMessage({ type: 'sovereign-draft', action: 'load', project })` into the iframe. `pdf` / `dxf` / `json` / `sheetset` come back the same way.
+
 ## Files
 
 The project JSON is the source of truth — plain objects, diffable in git, next to the repo. DXF and PDF are exports.
 
-**Open** (`OPEN`, Sheet → Open drawing, or drop a file) replaces the sheet. **Insert DXF** (`DXFIN`) merges into the current drawing. `.json` project files open the same way. `.dwg` is binary and cannot be read yet; Save As DXF in the other program, then Open here.
+**Open** (`OPEN`, Sheet → Open drawing, or drop a file) replaces the sheet. **Insert DXF** (`DXFIN`) merges into the current drawing. `.json` project files open the same way. **DWG** opens in the browser: misnamed DXF files are read directly; real DWG is parsed via LibreDWG wasm, loaded only when you open a `.dwg` (GPL parser, not bundled). If the wasm is blocked, Save As DXF in the other program and Open here.
 
 **Units.** World units are decimal feet, Y-up. The writer stamps `$INSUNITS=2`. The reader honors `$INSUNITS` (inches, mm, cm, meters → feet). If the header is missing and coordinates look like millimetres (max > 2000), they are scaled to feet; otherwise feet are assumed. A 36 ft cabin is never auto-scaled.
 
@@ -170,24 +201,19 @@ Type a length (`3`, `2'6"`) with a door or window selected to set width. Propert
 
 Autosave to `localStorage`. No account, no backend. The only optional network call is `api.anthropic.com` with your key.
 
-## Where this is going
+## Status
 
-The editor stays free. Next is CAD as infrastructure, not more title-block theater.
+Shipped in this tree: library + CLI, honest AI (materials stay blank unless you named them), untruncated schedule cells, tighter room views with marks on the drawing, DWG open, embed.
 
-1. **Library + CLI** — `import { draw, pdf, dxf } from 'sovereign-draft'` and `npx sovereign-draft plan.json --pdf`, so a developer plots sheets from CI.
-2. **Honest AI** — blank materials unless you named them; refuse a spec row with no size.
-3. **Floor plans done** — isolated rooms, untruncated tables, marks on the view that match the schedule. One vertical a builder could use.
-4. **DWG read** (one-way, wasm) — open what people already have. We still write JSON + DXF.
-5. **Embed** — a drawing in *your* docs or app, not only in ours.
-
-No 3D kernel. No seat license. Collaboration only after the kernel is something you can import.
+Still ahead: DWG write (never), 3D (never), a hosted share link (maybe). Floor-plan sheets will keep getting tighter. Collaboration only after the kernel is something you can import — it already is.
 
 ## Development
 
 ```
-npm test          # vitest (geometry, modify, dxf, pdf, AI schema, sheet sets)
+npm test          # vitest (geometry, modify, dxf, pdf, AI schema, sheet sets, kernel)
 npm run dev       # Vite, browser CAD
-npm run build     # static PWA
+npm run build     # static PWA + embed.html
+node bin/sovereign-draft.js --sample --pdf /tmp/cabin.pdf
 ```
 
-The kernel in `src/core` is plain JS with no DOM. That’s the split the library will use.
+`src/api.js` is the kernel. No DOM. `src/core` is plain JS. That is the split.

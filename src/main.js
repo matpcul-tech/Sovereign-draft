@@ -13,6 +13,7 @@ import { renderLayers } from './ui/layersPanel.js';
 import { toast } from './ui/toast.js';
 import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90, placeAllSchedules, exportScheduleCSV, applyCleanup, applyOverkill, applyRooms, applyTakeoff, applySheetSet } from './actions.js';
 import { buildDXF, sniffDrawing, openDXF } from './io/dxf.js';
+import { isDwgBuffer, parseDwg } from './io/dwg.js';
 import { buildPDF, buildAllSheetsPDF, scaleLabel } from './io/pdf.js';
 import { renderPNG } from './io/png.js';
 import { serializeProject, validateProject, applyProject, autosave, loadAutosave } from './io/project.js';
@@ -38,6 +39,15 @@ let unbindInput = null;
 export function boot(root){
   if (!root) return () => {};
   root.innerHTML = shellHTML();
+  if (typeof document !== 'undefined' && typeof location !== 'undefined'){
+    try {
+      const q = new URLSearchParams(location.search);
+      if (q.get('embed') === '1' || q.has('src') || (document.body && document.body.classList.contains('embed'))){
+        document.body.classList.add('embed');
+        document.documentElement.classList.add('embed');
+      }
+    } catch (e){ /* ignore */ }
+  }
   const cv = $('cv');
   initCanvas(cv);
   unbindInput = bindInput(cv);
@@ -56,7 +66,7 @@ export function boot(root){
     autosaveTimer = setTimeout(() => autosave(state), 800);
   });
 
-  const restored = loadAutosave();
+  const restored = (document.body && document.body.classList.contains('embed')) ? null : loadAutosave();
   if (restored && (restored.entities.length || restored.userBlocks.length)){
     applyProject(state, restored);
     if ($('projName')) $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
@@ -260,7 +270,7 @@ function wireUi(){
         apiKey: settings.apiKey,
         model: settings.model
       });
-      const doc = realizeDocument(text, ensureLayer);
+      const doc = realizeDocument(text, ensureLayer, { prompt });
       const fresh = doc.entities;
       pushUndo();
       fresh.forEach(e => addEntity(e));
@@ -443,8 +453,32 @@ function wireUi(){
   function readDrawingFile(file, merge){
     if (!file) return;
     const n = String(file.name || '').toLowerCase();
-    if (n.endsWith('.dwg')){
-      toast('DWG is binary — Save As DXF in the other CAD, then Open here');
+    if (n.endsWith('.dwg') || file.type === 'application/acad' || file.type === 'image/vnd.dwg'){
+      const rd = new FileReader();
+      rd.onload = async () => {
+        try {
+          const buf = rd.result;
+          if (!isDwgBuffer(buf, file.name)){
+            openDrawingText(new TextDecoder('latin1').decode(buf), file.name, { merge: !!merge });
+            return;
+          }
+          toast('Opening DWG…');
+          const r = await parseDwg(buf, { filename: file.name, ensureLayer: n => String(n || 'WALLS').toUpperCase().slice(0, 24) });
+          if (!r.entities.length){ toast('No supported objects in that DWG'); return; }
+          if (merge){
+            pushUndo();
+            r.entities.forEach(e => { e.layer = ensureLayer(e.layer); addEntity(e); });
+            afterChange(); zoomFit(); draw();
+            toast('Inserted ' + r.entities.length + ' objects from DWG');
+          } else {
+            replaceWithEntities(r.entities, nameFromFile(file.name));
+            toast('Opened ' + r.entities.length + ' objects from DWG');
+          }
+        } catch (err){
+          toast((err && err.message) || 'DWG open failed — Save As DXF in the other CAD');
+        }
+      };
+      rd.readAsArrayBuffer(file);
       return;
     }
     const rd = new FileReader();
@@ -801,10 +835,16 @@ function renderLayouts(){
   });
 }
 
-/* Static PWA entry (GitHub Pages / Vite). The React host boots via boot(#cad-host) instead. */
+/* Static PWA entry (GitHub Pages / Vite). The React host boots via boot(#cad-host) instead.
+ * embed.html / ?embed=1 / ?src= is claimed by src/embed.js so we don't double-boot. */
 if (typeof document !== 'undefined'){
   const staticRoot = document.getElementById('app');
-  if (staticRoot && !booted){
+  let embedMode = false;
+  try {
+    const q = new URLSearchParams(location.search);
+    embedMode = q.get('embed') === '1' || q.has('src') || (document.body && document.body.classList.contains('embed'));
+  } catch (e){ embedMode = false; }
+  if (staticRoot && !booted && !embedMode){
     boot(staticRoot);
     if ('serviceWorker' in navigator){
       import('virtual:pwa-register').then(({ registerSW }) => {
