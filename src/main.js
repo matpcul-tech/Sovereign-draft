@@ -11,7 +11,7 @@ import { syncCtx, renderHistory, renderProps, cycleCurrentLt, cycleCurrentLw, cy
 import { openSheet, closeSheets } from './ui/sheets.js';
 import { renderLayers } from './ui/layersPanel.js';
 import { toast } from './ui/toast.js';
-import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90, placeAllSchedules, exportScheduleCSV, applyCleanup, applyOverkill, applyRooms, applyTakeoff } from './actions.js';
+import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90, placeAllSchedules, exportScheduleCSV, applyCleanup, applyOverkill, applyRooms, applyTakeoff, applySheetSet } from './actions.js';
 import { buildDXF, sniffDrawing, openDXF } from './io/dxf.js';
 import { buildPDF, buildAllSheetsPDF, scaleLabel } from './io/pdf.js';
 import { renderPNG } from './io/png.js';
@@ -26,6 +26,7 @@ import { addSheet, addViewToSheet, normalizeSheets, findSheet } from './core/doc
 import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys, markScheduleCSV } from './core/keynote.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation, makeDetailCallout, danglingDetails, detailBubbleText } from './core/sheetspace.js';
 import { cabin24x36 } from './core/demo.js';
+import { generateSheetSet } from './core/sheetset.js';
 
 const $ = id => document.getElementById(id);
 
@@ -488,12 +489,27 @@ function wireUi(){
     state.projectName = '24x36 Cabin';
     state.autoRooms = true;
     if ($('projName')) $('projName').value = '24x36 Cabin';
+    state.layouts = generateSheetSet(state.entities, state.layers, { projectName: state.projectName });
+    state.currentLayout = state.layouts[0].id;
+    state.space = state.layouts[0].id;
     afterChange(); zoomFit(); draw();
-    toast('Sample cabin — live rooms, grid, associative dims');
+    renderLayouts(); renderSpaceTabs();
+    toast(state.layouts.length + ' sheets — cover, overall, one page per room');
   });
   $('hintSample') && $('hintSample').addEventListener('click', () => $('mSample') && $('mSample').click());
 
   $('mLayouts') && $('mLayouts').addEventListener('click', () => { renderLayouts(); openSheet('sheetLayouts'); });
+  $('mSheetSet') && $('mSheetSet').addEventListener('click', () => {
+    closeSheets();
+    applySheetSet();
+    renderLayouts(); renderSpaceTabs(); draw();
+  });
+  $('btnSheetSet') && $('btnSheetSet').addEventListener('click', () => {
+    applySheetSet();
+    closeSheets();
+    renderLayouts(); renderSpaceTabs(); draw();
+  });
+  document.addEventListener('sd-sheets-changed', () => { renderLayouts(); renderSpaceTabs(); });
 
   $('btnAddSheet') && $('btnAddSheet').addEventListener('click', () => {
     pushUndo();

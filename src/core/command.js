@@ -59,7 +59,8 @@ export const COMMANDS = {
   SYMBOL:  { aliases: ['SYMBOL', 'BLOCK', 'S', 'INSERT'], tool: 'symbol', prompt: 'Specify insertion point' },
   EXPLODE: { aliases: ['EXPLODE', 'XP'],                 tool: null,     action: 'explode' },
   FLIP:    { aliases: ['FLIP'],                          tool: null,     action: 'flip' },
-  ZFIT:    { aliases: ['ZOOMFIT', 'ZFIT'],              tool: null,     action: 'zoomfit' }
+  ZFIT:    { aliases: ['ZOOMFIT', 'ZFIT'],              tool: null,     action: 'zoomfit' },
+  SHEETSET:{ aliases: ['SHEETSET', 'SS', 'SHEETS'],     tool: null,     action: 'sheetset' }
 };
 
 const ALIAS = {};

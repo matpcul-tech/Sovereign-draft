@@ -15,7 +15,7 @@ import {
   finishArc, commitTyped, closePoly, explodeSelection, flipSelection,
   applyStretchBox, matchTap, areaTap, listTap, idTap, dimRadTap, finishDimAng,
   placeScheduleAt, applyCleanup, applyOverkill, applyRooms, applyTakeoff,
-  layerIsolate, layerUnisolate
+  applySheetSet, layerIsolate, layerUnisolate
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
 import { setTool } from './ui/tools.js';
@@ -366,6 +366,27 @@ function onKeyDown(ev){
   else if (ev.key === 'F3'){ ev.preventDefault(); state.snapOn = !state.snapOn; syncCtx(); toast(state.snapOn ? 'SNAP on' : 'SNAP off'); }
   else if (ev.key === 'F8'){ ev.preventDefault(); state.orthoOn = !state.orthoOn; if (state.orthoOn) state.polarOn = false; syncCtx(); toast(state.orthoOn ? 'ORTHO on' : 'ORTHO off'); }
   else if (ev.key === 'F10'){ ev.preventDefault(); state.polarOn = !state.polarOn; if (state.polarOn) state.orthoOn = false; syncCtx(); toast(state.polarOn ? 'POLAR 15° on' : 'POLAR off'); }
+  else if (ev.key === 'PageDown' || ev.key === 'PageUp'){
+    ev.preventDefault();
+    const layouts = state.layouts || [];
+    if (!layouts.length) return;
+    if (state.space === 'model'){
+      if (ev.key === 'PageDown'){
+        state.currentLayout = layouts[0].id;
+        state.space = layouts[0].id;
+      }
+    } else {
+      const i = layouts.findIndex(L => L.id === state.currentLayout);
+      const next = ev.key === 'PageDown' ? Math.min(layouts.length - 1, i + 1) : (i <= 0 ? -1 : i - 1);
+      if (next < 0) state.space = 'model';
+      else {
+        state.currentLayout = layouts[next].id;
+        state.space = layouts[next].id;
+      }
+    }
+    try { document.dispatchEvent(new Event('sd-sheets-changed')); } catch (e){ /* node */ }
+    syncCtx(); draw();
+  }
   else if ((ev.key === ' ' || ev.code === 'Space') && (state.tool === 'select' || state.tool === 'pan') && state.lastTool){
     ev.preventDefault();
     setTool(state.lastTool);
@@ -421,6 +442,7 @@ export function handleCommand(text){
   if (res.action === 'overkill'){ applyOverkill(); return; }
   if (res.action === 'rooms'){ applyRooms(); return; }
   if (res.action === 'takeoff'){ applyTakeoff(); return; }
+  if (res.action === 'sheetset'){ applySheetSet(); return; }
   if (res.action === 'layiso'){ layerIsolate(); return; }
   if (res.action === 'layuniso'){ layerUnisolate(); return; }
   if (res.action === 'open'){

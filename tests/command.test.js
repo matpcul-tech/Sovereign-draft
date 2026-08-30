@@ -60,6 +60,8 @@ describe('lookupCommand', () => {
     expect(lookupCommand('ROOMS').action).toBe('rooms');
     expect(lookupCommand('OPEN').action).toBe('open');
     expect(lookupCommand('DXFIN').action).toBe('dxfin');
+    expect(lookupCommand('SHEETSET').action).toBe('sheetset');
+    expect(lookupCommand('SS').action).toBe('sheetset');
   });
 });
 
