@@ -6,6 +6,9 @@
  * the lower-left of the sheet.
  */
 
+export const SHEET_MARGIN = 0.5;
+export const TITLE_BLOCK_H = 1.65;
+
 export const SHEETS = {
   letter:  { name: 'Letter',  w: 11,  h: 8.5,  code: 'LETTER' },
   tabloid: { name: 'Tabloid', w: 17,  h: 11,   code: 'TABLOID' },
@@ -29,8 +32,7 @@ export function sheetOf(key){ return SHEETS[key] || SHEETS.letter; }
 
 export function makeViewport(sheetKey, ppf){
   const s = sheetOf(sheetKey);
-  /* Leave a 0.5" margin and a 0.85" title strip along the bottom. */
-  const m = 0.5, tb = 0.9;
+  const m = SHEET_MARGIN, tb = TITLE_BLOCK_H;
   return {
     px: m, py: m + tb, pw: s.w - m * 2, ph: s.h - m * 2 - tb,
     mx: 0, my: 0, ppf: ppf || 18

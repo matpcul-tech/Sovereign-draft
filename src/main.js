@@ -20,12 +20,13 @@ import { buildSVG } from './io/svg.js';
 import { generateDraft, realizeResponse, realizeDocument, serializeForAI } from './ai/draft.js';
 import { loadAISettings, saveAISettings } from './ai/settings.js';
 import { shellHTML } from './shell.js';
-import { makeLayout, makeViewport, fitViewport, SHEETS } from './core/layout.js';
+import { makeLayout, makeViewport, fitViewport, SHEETS, TITLE_BLOCK_H } from './core/layout.js';
 import { membersBBox } from './core/entities.js';
 import { addSheet, addViewToSheet, normalizeSheets, findSheet } from './core/document.js';
-import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys, markScheduleCSV } from './core/keynote.js';
+import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys, markScheduleCSV, paperKeynoteColW, paperScheduleColW } from './core/keynote.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation, makeDetailCallout, danglingDetails, detailBubbleText } from './core/sheetspace.js';
 import { cabin24x36 } from './core/demo.js';
+import { loadFirm, saveFirm, defaultFirm } from './core/titleblock.js';
 import { generateSheetSet } from './core/sheetset.js';
 
 const $ = id => document.getElementById(id);
@@ -59,6 +60,13 @@ export function boot(root){
   if (restored && (restored.entities.length || restored.userBlocks.length)){
     applyProject(state, restored);
     if ($('projName')) $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
+  }
+  const savedFirm = loadFirm();
+  if (savedFirm.company || savedFirm.copyright || savedFirm.drawnBy){
+    if (!state.firm || !(state.firm.company || state.firm.copyright || state.firm.drawnBy))
+      state.firm = savedFirm;
+  } else if (!state.firm){
+    state.firm = defaultFirm();
   }
 
   const onResize = () => resize();
@@ -97,6 +105,7 @@ function wireUi(){
   $('btnFit') && $('btnFit').addEventListener('click', () => { zoomFit(); draw(); });
   $('btnMenu') && $('btnMenu').addEventListener('click', () => {
     $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
+    fillFirmFields();
     openSheet('sheetMenu');
   });
   $('btnProps') && $('btnProps').addEventListener('click', () => { renderProps(); openSheet('sheetProps'); });
@@ -285,6 +294,24 @@ function wireUi(){
     state.projectName = this.value.trim() || 'Untitled';
     autosave(state);
   });
+  function fillFirmFields(){
+    const f = state.firm || defaultFirm();
+    if ($('firmCompany')) $('firmCompany').value = f.company || '';
+    if ($('firmCopyright')) $('firmCopyright').value = f.copyright || '';
+    if ($('firmDrawn')) $('firmDrawn').value = f.drawnBy || '';
+  }
+  function commitFirm(){
+    state.firm = {
+      company: ($('firmCompany') && $('firmCompany').value.trim()) || '',
+      copyright: ($('firmCopyright') && $('firmCopyright').value.trim()) || '',
+      drawnBy: ($('firmDrawn') && $('firmDrawn').value.trim()) || ''
+    };
+    saveFirm(state.firm);
+    autosave(state);
+  }
+  ['firmCompany', 'firmCopyright', 'firmDrawn'].forEach(id => {
+    $(id) && $(id).addEventListener('change', commitFirm);
+  });
 
   $('mExportPDF') && $('mExportPDF').addEventListener('click', () => openSheet('sheetPDF'));
   document.querySelectorAll('#pdfscl .chip').forEach(b => {
@@ -310,6 +337,7 @@ function wireUi(){
         return !L || (L.visible !== false && L.plot !== false);
       },
       projectName: state.projectName,
+      firm: state.firm,
       layout: layout || undefined
     });
     download(fileSlug() + '.pdf', pdf, 'application/pdf');
@@ -573,7 +601,7 @@ function wireUi(){
     if (sheet){
       /* A legend belongs to the sheet, in paper inches, so it keeps its size
        * whatever scale the views are drawn at. */
-      const t = buildKeynoteLegend(state.entities, sheet, [0, 0], { colW: [0.55, 2.1] });
+      const t = buildKeynoteLegend(state.entities, sheet, [0, 0], { colW: paperKeynoteColW() });
       t.rowH = 0.22;
       const size = [t.colW.reduce((a, b) => a + b, 0), (t.cells.length + 1) * t.rowH];
       const slot = placeInMargin(sheet, size);
@@ -598,7 +626,7 @@ function wireUi(){
     if (sheet){
       const t = buildMarkSchedule(state.entities, sheet, [0, 0], {
         columns: cols.length ? cols : undefined,
-        colW: [0.55, 0.45].concat((cols.length ? cols : ['type', 'material', 'size']).map(() => 0.85))
+        colW: paperScheduleColW(cols.length ? cols : undefined)
       });
       t.rowH = 0.22;
       const size = [t.colW.reduce((a, b) => a + b, 0), (t.cells.length + 1) * t.rowH];
@@ -626,7 +654,8 @@ function wireUi(){
         const L = layerByName(name);
         return !L || (L.visible !== false && L.plot !== false);
       },
-      projectName: state.projectName
+      projectName: state.projectName,
+      firm: state.firm
     });
     download(fileSlug() + '-sheets.pdf', pdf, 'application/pdf');
     toast(pages + ' sheet' + (pages === 1 ? '' : 's') + ' exported');
@@ -721,7 +750,7 @@ function wireUi(){
 function requireLayout(){
   return { makeViewport: (sheet, ppf) => {
     const s = SHEETS[sheet] || SHEETS.letter;
-    const m = 0.5, tb = 0.9;
+    const m = 0.5, tb = TITLE_BLOCK_H;
     return { px: m, py: m + tb, pw: s.w - m * 2, ph: s.h - m * 2 - tb, mx: 0, my: 0, ppf: ppf || 18 };
   } };
 }

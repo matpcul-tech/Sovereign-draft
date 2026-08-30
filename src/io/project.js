@@ -22,6 +22,7 @@ export function serializeProject(state, pretty){
     app: 'sovereign-draft',
     v: PROJECT_VERSION,
     name: state.projectName || 'Untitled',
+    firm: state.firm || { company: '', copyright: '', drawnBy: '' },
     idSeq: state.idSeq,
     gSeq: state.gSeq,
     layers: state.layers,
@@ -54,7 +55,12 @@ export function validateProject(o){
     layouts: normalizeSheets(Array.isArray(o.layouts) && o.layouts.length ? o.layouts : defaultLayouts()),
     currentLayout: o.currentLayout || 'A1',
     space: o.space === 'model' || o.space ? o.space : 'model',
-    dxfVer: o.dxfVer === 'R2000' ? 'R2000' : 'R12'
+    dxfVer: o.dxfVer === 'R2000' ? 'R2000' : 'R12',
+    firm: {
+      company: String(o.firm && o.firm.company || '').slice(0, 80),
+      copyright: String(o.firm && o.firm.copyright || '').slice(0, 160),
+      drawnBy: String(o.firm && o.firm.drawnBy || '').slice(0, 40)
+    }
   };
 }
 
@@ -71,6 +77,7 @@ export function applyProject(state, p){
   if (p.currentLayout) state.currentLayout = p.currentLayout;
   if (p.space) state.space = p.space;
   if (p.dxfVer) state.dxfVer = p.dxfVer;
+  if (p.firm) state.firm = p.firm;
   ['SCHEDULES', 'UNDERLAY'].forEach(n => {
     if (!state.layers.find(l => l.name === n)){
       const d = defaultLayers().find(l => l.name === n);

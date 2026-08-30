@@ -3,7 +3,6 @@
  */
 import { tableFrags } from '../core/schedule.js';
 import { scaleLabel } from '../io/pdf.js';
-import { sheetLabel } from '../core/document.js';
 import { detailBubbleText } from '../core/sheetspace.js';
 import { state, layerByName, selMembers, activeLayout } from '../core/state.js';
 import { vp, W2S, S2W } from '../core/viewport.js';
@@ -13,6 +12,7 @@ import { fmtFtIn } from '../core/format.js';
 import { drawEnt, strokePathOn } from './ent.js';
 import { ix } from '../interaction.js';
 import { sheetOf, modelToPaper } from '../core/layout.js';
+import { titleBlockModel, drawingTitleOf, viewportClearOfTitle } from '../core/titleblock.js';
 import { SNAP_KIND } from '../core/osnap.js';
 import { hatchLines } from '../core/hatch.js';
 import { arcFrom3 } from '../core/modify.js';
@@ -136,8 +136,9 @@ function drawPaper(){
   ctx.fillRect(a[0], a[1], sh.w * scl, sh.h * scl);
   ctx.strokeStyle = '#1b2c4a'; ctx.lineWidth = 1;
   ctx.strokeRect(a[0], a[1], sh.w * scl, sh.h * scl);
-  /* Viewports */
-  for (const vp0 of L.viewports){
+  /* Viewports — lifted above the issued title block so geometry never sits on the stamp. */
+  for (const vpRaw of L.viewports){
+    const vp0 = viewportClearOfTitle(vpRaw);
     const tl = p2s(vp0.px, vp0.py + vp0.ph), br = p2s(vp0.px + vp0.pw, vp0.py);
     ctx.save();
     ctx.beginPath();
@@ -162,8 +163,9 @@ function drawPaper(){
     ctx.strokeStyle = '#43536f'; ctx.lineWidth = 1;
     ctx.fillStyle = '#07101f';
     if (a.kind === 'table' && a.table){
-      const t = Object.assign({}, a.table, { x: a.x, y: a.y });
-      const ts = (t.rowH || 0.22) / 0.85;
+      const t = Object.assign({}, a.table, { x: a.x, y: a.y, fromTop: true });
+      const paper = (t.rowH || 0.85) < 0.4;
+      const ts = paper ? 1 : ((t.rowH || 0.22) / 0.85);
       tableFrags(t).forEach(f => {
         if (f.type === 'line'){
           const p0 = p2s(f.x1, f.y1), p1 = p2s(f.x2, f.y2);
@@ -172,6 +174,7 @@ function drawPaper(){
           const q = p2s(f.x, f.y);
           ctx.font = Math.max(8, f.size * ts * scl) + 'px Outfit, system-ui';
           ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+          ctx.fillStyle = '#07101f';
           ctx.fillText(f.content || '', q[0], q[1]);
         }
       });
@@ -200,23 +203,36 @@ function drawPaper(){
   });
 
   if (L.titleBlock){
-    const tbH = 0.9;
-    const t0 = p2s(0.5, 0.5 + tbH), t1 = p2s(sh.w - 0.5, 0.5);
+    const inner = p2s(0.38, sh.h - 0.38);
     ctx.strokeStyle = '#1b2c4a'; ctx.lineWidth = 1.2;
-    ctx.strokeRect(t0[0], t0[1], (sh.w - 1) * scl, tbH * scl);
-    ctx.fillStyle = '#07101f';
-    ctx.font = '600 ' + Math.max(11, scl * 0.28) + 'px "Playfair Display", Georgia, serif';
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    const midY = (t0[1] + t1[1]) / 2;
-    ctx.fillText((state.projectName || 'SOVEREIGN DRAFT').toUpperCase(), t0[0] + 10, midY - 6);
-    ctx.font = Math.max(9, scl * 0.16) + 'px Outfit, system-ui';
-    ctx.fillStyle = '#43536f';
-    /* The full scale ladder, not three hardcoded cases, so 1/16 and 1/2 read
-     * as architectural scales rather than as points per foot. */
-    ctx.fillText(L.name + '   ·   SCALE ' + scaleLabel(L.viewports[0] ? (L.viewports[0].ppf || L.ppf) : L.ppf), t0[0] + 10, midY + 10);
-    ctx.textAlign = 'right';
-    /* The sheet number, not the first word of the sheet name. */
-    ctx.fillText(sheetLabel(L.sheetNumber, 0, (state.layouts || []).length), t1[0] - 10, midY);
+    ctx.strokeRect(inner[0], inner[1], (sh.w - 0.76) * scl, (sh.h - 0.76) * scl);
+    const model = titleBlockModel(L.sheet, {
+      firm: state.firm,
+      projectName: state.projectName,
+      drawingTitle: drawingTitleOf(L),
+      sheetNumber: L.sheetNumber || '',
+      sheetCount: (state.layouts || []).length,
+      scale: scaleLabel(L.viewports[0] ? (L.viewports[0].ppf || L.ppf) : L.ppf),
+      dateStr: new Date().toLocaleDateString()
+    });
+    const tb = p2s(model.x, model.y + model.h);
+    ctx.fillStyle = '#f4efe4';
+    ctx.fillRect(tb[0], tb[1], model.w * scl, model.h * scl);
+    ctx.strokeStyle = '#1b2c4a'; ctx.lineWidth = 1.1;
+    ctx.strokeRect(tb[0], tb[1], model.w * scl, model.h * scl);
+    (model.cells || []).forEach(c => {
+      const q = p2s(c.x, c.y + c.h);
+      ctx.strokeRect(q[0], q[1], c.w * scl, c.h * scl);
+    });
+    (model.labels || []).forEach(lab => {
+      const q = p2s(lab.x, lab.y);
+      ctx.fillStyle = lab.gray > 0.3 ? '#6b7c93' : '#07101f';
+      const px = Math.max(8, lab.size * scl);
+      ctx.font = (lab.bold ? '600 ' : '400 ') + px + 'px Outfit, system-ui';
+      ctx.textAlign = lab.align === 'center' ? 'center' : (lab.align === 'right' ? 'right' : 'left');
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(lab.text || '', q[0], q[1]);
+    });
   }
   void ox; void oy;
 }

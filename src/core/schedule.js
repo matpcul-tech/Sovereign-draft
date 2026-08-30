@@ -108,7 +108,57 @@ export function tableCorners(e){
   return [[e.x, e.y], [e.x + w, e.y], [e.x + w, e.y + h], [e.x, e.y + h]];
 }
 
+
+function tableFragsFromTop(e){
+  const fr = [];
+  const rowH = e.rowH || 0.22;
+  const colW = e.colW || [];
+  const cells = e.cells || [];
+  const w = colW.reduce((a, b) => a + b, 0);
+  const n = cells.length;
+  const titleH = e.title ? rowH : 0;
+  const totalH = (n + (e.title ? 1 : 0)) * rowH;
+  const top = e.y + totalH;
+  if (e.title){
+    fr.push({
+      type: 'text', layer: e.layer || 'TEXT',
+      x: e.x + 0.12, y: top - rowH + rowH * 0.28,
+      size: 0.13, content: e.title, maxW: Math.max(0.4, w - 0.24)
+    });
+  }
+  const gridTop = top - titleH;
+  const gridBottom = gridTop - n * rowH;
+  for (let r = 0; r <= n; r++){
+    const yy = gridTop - r * rowH;
+    fr.push({ type: 'line', layer: e.layer || 'TEXT', x1: e.x, y1: yy, x2: e.x + w, y2: yy });
+  }
+  let x = e.x;
+  fr.push({ type: 'line', layer: e.layer || 'TEXT', x1: x, y1: gridBottom, x2: x, y2: gridTop });
+  colW.forEach(cw => {
+    x += cw;
+    fr.push({ type: 'line', layer: e.layer || 'TEXT', x1: x, y1: gridBottom, x2: x, y2: gridTop });
+  });
+  cells.forEach((row, ri) => {
+    const rowBottom = gridTop - (ri + 1) * rowH;
+    let cx = e.x;
+    row.forEach((cell, ci) => {
+      fr.push({
+        type: 'text',
+        layer: e.layer || 'TEXT',
+        x: cx + 0.1,
+        y: rowBottom + rowH * 0.28,
+        size: ri === 0 ? 0.1 : 0.09,
+        content: String(cell == null ? '' : cell),
+        maxW: (colW[ci] || 3) - 0.18
+      });
+      cx += colW[ci] || 3;
+    });
+  });
+  return fr;
+}
+
 export function tableFrags(e){
+  if (e && e.fromTop) return tableFragsFromTop(e);
   const fr = [];
   const rowH = e.rowH || 0.85;
   const colW = e.colW || [];

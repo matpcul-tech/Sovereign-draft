@@ -166,3 +166,17 @@ export function markScheduleCSV(entities, sheet, columns){
 }
 
 void modelToPaper; void inViewport;
+
+/* Paper-inch column widths so a legend on Arch D is readable, not a smear. */
+export function paperKeynoteColW(){ return [0.8, 2.8]; }
+export function paperScheduleColW(columns){
+  const cols = columns && columns.length ? columns : ['type', 'material', 'size'];
+  return [0.75, 0.5].concat(cols.map(c => {
+    const k = String(c).toLowerCase();
+    if (k === 'material') return 2.6;
+    if (k === 'size') return 2.0;
+    if (k === 'type' || k === 'label') return 2.2;
+    return 1.7;
+  }));
+}
+

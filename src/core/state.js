@@ -35,6 +35,7 @@ export function defaultLayers(){
 
 export const state = {
   projectName: 'Untitled',
+  firm: { company: '', copyright: '', drawnBy: '' },
   layers: defaultLayers(),
   currentLayer: 'WALLS',
   entities: [],
