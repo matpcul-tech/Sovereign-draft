@@ -11,11 +11,12 @@ import { syncCtx, renderHistory, renderProps, cycleCurrentLt, cycleCurrentLw, cy
 import { openSheet, closeSheets } from './ui/sheets.js';
 import { renderLayers } from './ui/layersPanel.js';
 import { toast } from './ui/toast.js';
-import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90 } from './actions.js';
+import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90, placeAllSchedules, exportScheduleCSV, applyCleanup, applyOverkill, applyRooms, applyTakeoff } from './actions.js';
 import { buildDXF, parseDXF } from './io/dxf.js';
 import { buildPDF, scaleLabel } from './io/pdf.js';
 import { renderPNG } from './io/png.js';
 import { serializeProject, validateProject, applyProject, autosave, loadAutosave } from './io/project.js';
+import { buildSVG } from './io/svg.js';
 import { generateDraft, realizeResponse, serializeForAI } from './ai/draft.js';
 import { loadAISettings, saveAISettings } from './ai/settings.js';
 import { shellHTML } from './shell.js';
@@ -191,6 +192,9 @@ function wireUi(){
       const e = entById(ix.editTextId);
       if (e && v){ pushUndo(); e.content = v; afterChange(); }
       ix.editTextId = null;
+    } else if (ix.pendingLeader){
+      if (v){ ix.pendingLeader.content = v; afterChange(); }
+      ix.pendingLeader = null;
     } else if (v && ix.pendingTextPt){
       pushUndo();
       addEntity({ type: 'text', layer: 'TEXT', x: ix.pendingTextPt[0], y: ix.pendingTextPt[1], size: 1.2, content: v });
@@ -281,7 +285,10 @@ function wireUi(){
     }
     const { pdf, ppf } = buildPDF(state.entities, {
       ppf: layout ? layout.ppf : state.pdfPPF,
-      layerVisible: name => { const L = layerByName(name); return !L || L.visible; },
+      layerVisible: name => {
+        const L = layerByName(name);
+        return !L || (L.visible !== false && L.plot !== false);
+      },
       projectName: state.projectName,
       layout: layout || undefined
     });
@@ -294,6 +301,15 @@ function wireUi(){
     download(fileSlug() + '.dxf', buildDXF(state.entities, state.layers, { ver: state.dxfVer, userBlocks: state.userBlocks }), 'application/dxf');
     toast('DXF ' + state.dxfVer + ' exported');
   });
+  function exportSvg(){
+    closeSheets();
+    if (!state.entities.length){ toast('Nothing to export yet'); return; }
+    download(fileSlug() + '.svg', buildSVG(state.entities, state.layers), 'image/svg+xml');
+    toast('SVG exported');
+  }
+  $('mExportSVG') && $('mExportSVG').addEventListener('click', exportSvg);
+  document.addEventListener('sd-export-svg', exportSvg);
+  document.addEventListener('sd-redraw', () => draw());
   $('chipDxfVer') && $('chipDxfVer').addEventListener('click', function(){
     state.dxfVer = state.dxfVer === 'R12' ? 'R2000' : 'R12';
     this.textContent = state.dxfVer;
@@ -373,12 +389,55 @@ function wireUi(){
     pushUndo();
     cabin24x36().forEach(e => addEntity(e));
     state.projectName = '24x36 Cabin';
+    state.autoRooms = true;
     if ($('projName')) $('projName').value = '24x36 Cabin';
     afterChange(); zoomFit(); draw();
-    toast('Sample cabin — walls, doors, hatches, dims');
+    toast('Sample cabin — live rooms, grid, associative dims');
   });
 
   $('mLayouts') && $('mLayouts').addEventListener('click', () => { renderLayouts(); openSheet('sheetLayouts'); });
+  $('mSchedules') && $('mSchedules').addEventListener('click', () => {
+    closeSheets();
+    placeAllSchedules();
+  });
+  $('mSchedCSV') && $('mSchedCSV').addEventListener('click', () => {
+    closeSheets();
+    download(fileSlug() + '-doors.csv', exportScheduleCSV('door'), 'text/csv');
+    toast('Door schedule CSV');
+  });
+  $('mCleanup') && $('mCleanup').addEventListener('click', () => {
+    closeSheets();
+    applyCleanup();
+  });
+  $('mRooms') && $('mRooms').addEventListener('click', () => {
+    closeSheets();
+    applyRooms();
+  });
+  $('mTakeoff') && $('mTakeoff').addEventListener('click', () => {
+    closeSheets();
+    applyTakeoff();
+  });
+  $('mOverkill') && $('mOverkill').addEventListener('click', () => {
+    closeSheets();
+    applyOverkill();
+  });
+  $('mTrace') && $('mTrace').addEventListener('click', () => {
+    closeSheets();
+    const f = $('fileImage');
+    if (f) f.click();
+  });
+  $('fileImage') && $('fileImage').addEventListener('change', ev => {
+    const f = ev.target.files[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      ix.imageSrc = String(rd.result || '');
+      state.tool = 'image';
+      toast('Tap two corners to place the underlay');
+      draw();
+    };
+    rd.readAsDataURL(f);
+    ev.target.value = '';
+  });
   $('mHistory') && $('mHistory').addEventListener('click', () => { renderHistory(); openSheet('sheetHistory'); });
 
   document.querySelectorAll('#spacetabs .stab').forEach(b => {

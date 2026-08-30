@@ -40,8 +40,8 @@ export function syncCtx(){
   const L = layerByName(state.currentLayer);
   if ($('chipLayerSw')) $('chipLayerSw').style.background = L ? L.color : '#d4a843';
   if ($('chipLayerNm')) $('chipLayerNm').textContent = state.currentLayer;
-  if ($('chipClose')) $('chipClose').style.display = ((state.tool === 'poly' || state.tool === 'hatch') && ix.polyPts.length > 2) ? '' : 'none';
-  if ($('chipDone')) $('chipDone').style.display = ((state.tool === 'poly' || state.tool === 'hatch') && ix.polyPts.length > 1) ? '' : 'none';
+  if ($('chipClose')) $('chipClose').style.display = ((state.tool === 'poly' || state.tool === 'hatch' || state.tool === 'cloud' || state.tool === 'leader') && ix.polyPts.length > 2) ? '' : 'none';
+  if ($('chipDone')) $('chipDone').style.display = ((state.tool === 'poly' || state.tool === 'hatch' || state.tool === 'cloud' || state.tool === 'leader') && ix.polyPts.length > 1) ? '' : 'none';
   if ($('chipOffDist')){
     $('chipOffDist').style.display = state.tool === 'offset' ? '' : 'none';
     $('chipOffDist').textContent = 'OFFSET ' + fmtFtIn(state.offsetDist || 0.5);
@@ -65,7 +65,7 @@ export function syncCtx(){
   const anyInsert = ms.some(e => e.type === 'insert');
   const wallSel = ms.some(e => e.kind === 'wall');
   ['chipDelete','chipRotate','chipDup','chipAssign','chipBlock'].forEach(id => { if ($(id)) $(id).style.display = has ? '' : 'none'; });
-  if ($('chipExplode')) $('chipExplode').style.display = (anyG || anyInsert) ? '' : 'none';
+  if ($('chipExplode')) $('chipExplode').style.display = (anyG || anyInsert || ms.some(e => e.type === 'table')) ? '' : 'none';
   if ($('chipEditTxt')) $('chipEditTxt').style.display = (ms.length === 1 && ms[0].type === 'text') ? '' : 'none';
   if ($('chipFlip')) $('chipFlip').style.display = (ms.length === 1 && (ms[0].type === 'dim' || ms[0].type === 'insert')) ? '' : 'none';
   if ($('chipDoor')) $('chipDoor').style.display = wallSel ? '' : 'none';
@@ -186,6 +186,7 @@ export function renderProps(){
       [{ value: 'L', label: 'Left' }, { value: 'R', label: 'Right' }],
       v => applyProps({ swing: v }));
   }
+  if (ms.length === 1 && e.type === 'insert' && e.mark) addRow(box, 'Mark', e.mark);
   if (ms.length === 1 && e.type === 'insert' && e.name) addRow(box, 'Block', e.name);
   const len = ms.reduce((s, x) => s + entityLength(x), 0);
   const area = ms.reduce((s, x) => s + entityArea(x), 0);

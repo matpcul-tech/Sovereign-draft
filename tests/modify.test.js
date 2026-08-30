@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filletLines, chamferLines, arcFrom3, moveEntities, rotateEntities, scaleEntities, mirrorEntities, rectangularArray, joinEntities, entityLength, entityArea } from '../src/core/modify.js';
+import { filletLines, chamferLines, arcFrom3, moveEntities, rotateEntities, scaleEntities, mirrorEntities, rectangularArray, polarArray, joinEntities, entityLength, entityArea } from '../src/core/modify.js';
 import { dist } from '../src/core/geometry.js';
 
 describe('filletLines', () => {
@@ -77,6 +77,11 @@ describe('transforms', () => {
     expect(out.length).toBe(5);
     expect(out.some(e => Math.abs(e.cx - 8) < 1e-6 && Math.abs(e.cy - 0) < 1e-6)).toBe(true);
     expect(out.some(e => Math.abs(e.cy - 5) < 1e-6)).toBe(true);
+  });
+  it('polarArray rotates copies about a center', () => {
+    const src = [{ type: 'circle', cx: 2, cy: 0, r: 0.25 }];
+    const out = polarArray(src, 0, 0, 4, 360);
+    expect(out.length).toBe(3);
   });
 });
 

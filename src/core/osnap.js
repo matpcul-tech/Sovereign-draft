@@ -2,13 +2,28 @@
  * intersection, nearest, perpendicular. Each candidate is [x, y, kind]
  * where kind 0=end 1=mid 2=center 3=intersection 4=nearest 5=perp.
  */
-import { dist, distToSeg, closestOnSeg, perpFoot, segSegIntersect, lineCircleTs, angDeg, onArc, arcPoints } from './geometry.js';
-import { entPoints, flattenEnt } from './entities.js';
+import { dist, distToSeg, closestOnSeg, perpFoot, segSegIntersect, lineCircleTs, angDeg, onArc, arcPoints, tanPoints, ellipsePoints, cloudPoints } from './geometry.js';
+import { entPoints, flattenEnt, spanXline } from './entities.js';
 
 function segsOf(e){
   if (e.type === 'insert'){
     const s = [];
     flattenEnt(e).forEach(f => s.push(...segsOf(f)));
+    return s;
+  }
+  if (e.type === 'grid'){
+    const s = [];
+    flattenEnt(e).forEach(f => s.push(...segsOf(f)));
+    return s;
+  }
+  if (e.type === 'xline'){
+    const sp = spanXline(e);
+    return [[[sp.x1, sp.y1], [sp.x2, sp.y2]]];
+  }
+  if (e.type === 'room' && e.pts){
+    const s = [];
+    const n = e.pts.length;
+    for (let i = 0; i < n; i++) s.push([e.pts[i], e.pts[(i + 1) % n]]);
     return s;
   }
   if (e.type === 'line') return [[[e.x1, e.y1], [e.x2, e.y2]]];
@@ -22,6 +37,23 @@ function segsOf(e){
     const s = [];
     const n = e.pts.length;
     for (let i = 0; i < n; i++) s.push([e.pts[i], e.pts[(i + 1) % n]]);
+    return s;
+  }
+  if (e.type === 'ellipse'){
+    const pts = ellipsePoints(e);
+    const s = [];
+    for (let i = 0; i < pts.length; i++) s.push([pts[i], pts[(i + 1) % pts.length]]);
+    return s;
+  }
+  if (e.type === 'cloud' && e.pts){
+    const pts = cloudPoints(e.pts, e.amp);
+    const s = [];
+    for (let i = 0; i < pts.length; i++) s.push([pts[i], pts[(i + 1) % pts.length]]);
+    return s;
+  }
+  if (e.type === 'leader' && e.pts){
+    const s = [];
+    for (let i = 0; i < e.pts.length - 1; i++) s.push([e.pts[i], e.pts[i + 1]]);
     return s;
   }
   return [];
@@ -107,6 +139,18 @@ export function nearestOnEntity(e, w){
     const x = e.cx + e.r * Math.cos(rad), y = e.cy + e.r * Math.sin(rad);
     return [x, y, 4, dist(w[0], w[1], x, y)];
   }
+  if (e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader'){
+    const pts = e.type === 'ellipse' ? ellipsePoints(e) : (e.type === 'cloud' ? cloudPoints(e.pts || [], e.amp) : (e.pts || []));
+    let best = null;
+    const n = pts.length, closed = e.type !== 'leader';
+    const segs = closed ? n : n - 1;
+    for (let i = 0; i < segs; i++){
+      const a = pts[i], b = pts[(i + 1) % n];
+      const c = closestOnSeg(w[0], w[1], a[0], a[1], b[0], b[1]);
+      if (!best || c.d < best[3]) best = [c.x, c.y, 4, c.d];
+    }
+    return best;
+  }
   return null;
 }
 
@@ -146,7 +190,7 @@ export function perpSnap(e, from){
   return null;
 }
 
-export const SNAP_KIND = { 0: 'END', 1: 'MID', 2: 'CEN', 3: 'INT', 4: 'NEA', 5: 'PER' };
+export const SNAP_KIND = { 0: 'END', 1: 'MID', 2: 'CEN', 3: 'INT', 4: 'NEA', 5: 'PER', 6: 'TAN' };
 
 /* Collect every snap candidate near a world point, ranked by screen-pixel distance. */
 export function allSnapCandidates(entities, isVisible, w, fromPt){
@@ -159,6 +203,9 @@ export function allSnapCandidates(entities, isVisible, w, fromPt){
     if (fromPt){
       const p = perpSnap(e, fromPt);
       if (p) out.push(p);
+      if (e.type === 'circle'){
+        tanPoints(e, fromPt).forEach(t => out.push(t));
+      }
     }
   }
   out.push(...intersectionSnaps(entities, isVisible));

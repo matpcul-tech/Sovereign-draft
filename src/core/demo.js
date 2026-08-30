@@ -7,6 +7,10 @@ import { makeHatch } from './hatch.js';
 import { alignedDim } from './dimStyle.js';
 import { filletLines } from './modify.js';
 import { makeInsert, locateInsert } from './dynblock.js';
+import { tagInserts, buildSchedule } from './schedule.js';
+import { detectRooms, nameRoomsFromText } from './rooms.js';
+import { makeGrid } from './grid.js';
+import { bindAlignedDim } from './assoc.js';
 
 function gid(n){ return 'cab' + n; }
 
@@ -77,11 +81,21 @@ export function cabin24x36(){
   ents.push(alignedDim([0, 0], [0, 24], -2.5));
   ents.push(alignedDim([0, 24], [14, 24], 2));
   ents.push(alignedDim([14, 0], [36, 0], 2));
+  ents.forEach(e => { if (e.type === 'dim') bindAlignedDim(e, ents); });
 
   ents.push({ type: 'line', layer: 'CENTER', lt: 'CENTER', x1: 18, y1: -1, x2: 18, y2: 25 });
 
+  const rooms = nameRoomsFromText(detectRooms(ents), ents);
+  rooms.forEach(r => ents.push(r));
+  ents.push(makeGrid({ x: 0, y: 0, cols: 3, rows: 2, cx: 12, ry: 12 }));
+
   ents.push(makeInsert({ def: 'sym:Stove', name: 'Stove', layer: 'FIXTURES', x: 2.5, y: 22 }));
   ents.push(makeInsert({ def: 'sym:Fridge', name: 'Fridge', layer: 'FIXTURES', x: 5.5, y: 22, rot: 90 }));
+
+  tagInserts(ents);
+  ents.push(Object.assign(buildSchedule(ents, 'door', [38, 16]), { layer: 'SCHEDULES' }));
+  ents.push(Object.assign(buildSchedule(ents, 'window', [38, 8]), { layer: 'SCHEDULES' }));
+  ents.push(Object.assign(buildSchedule(ents, 'room', [38, 0]), { layer: 'SCHEDULES' }));
 
   return ents.filter(Boolean);
 }

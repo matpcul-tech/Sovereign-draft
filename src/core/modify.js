@@ -1,4 +1,4 @@
-/* Fillet, chamfer, 3-point arc, mirror, scale, rotate, rectangular array, join.
+/* Fillet, chamfer, 3-point arc, mirror, scale, rotate, rectangular / polar array, join.
  * Pure over entity objects (no ids). Callers push undo and assign ids.
  */
 import {
@@ -160,12 +160,16 @@ export function arcFrom3(p1, p2, p3){
 }
 
 export function transformEnt(e, fn, extra){
-  if (e.type === 'line' || e.type === 'dim'){
+  if (e.type === 'line' || (e.type === 'dim' && e.kind !== 'angular')){
     const a = fn(e.x1, e.y1), b = fn(e.x2, e.y2);
     e.x1 = a[0]; e.y1 = a[1]; e.x2 = b[0]; e.y2 = b[1];
     if (e.type === 'dim' && extra && extra.scaleOff) e.off *= extra.scaleOff;
-  } else if (e.type === 'poly' || e.type === 'hatch'){
-    for (let i = 0; i < e.pts.length; i++){
+  } else if (e.type === 'dim' && e.kind === 'angular'){
+    const a = fn(e.x1, e.y1), b = fn(e.x2, e.y2), c = fn(e.x3, e.y3);
+    e.x1 = a[0]; e.y1 = a[1]; e.x2 = b[0]; e.y2 = b[1]; e.x3 = c[0]; e.y3 = c[1];
+    if (extra && extra.scaleOff) e.off *= extra.scaleOff;
+  } else if (e.type === 'poly' || e.type === 'hatch' || e.type === 'cloud' || e.type === 'leader'){
+    for (let i = 0; i < (e.pts || []).length; i++){
       const p = fn(e.pts[i][0], e.pts[i][1]);
       e.pts[i] = [p[0], p[1]];
     }
@@ -173,6 +177,11 @@ export function transformEnt(e, fn, extra){
     const p = fn(e.cx, e.cy);
     e.cx = p[0]; e.cy = p[1];
     if (extra && extra.scaleR) e.r *= extra.scaleR;
+  } else if (e.type === 'ellipse'){
+    const p = fn(e.cx, e.cy);
+    e.cx = p[0]; e.cy = p[1];
+    if (extra && extra.scaleR){ e.rx = (e.rx || 0) * extra.scaleR; e.ry = (e.ry || 0) * extra.scaleR; }
+    if (extra && extra.addAng) e.rot = (e.rot || 0) + extra.addAng;
   } else if (e.type === 'arc'){
     const p = fn(e.cx, e.cy);
     e.cx = p[0]; e.cy = p[1];
@@ -188,6 +197,18 @@ export function transformEnt(e, fn, extra){
     const p = fn(e.x, e.y);
     e.x = p[0]; e.y = p[1];
     if (extra && extra.scaleR) e.size *= extra.scaleR;
+  } else if (e.type === 'table'){
+    const p = fn(e.x, e.y);
+    e.x = p[0]; e.y = p[1];
+    if (extra && extra.scaleR){
+      e.colW = (e.colW || []).map(w => w * extra.scaleR);
+      e.rowH = (e.rowH || 0.85) * extra.scaleR;
+    }
+  } else if (e.type === 'image'){
+    const p = fn(e.x, e.y);
+    e.x = p[0]; e.y = p[1];
+    if (extra && extra.scaleR){ e.w = (e.w || 1) * extra.scaleR; e.h = (e.h || 1) * extra.scaleR; }
+    if (extra && extra.addAng) e.rot = (e.rot || 0) + extra.addAng;
   } else if (e.type === 'insert'){
     const p = fn(e.x, e.y);
     e.x = p[0]; e.y = p[1];
@@ -199,6 +220,27 @@ export function transformEnt(e, fn, extra){
     if (extra && extra.mirrorAng != null){
       e.flip = (e.flip || 1) * -1;
       e.rot = extra.mirrorAng * 2 - (e.rot || 0);
+    }
+  } else if (e.type === 'xline'){
+    const a = fn(e.x1, e.y1), b = fn(e.x2, e.y2);
+    e.x1 = a[0]; e.y1 = a[1]; e.x2 = b[0]; e.y2 = b[1];
+  } else if (e.type === 'room'){
+    for (let i = 0; i < (e.pts || []).length; i++){
+      const p = fn(e.pts[i][0], e.pts[i][1]);
+      e.pts[i] = [p[0], p[1]];
+    }
+    if (e.cx != null){
+      const p = fn(e.cx, e.cy);
+      e.cx = p[0]; e.cy = p[1];
+    }
+  } else if (e.type === 'grid'){
+    const p = fn(e.x, e.y);
+    e.x = p[0]; e.y = p[1];
+    if (extra && extra.addAng) e.rot = (e.rot || 0) + extra.addAng;
+    if (extra && extra.scaleR){
+      e.cx = (e.cx || 12) * extra.scaleR;
+      e.ry = (e.ry || 12) * extra.scaleR;
+      e.bubble = (e.bubble || 1.1) * extra.scaleR;
     }
   }
   return e;
@@ -261,6 +303,18 @@ export function rectangularArray(ents, cols, rows, colDist, rowDist, angleDeg){
   return out;
 }
 
+export function polarArray(ents, cx, cy, count, fillDeg){
+  const n = Math.max(2, count | 0);
+  const fill = fillDeg == null ? 360 : fillDeg;
+  const closed = Math.abs(Math.abs(fill) - 360) < 0.5;
+  const step = fill / (closed ? n : Math.max(1, n - 1));
+  const out = [];
+  for (let i = 1; i < n; i++){
+    out.push(...rotateEntities(ents, cx, cy, step * i));
+  }
+  return out;
+}
+
 const JOIN_TOL = 0.08;
 
 function endsOf(e){
@@ -318,13 +372,19 @@ export function joinEntities(ents){
 }
 
 export function entityLength(e){
-  if (e.type === 'line') return dist(e.x1, e.y1, e.x2, e.y2);
+  if (e.type === 'line' || e.type === 'xline') return dist(e.x1, e.y1, e.x2, e.y2);
   if (e.type === 'circle') return 2 * Math.PI * e.r;
   if (e.type === 'arc') return arcSpan(e) * Math.PI / 180 * e.r;
-  if (e.type === 'poly'){
+  if (e.type === 'ellipse'){
+    const rx = e.rx || 0, ry = e.ry || 0;
+    const h = ((rx - ry) * (rx - ry)) / (((rx + ry) * (rx + ry)) || 1);
+    return Math.PI * (rx + ry) * (1 + 3 * h / (10 + Math.sqrt(4 - 3 * h)));
+  }
+  if (e.type === 'poly' || e.type === 'leader' || e.type === 'cloud'){
+    const pts = e.pts || [];
     let L = 0;
-    for (let i = 0; i < e.pts.length - 1; i++) L += dist(e.pts[i][0], e.pts[i][1], e.pts[i + 1][0], e.pts[i + 1][1]);
-    if (e.closed && e.pts.length > 2) L += dist(e.pts[e.pts.length - 1][0], e.pts[e.pts.length - 1][1], e.pts[0][0], e.pts[0][1]);
+    for (let i = 0; i < pts.length - 1; i++) L += dist(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
+    if ((e.closed || e.type === 'cloud') && pts.length > 2) L += dist(pts[pts.length - 1][0], pts[pts.length - 1][1], pts[0][0], pts[0][1]);
     return L;
   }
   if (e.type === 'dim') return dist(e.x1, e.y1, e.x2, e.y2);
@@ -333,19 +393,14 @@ export function entityLength(e){
 
 export function entityArea(e){
   if (e.type === 'circle') return Math.PI * e.r * e.r;
-  if (e.type === 'poly' && e.closed){
+  if (e.type === 'ellipse') return Math.PI * (e.rx || 0) * (e.ry || 0);
+  if (e.type === 'room') return e.area != null ? e.area : 0;
+  if ((e.type === 'poly' && e.closed) || e.type === 'hatch' || e.type === 'cloud'){
+    const pts = e.pts || [];
     let a = 0;
-    for (let i = 0; i < e.pts.length; i++){
-      const j = (i + 1) % e.pts.length;
-      a += e.pts[i][0] * e.pts[j][1] - e.pts[j][0] * e.pts[i][1];
-    }
-    return Math.abs(a / 2);
-  }
-  if (e.type === 'hatch' && e.pts){
-    let a = 0;
-    for (let i = 0; i < e.pts.length; i++){
-      const j = (i + 1) % e.pts.length;
-      a += e.pts[i][0] * e.pts[j][1] - e.pts[j][0] * e.pts[i][1];
+    for (let i = 0; i < pts.length; i++){
+      const j = (i + 1) % pts.length;
+      a += pts[i][0] * pts[j][1] - pts[j][0] * pts[i][1];
     }
     return Math.abs(a / 2);
   }

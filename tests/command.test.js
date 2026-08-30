@@ -55,6 +55,9 @@ describe('lookupCommand', () => {
     expect(lookupCommand('L').tool).toBe('line');
     expect(lookupCommand('XP').action).toBe('explode');
     expect(lookupCommand('FLIP').action).toBe('flip');
+    expect(lookupCommand('XL').tool).toBe('xline');
+    expect(lookupCommand('GRID').tool).toBe('grid');
+    expect(lookupCommand('ROOMS').action).toBe('rooms');
   });
 });
 
