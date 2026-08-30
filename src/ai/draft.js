@@ -1,37 +1,55 @@
-/* AI drafting: turn a description into blueprint geometry via the Anthropic
- * API. The user supplies their own API key (Settings sheet); requests go
- * directly from the browser to api.anthropic.com.
+/* AI drafting: Claude returns constrained geometry (walls, openings, fixtures,
+ * rooms, dims) — not leftover raw lines. Validate, snap to a 6" grid, fillet
+ * wall corners, hatch rooms, dim overall + room sizes. Sheet-context mode
+ * reads existing walls and only appends. Invalid JSON is retried once.
  */
-import Anthropic from '@anthropic-ai/sdk';
-import { clamp } from '../core/geometry.js';
+import { clamp, snapGrid, dist, polyCentroid, dimGeom } from '../core/geometry.js';
 import { entBBox } from '../core/entities.js';
-import { dimGeom, dist } from '../core/geometry.js';
+import { wallFrags, wallWithOpenings } from '../core/walls.js';
+import { makeHatch } from '../core/hatch.js';
+import { alignedDim } from '../core/dimStyle.js';
+import { SYMBOLS } from '../core/symbols.js';
+import { filletLines } from '../core/modify.js';
+import { makeInsert, locateInsert } from '../core/dynblock.js';
 
-export const AI_SPEC =
-'You are the drafting engine inside a professional 2D CAD application. Convert the request into blueprint geometry.\n' +
-'Respond with ONLY minified JSON, no markdown, no code fences, no commentary. Schema: {"e":[items]} where each item is one of:\n' +
-'{"t":"l","ly":LAYER,"a":[x1,y1,x2,y2]} line\n' +
-'{"t":"c","ly":LAYER,"a":[cx,cy,r]} circle\n' +
-'{"t":"a","ly":LAYER,"a":[cx,cy,r,startDeg,endDeg]} arc, counterclockwise\n' +
-'{"t":"p","ly":LAYER,"a":[[x,y],[x,y],...],"cl":1} polyline, cl 1 means closed\n' +
-'{"t":"x","ly":"TEXT","a":[x,y,h],"s":"LABEL"} text, h is height in feet, 1 to 1.5\n' +
-'{"t":"d","ly":"DIMS","a":[x1,y1,x2,y2]} linear dimension between two points\n' +
-'Units are feet, decimals allowed. Y axis points up. Keep all coordinates at 0 or greater with the drawing near the origin.\n' +
-'Layers: WALLS, DOORS, FIXTURES, DIMS, TEXT.\n' +
-'Draft to professional drafting standards: exterior and interior walls as parallel double lines 0.5 ft apart on WALLS; door openings as a gap in the wall with the leaf as a line and a 90 degree swing arc on DOORS; fixtures simplified (sink as small rect, toilet as rect plus circle, stove and fridge as labeled rects) on FIXTURES; room name labels on TEXT centered in each room; overall exterior dimensions only, 2 to 4 of them, on DIMS.\n' +
-'Stay under 60 items total. Favor polylines over many short lines. Output must be valid JSON.';
+export const AI_SCHEMA_SPEC =
+'You are the drafting engine inside a professional 2D CAD application. Convert the request into constrained architectural geometry.\n' +
+'Respond with ONLY minified JSON, no markdown, no code fences, no commentary.\n' +
+'Schema:\n' +
+'{"walls":[{"a":[x1,y1,x2,y2],"th":0.5}],\n' +
+' "openings":[{"kind":"door"|"window","wall":0,"t":0.5,"w":3,"swing":"L"|"R"}],\n' +
+' "fixtures":[{"kind":"Toilet"|"Sink"|"Tub"|"Shower"|"Stove"|"Fridge"|"Bed"|"Sofa"|"Stairs"|"Table","x":0,"y":0,"rot":0}],\n' +
+' "rooms":[{"name":"KITCHEN","pts":[[x,y],...]}],\n' +
+' "dims":[{"a":[x1,y1,x2,y2]}]}\n' +
+'Units are decimal feet. Y axis points up. Origin near (0,0). All coordinates >= 0.\n' +
+'walls: centerlines. th is thickness in feet (0.333, 0.5 or 0.667). Close exterior loops.\n' +
+'openings: wall is the 0-based index into walls; t is 0..1 along the centerline; w is opening width in feet.\n' +
+'fixtures.kind must be one of the names above. rot is degrees CCW.\n' +
+'rooms: closed polygon of interior corners (not wall centerlines). One hatch + label per room.\n' +
+'dims: overall exterior dimensions and major room sizes. 4 to 10 of them.\n' +
+'Stay under 40 walls. Do not emit raw leftover lines. Output must be valid JSON.';
 
-/* Compact plain-text serialization of the current drawing for sheet context. */
+export const AI_SPEC = AI_SCHEMA_SPEC;
+
+function snap6(x, y){ return snapGrid(x, y, 0.5); }
+
 export function serializeForAI(entities){
   const out = [];
   const r2 = v => Math.round(v * 100) / 100;
+  const walls = entities.filter(e => e.kind === 'wall' && e.role === 'a');
+  if (walls.length){
+    walls.forEach(e => out.push('wall ' + r2(e.x1) + ',' + r2(e.y1) + ' ' + r2(e.x2) + ',' + r2(e.y2) + ' th' + r2(e.th || 0.5)));
+  }
   for (const e of entities){
+    if (e.kind === 'wall') continue;
     if (e.type === 'line') out.push('l ' + e.layer + ' ' + r2(e.x1) + ',' + r2(e.y1) + ' ' + r2(e.x2) + ',' + r2(e.y2));
     else if (e.type === 'circle') out.push('c ' + e.layer + ' ' + r2(e.cx) + ',' + r2(e.cy) + ' r' + r2(e.r));
     else if (e.type === 'arc') out.push('a ' + e.layer + ' ' + r2(e.cx) + ',' + r2(e.cy) + ' r' + r2(e.r) + ' ' + Math.round(e.a1) + '-' + Math.round(e.a2));
     else if (e.type === 'poly') out.push('p ' + e.layer + (e.closed ? ' closed ' : ' ') + e.pts.map(p => r2(p[0]) + ',' + r2(p[1])).join(' '));
     else if (e.type === 'text') out.push('x ' + e.layer + ' ' + r2(e.x) + ',' + r2(e.y) + ' "' + (e.content || '') + '"');
     else if (e.type === 'dim') out.push('d ' + r2(e.x1) + ',' + r2(e.y1) + ' ' + r2(e.x2) + ',' + r2(e.y2));
+    else if (e.type === 'hatch') out.push('h ' + (e.pattern || 'ANSI31') + ' ' + (e.pts || []).map(p => r2(p[0]) + ',' + r2(p[1])).join(' '));
+    else if (e.type === 'insert') out.push('insert ' + (e.def || e.name || 'block') + ' ' + r2(e.x) + ',' + r2(e.y) + (e.width ? (' w' + r2(e.width)) : '') + ' r' + Math.round(e.rot || 0));
   }
   let s = out.join('\n');
   if (s.length > 7000) s = s.slice(0, 7000) + '\n(truncated)';
@@ -40,9 +58,36 @@ export function serializeForAI(entities){
 
 function num(v){ v = Number(v); return isFinite(v) ? v : 0; }
 
-/* Convert response items into entity objects (no ids). ensureLayer(name)
- * canonicalizes/creates layers. Throws when nothing is drawable.
- */
+export function extractItems(text){
+  const r = extractResponse(text);
+  if (r.legacy){
+    if (!r.items.length) throw new Error('Empty drawing returned');
+    return r.items;
+  }
+  return r.items || [];
+}
+
+export function extractResponse(text){
+  text = String(text || '').replace(/```json|```/g, '').trim();
+  const first = text.indexOf('{'), last = text.lastIndexOf('}');
+  if (first === -1 || last === -1) throw new Error('No JSON in response');
+  const obj = JSON.parse(text.slice(first, last + 1));
+  if (Array.isArray(obj.e) || Array.isArray(obj.entities)){
+    return { legacy: true, items: obj.e || obj.entities, raw: obj };
+  }
+  if (obj.walls || obj.rooms || obj.fixtures || obj.dims || obj.openings){
+    return { legacy: false, schema: obj, raw: obj };
+  }
+  throw new Error('Empty drawing returned');
+}
+
+export function realizeResponse(text, ensureLayer){
+  const extracted = extractResponse(text);
+  if (extracted.legacy) return itemsToEntities(extracted.items, ensureLayer);
+  return schemaToEntities(extracted.schema, ensureLayer);
+}
+
+/* Legacy raw-item converter kept so existing tests (and older model replies) still work. */
 export function itemsToEntities(items, ensureLayer){
   const fresh = [];
   for (const it of items){
@@ -63,7 +108,6 @@ export function itemsToEntities(items, ensureLayer){
     } catch (e){ /* skip malformed item */ }
   }
   if (!fresh.length) throw new Error('Nothing drawable in the response');
-  // Flip each dimension outward, away from the drawing's center of mass.
   const bb = [1e9, 1e9, -1e9, -1e9];
   fresh.forEach(e => { if (e.type !== 'dim') entBBox(e, bb); });
   if (bb[0] < 1e8){
@@ -79,48 +123,169 @@ export function itemsToEntities(items, ensureLayer){
   return fresh;
 }
 
-/* Pull the item list out of a model response that should be JSON but may be
- * wrapped in fences or prose.
- */
-export function extractItems(text){
-  text = text.replace(/```json|```/g, '').trim();
-  const first = text.indexOf('{'), last = text.lastIndexOf('}');
-  if (first === -1 || last === -1) throw new Error('No JSON in response');
-  const obj = JSON.parse(text.slice(first, last + 1));
-  const items = obj.e || obj.entities || [];
-  if (!items.length) throw new Error('Empty drawing returned');
-  return items;
+/* Realize a constrained schema into entities. Never mutates existing ones. */
+export function schemaToEntities(schema, ensureLayer){
+  const fresh = [];
+  const walls = Array.isArray(schema.walls) ? schema.walls : [];
+  const wallGroups = [];
+  walls.forEach((w, i) => {
+    if (!w || !w.a || w.a.length < 4) return;
+    let [x1, y1] = snap6(num(w.a[0]), num(w.a[1]));
+    let [x2, y2] = snap6(num(w.a[2]), num(w.a[3]));
+    if (dist(x1, y1, x2, y2) < 0.4) return;
+    const th = [4 / 12, 6 / 12, 8 / 12].reduce((best, t) => Math.abs((w.th || 0.5) - t) < Math.abs((w.th || 0.5) - best) ? t : best, 0.5);
+    const ly = ensureLayer('WALLS');
+    const frags = wallFrags(x1, y1, x2, y2, th, ly);
+    const g = 'aiw' + i;
+    frags.forEach(f => { f.g = g; });
+    wallGroups.push({ g, members: frags, a: [x1, y1, x2, y2], th });
+    fresh.push(...frags);
+  });
+
+  /* Fillet adjacent wall centerlines that share an endpoint (r = 0 → clean corner). */
+  for (let i = 0; i < wallGroups.length; i++){
+    for (let j = i + 1; j < wallGroups.length; j++){
+      const A = wallGroups[i].a, B = wallGroups[j].a;
+      const endsA = [[A[0], A[1]], [A[2], A[3]]];
+      const endsB = [[B[0], B[1]], [B[2], B[3]]];
+      let share = false;
+      for (const p of endsA) for (const q of endsB) if (dist(p[0], p[1], q[0], q[1]) < 0.6) share = true;
+      if (!share) continue;
+      const la = wallGroups[i].members.find(m => m.role === 'a');
+      const lb = wallGroups[j].members.find(m => m.role === 'a');
+      if (!la || !lb) continue;
+      const res = filletLines(la, lb, 0);
+      if (res.ok){
+        /* Apply trim-to-corner on the outer faces too (best-effort). */
+        res.replace.forEach(p => {
+          const idx = fresh.indexOf(p.orig);
+          if (idx >= 0) fresh[idx] = p.ents[0];
+        });
+      }
+    }
+  }
+
+  (schema.openings || []).forEach(o => {
+    if (!o) return;
+    const wg = wallGroups[o.wall];
+    if (!wg) return;
+    const t = clamp(num(o.t), 0.15, 0.85);
+    const w = Math.max(1.5, num(o.w) || 3);
+    const cl = { x1: wg.a[0], y1: wg.a[1], x2: wg.a[2], y2: wg.a[3], th: wg.th, layer: 'WALLS' };
+    const kind = o.kind === 'window' ? 'window' : 'door';
+    const ins = makeInsert({
+      def: kind,
+      name: kind === 'window' ? 'Window' : 'Door',
+      layer: 'DOORS',
+      width: w,
+      swing: o.swing === 'R' ? 'R' : 'L',
+      host: wg.g, t, cl, th: wg.th
+    });
+    locateInsert(ins, cl);
+    fresh.push(ins);
+    wg.inserts = (wg.inserts || []).concat([ins]);
+    wg.members.forEach(m => {
+      const idx = fresh.indexOf(m);
+      if (idx >= 0) fresh.splice(idx, 1);
+    });
+    const add = wallWithOpenings(cl, wg.inserts.map(e => ({ t: e.t, width: e.width || 3 })));
+    add.forEach(f => { f.g = wg.g; fresh.push(f); });
+    wg.members = add;
+  });
+
+  (schema.fixtures || []).forEach(fx => {
+    const name = (SYMBOLS.find(s => s.name.toLowerCase() === String(fx.kind || '').toLowerCase()) || {}).name;
+    if (!name) return;
+    const [x, y] = snap6(num(fx.x), num(fx.y));
+    fresh.push(makeInsert({
+      def: 'sym:' + name,
+      name,
+      layer: 'FIXTURES',
+      x, y,
+      rot: num(fx.rot) || 0
+    }));
+  });
+
+  (schema.rooms || []).forEach(r => {
+    if (!r || !Array.isArray(r.pts) || r.pts.length < 3) return;
+    const pts = r.pts.map(p => snap6(num(p[0]), num(p[1])));
+    const h = makeHatch(pts, { layer: ensureLayer('HATCH'), pattern: 'ANSI31' });
+    if (h) fresh.push(h);
+    const c = polyCentroid(pts);
+    fresh.push({ type: 'text', layer: 'TEXT', x: c[0], y: c[1], size: 1.2, content: String(r.name || 'ROOM').toUpperCase() });
+  });
+
+  (schema.dims || []).forEach(d => {
+    if (!d || !d.a || d.a.length < 4) return;
+    const a = snap6(num(d.a[0]), num(d.a[1]));
+    const b = snap6(num(d.a[2]), num(d.a[3]));
+    if (dist(a[0], a[1], b[0], b[1]) < 0.5) return;
+    fresh.push(alignedDim(a, b, 2));
+  });
+
+  if (!fresh.length) throw new Error('Nothing drawable in the response');
+
+  const bb = [1e9, 1e9, -1e9, -1e9];
+  fresh.forEach(e => { if (e.type !== 'dim') entBBox(e, bb); });
+  if (bb[0] < 1e8){
+    const cx = (bb[0] + bb[2]) / 2, cy = (bb[1] + bb[3]) / 2;
+    fresh.forEach(e => {
+      if (e.type !== 'dim') return;
+      const g1 = dimGeom(e);
+      e.off = -e.off; const g2 = dimGeom(e); e.off = -e.off;
+      const d1 = dist(g1.mid[0], g1.mid[1], cx, cy), d2 = dist(g2.mid[0], g2.mid[1], cx, cy);
+      if (d2 > d1) e.off = -e.off;
+    });
+  }
+  return fresh;
 }
 
-/* Call the API. Returns the raw item list. */
+async function callAnthropic({ prompt, contextText, apiKey, model }){
+  const sys = AI_SCHEMA_SPEC + (contextText
+    ? '\n\nCURRENT DRAWING (read only, same units, do not repeat these entities, align new work to them):\n' + contextText + '\n\nAdd entities that extend this drawing. Additions only. Never delete.'
+    : '') + '\n\nREQUEST: ' + prompt;
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 8000,
+      messages: [{ role: 'user', content: sys }]
+    })
+  });
+  if (res.status === 401){ const err = new Error('API key rejected'); err.status = 401; throw err; }
+  if (res.status === 429){ const err = new Error('Rate limited'); err.status = 429; throw err; }
+  if (!res.ok){
+    const t = await res.text().catch(() => '');
+    const err = new Error('Anthropic HTTP ' + res.status + (t ? ': ' + t.slice(0, 180) : ''));
+    err.status = res.status;
+    throw err;
+  }
+  const body = await res.json();
+  if (body.stop_reason === 'refusal') throw new Error('The model declined this request');
+  return (body.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+}
+
 export async function generateDraft({ prompt, contextText, apiKey, model }){
   if (!apiKey) throw new Error('Add your Anthropic API key in AI settings first');
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true, maxRetries: 2 });
-  let msg = AI_SPEC;
-  if (contextText){
-    msg += '\n\nCURRENT DRAWING (read only, same units and layers, do not repeat these entities, align new work to them):\n' + contextText;
-    msg += '\n\nAdd entities that extend or modify this drawing per the request. Additions only.';
-  }
-  msg += '\n\nREQUEST: ' + prompt;
-
-  const params = {
-    model,
-    max_tokens: 8000,
-    messages: [{ role: 'user', content: msg }]
-  };
-  let response;
-  if (model === 'claude-opus-5'){
-    // Server-side refusal fallbacks: if a safety classifier declines, the API
-    // re-runs the request on a fallback model inside the same call.
-    response = await client.beta.messages.create({
-      ...params,
-      fallbacks: 'default',
-      betas: ['server-side-fallback-2026-07-01']
+  let text;
+  try {
+    text = await callAnthropic({ prompt, contextText, apiKey, model });
+    extractResponse(text);
+    return text;
+  } catch (err){
+    if (err && err.status) throw err;
+    /* Retry once on invalid JSON. */
+    text = await callAnthropic({
+      prompt: prompt + '\n\nYour previous reply was not valid JSON matching the schema. Reply with ONLY the JSON object.',
+      contextText, apiKey, model
     });
-  } else {
-    response = await client.messages.create(params);
+    extractResponse(text);
+    return text;
   }
-  if (response.stop_reason === 'refusal') throw new Error('The model declined this request');
-  const text = (response.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
-  return extractItems(text);
 }

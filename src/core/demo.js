@@ -1,0 +1,87 @@
+/* Sample 24×36 cabin used for tests and the "Load sample" command.
+ * Walls with thickness, filleted corners (r=0), doors as dynamic INSERTs,
+ * room hatches, overall + opening dims, dashed centerline.
+ */
+import { wallFrags, wallWithOpenings } from './walls.js';
+import { makeHatch } from './hatch.js';
+import { alignedDim } from './dimStyle.js';
+import { filletLines } from './modify.js';
+import { makeInsert, locateInsert } from './dynblock.js';
+
+function gid(n){ return 'cab' + n; }
+
+export function cabin24x36(){
+  const ents = [];
+  let g = 1;
+  function wall(x1, y1, x2, y2, th){
+    const id = gid(g++);
+    const fr = wallFrags(x1, y1, x2, y2, th || 0.5, 'WALLS');
+    fr.forEach(f => { f.g = id; ents.push(f); });
+    return { id, members: fr, a: [x1, y1, x2, y2] };
+  }
+  const th = 0.5;
+  const S = wall(0, 0, 36, 0, th);     // south
+  const E = wall(36, 0, 36, 24, th);   // east
+  const N = wall(36, 24, 0, 24, th);   // north
+  const W = wall(0, 24, 0, 0, th);     // west
+  /* Interior: bedroom wall at x=14, kitchen wall at y=10 from x=0 to 14 */
+  const I1 = wall(14, 0, 14, 24, th);
+  const I2 = wall(0, 10, 14, 10, th);
+
+  function corner(a, b){
+    const la = a.members.find(m => m.role === 'a');
+    const lb = b.members.find(m => m.role === 'a');
+    if (!la || !lb) return;
+    const res = filletLines(la, lb, 0);
+    if (!res.ok) return;
+    res.replace.forEach(p => {
+      const i = ents.indexOf(p.orig);
+      if (i >= 0) ents[i] = p.ents[0];
+    });
+  }
+  corner(S, E); corner(E, N); corner(N, W); corner(W, S);
+
+  function openWall(wref, t, kind, width, swing){
+    const cl = { x1: wref.a[0], y1: wref.a[1], x2: wref.a[2], y2: wref.a[3], th, layer: 'WALLS' };
+    const ins = makeInsert({
+      def: kind,
+      name: kind === 'window' ? 'Window' : 'Door',
+      layer: 'DOORS',
+      width, swing: swing || 'L', host: wref.id, t, cl, th
+    });
+    locateInsert(ins, cl);
+    ents.push(ins);
+    const onWall = ents.filter(e => e.type === 'insert' && e.host === wref.id);
+    for (let i = ents.length - 1; i >= 0; i--) if (ents[i].g === wref.id) ents.splice(i, 1);
+    const add = wallWithOpenings(cl, onWall.map(e => ({ t: e.t, width: e.width || 3 })));
+    add.forEach(f => { f.g = wref.id; ents.push(f); });
+    wref.members = add;
+  }
+  openWall(S, 0.35, 'door', 3, 'L');          // front door
+  openWall(I1, 0.25, 'door', 2.5, 'R');       // bedroom
+  openWall(I2, 0.5, 'door', 2.5, 'L');        // kitchen
+  openWall(N, 0.2, 'window', 3);              // north window
+  openWall(E, 0.5, 'window', 4);
+
+  const kitchen = [[0.5, 10.5], [13.5, 10.5], [13.5, 23.5], [0.5, 23.5]];
+  const bedroom = [[14.5, 0.5], [35.5, 0.5], [35.5, 23.5], [14.5, 23.5]];
+  const living = [[0.5, 0.5], [13.5, 0.5], [13.5, 9.5], [0.5, 9.5]];
+  ents.push(makeHatch(kitchen, { layer: 'HATCH', pattern: 'ANSI31' }));
+  ents.push(makeHatch(bedroom, { layer: 'HATCH', pattern: 'ANSI31' }));
+  ents.push(makeHatch(living, { layer: 'HATCH', pattern: 'NET' }));
+  ents.push({ type: 'text', layer: 'TEXT', x: 4.5, y: 16, size: 1.4, content: 'KITCHEN' });
+  ents.push({ type: 'text', layer: 'TEXT', x: 22, y: 12, size: 1.4, content: 'BEDROOM' });
+  ents.push({ type: 'text', layer: 'TEXT', x: 4.5, y: 4.5, size: 1.4, content: 'LIVING' });
+
+  ents.push(alignedDim([0, 0], [36, 0], -2.5));
+  ents.push(alignedDim([0, 0], [0, 24], -2.5));
+  ents.push(alignedDim([0, 24], [14, 24], 2));
+  ents.push(alignedDim([14, 0], [36, 0], 2));
+
+  ents.push({ type: 'line', layer: 'CENTER', lt: 'CENTER', x1: 18, y1: -1, x2: 18, y2: 25 });
+
+  ents.push(makeInsert({ def: 'sym:Stove', name: 'Stove', layer: 'FIXTURES', x: 2.5, y: 22 }));
+  ents.push(makeInsert({ def: 'sym:Fridge', name: 'Fridge', layer: 'FIXTURES', x: 5.5, y: 22, rot: 90 }));
+
+  return ents.filter(Boolean);
+}
