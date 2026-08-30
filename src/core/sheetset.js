@@ -1,14 +1,17 @@
 /* Sheet-set generator: split a model into CAD pages (cover, overall, one
- * sheet per room or labeled section) with a live legend on each page.
+ * sheet per room or labeled section) with a live legend and a parts schedule
+ * (qty, size) on each page so the print can be built from.
  *
- * Viewports are windowed onto existing geometry. Legends are derived tables
- * placed as sheet-space annotations so they keep their size at any plot scale.
+ * Viewports are windowed onto existing geometry. Legends and schedules are
+ * derived tables placed as sheet-space annotations so they keep their size
+ * at any plot scale.
  */
 import { membersBBox } from './entities.js';
 import { makeLayout, makeViewport, fitViewport, sheetOf, PLOT_SCALES, pickSheetForBBox } from './layout.js';
 import { normalizeSheet } from './document.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation } from './sheetspace.js';
 import { entsInBBox, collectCallouts, padBBox, buildLegend, legendToTable, indexToTable } from './legend.js';
+import { bodyBBox, collectParts, partsInBBox, partsToTable, buildingSchedule, specNotes, specColW, padForLabels } from './spec.js';
 
 const MAX_SECTIONS = 10;
 const PAPER_ROW_H = 0.22;
@@ -25,6 +28,8 @@ export function sheetTitle(s){
 }
 
 function modelBBox(entities){
+  const body = bodyBBox(entities);
+  if (body && body[0] < 1e8) return body;
   const skip = (entities || []).filter(e => e.type !== 'table' && e.layer !== 'SCHEDULES' && e.layer !== 'UNDERLAY');
   const src = skip.length ? skip : (entities || []);
   if (!src.length) return [0, 0, 10, 8];
@@ -145,8 +150,14 @@ export function detectSections(entities){
   return { overall, sections };
 }
 
-function legendGutter(sheetKey){
+function legendGutter(sheetKey, kind){
   const s = sheetOf(sheetKey);
+  if (kind === 'cover'){
+    if (s.w <= 12) return 3.4;
+    if (s.w <= 18) return 4.6;
+    if (s.w <= 24) return 6.0;
+    return 6.8;
+  }
   if (s.w <= 12) return 2.4;
   if (s.w <= 18) return 3.2;
   return 4.0;
@@ -159,10 +170,10 @@ function legendColW(sheetKey){
   return [1.35, 2.25];
 }
 
-/* Leave a right-hand gutter so the legend sits in true margin, not over the view. */
-function makePlanViewport(sheetKey, ppf){
+/* Leave a right-hand gutter so the legend / spec sits in true margin. */
+function makePlanViewport(sheetKey, ppf, kind){
   const vp = makeViewport(sheetKey, ppf);
-  vp.pw = Math.max(6, vp.pw - legendGutter(sheetKey));
+  vp.pw = Math.max(6, vp.pw - legendGutter(sheetKey, kind));
   return vp;
 }
 
@@ -188,7 +199,7 @@ function buildSheet(opts, bbox){
     name: opts.name,
     sheet,
     ppf,
-    viewports: [makePlanViewport(sheet, ppf)]
+    viewports: [makePlanViewport(sheet, ppf, opts.kind)]
   });
   layout.kind = opts.kind;
   layout.section = opts.section || null;
@@ -209,8 +220,11 @@ function buildSheet(opts, bbox){
 export function generateSheetSet(entities, layers, opts){
   opts = opts || {};
   const detected = detectSections(entities);
+  const body = bodyBBox(entities);
   const sheet = opts.sheet || pickSheetForBBox(detected.overall);
+  const parts = collectParts(entities);
   const layouts = [];
+  const coverFit = padForLabels(detected.overall, body);
 
   layouts.push(buildSheet({
     id: 'G001',
@@ -220,7 +234,7 @@ export function generateSheetSet(entities, layers, opts){
     sheet,
     ppf: 18,
     viewName: 'COVER'
-  }, detected.overall));
+  }, coverFit));
 
   layouts.push(buildSheet({
     id: 'A101',
@@ -231,11 +245,12 @@ export function generateSheetSet(entities, layers, opts){
     ppf: 18,
     viewName: 'PLAN',
     section: { bbox: detected.overall, name: 'Overall', source: 'overall' }
-  }, detected.overall));
+  }, coverFit));
 
   detected.sections.forEach((sec, i) => {
     const num = 'A-' + String(102 + i);
     const title = sheetTitle(sec.name);
+    const fit = padForLabels(sec.bbox, body);
     layouts.push(buildSheet({
       id: 'A' + (102 + i),
       sheetNumber: num,
@@ -245,28 +260,46 @@ export function generateSheetSet(entities, layers, opts){
       ppf: 18,
       viewName: 'PLAN',
       section: { bbox: sec.bbox, name: sec.name, source: sec.source }
-    }, sec.bbox));
+    }, fit));
   });
 
   const colW = legendColW(sheet);
+  const pColW = specColW(parts.some(p => p.material));
   return layouts.map(L => {
     let out = L;
     if (out.kind === 'cover'){
       out = placeTable(out, indexToTable(layouts, { colW: [colW[0], colW[1]] }));
+      if (parts.length){
+        out = placeTable(out, partsToTable(parts, { title: 'PARTS SCHEDULE', colW: pColW }));
+      } else {
+        const b = buildingSchedule(entities);
+        if (b) out = placeTable(out, b);
+      }
+    } else if (out.kind === 'section' && parts.length){
+      const scoped = partsInBBox(parts, out.section && out.section.bbox, 0.5);
+      if (scoped.length){
+        out = placeTable(out, partsToTable(scoped, { title: 'SPECIFICATIONS', colW: pColW }));
+      }
     }
-    const legend = legendForLayout(out, entities, layers);
+    const legend = legendForLayout(out, entities, layers, {
+      skipCallouts: parts.length && (out.kind === 'cover' || out.kind === 'section'),
+      notes: specNotes(body, out.kind === 'section' ? partsInBBox(parts, out.section && out.section.bbox, 0.5) : parts)
+    });
     out = placeTable(out, legendToTable(legend, { colW }));
     return out;
   });
 }
 
-export function legendForLayout(layout, entities, layers){
+export function legendForLayout(layout, entities, layers, extra){
   const sec = layout && layout.section;
   const subset = sec && sec.bbox ? entsInBBox(entities, sec.bbox, 0.5) : (entities || []);
   const title = layout && layout.kind === 'cover' ? 'GENERAL LEGEND' : 'LEGEND';
+  const o = extra || {};
   return buildLegend(subset, layers, {
     title,
-    partsTitle: layout && layout.kind === 'section' ? 'THIS SHEET' : 'PARTS / CALLOUTS'
+    partsTitle: layout && layout.kind === 'section' ? 'THIS SHEET' : 'PARTS / CALLOUTS',
+    skipCallouts: !!o.skipCallouts,
+    notes: o.notes
   });
 }
 

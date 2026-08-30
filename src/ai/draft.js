@@ -56,6 +56,11 @@ export const AI_SCHEMA_SPEC =
 'fixtures.kind must be one of the names above. rot is degrees CCW.\n' +
 'rooms: closed polygon of interior corners (not wall centerlines). One hatch + label per room.\n' +
 'dims: overall exterior dimensions and major room sizes. 4 to 10 of them.\n' +
+'On elevation, section and part drawings dims are REQUIRED: overall height,\n' +
+'overall width (or diameter), and a station at each major labeled part.\n' +
+'A drawing with no dimensions cannot be built from.\n' +
+'Every callout SHOULD include mark plus attrs qty and size. Parse "x9" as\n' +
+'qty 9. Include material only when the user named one — never invent alloys.\n' +
 'Stay under 40 walls. Do not emit raw leftover lines. Output must be valid JSON.\n' +
 '\n' +
 'You may also return a sheet set. Geometry is drawn once at true size; a sheet\n' +
