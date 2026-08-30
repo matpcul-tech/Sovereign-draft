@@ -15,10 +15,14 @@ function tool(id, label, title, path){
 export function shellHTML(){
   return `
 <div id="wrap"><canvas id="cv"></canvas></div>
-<div id="hint">
-  <h2>Blank sheet</h2>
-  <p>Tap <span class="k">AI</span> and describe a blueprint, or pick a tool and draw.<br>
-  Type <span class="k">/</span> for the command line. One finger draws, two fingers pan and zoom.</p>
+<div id="hint" class="empty">
+  <h2>CAD editor</h2>
+  <p>Open a DXF, drop a file, or tap <span class="k">AI</span> to describe a plan.<br>
+  Type <span class="k">/</span> for the command line. One finger draws, two fingers pan.</p>
+  <div class="hint-actions">
+    <button type="button" id="hintOpen">Open drawing</button>
+    <button type="button" id="hintSample">Sample cabin</button>
+  </div>
 </div>
 <div id="topbar">
   <div class="sovereign">
@@ -227,13 +231,13 @@ export function shellHTML(){
   <h3><i>Sheet</i></h3>
   <h4>Project name</h4>
   <input id="projName" type="text" class="field" placeholder="Untitled" style="height:44px;margin-bottom:6px">
-  <button class="mrow" id="mExportPDF"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>Export PDF<small>to print scale</small></button>
-  <button class="mrow" id="mExportDXF"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export DXF<small>opens in LibreCAD</small></button>
-  <button class="mrow" id="mExportSVG"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 16c1.5-4 6.5-4 8 0"/></svg>Export SVG<small>for Illustrator / web</small></button>
-  <button class="mrow" id="mImportDXF"><svg viewBox="0 0 24 24"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 3v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3"/></svg>Import DXF<small>LINE ARC CIRCLE PLINE INSERT HATCH</small></button>
-  <button class="mrow" id="mExportPNG"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Export PNG<small>with title block</small></button>
+  <button class="mrow" id="mOpenDrawing"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Open drawing<small>DXF · JSON · drop a file</small></button>
+  <button class="mrow" id="mImportDXF"><svg viewBox="0 0 24 24"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 3v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3"/></svg>Insert DXF<small>merge into this sheet</small></button>
   <button class="mrow" id="mSaveJSON"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg>Save project<small>.json</small></button>
-  <button class="mrow" id="mOpenJSON"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Open project<small>.json</small></button>
+  <button class="mrow" id="mExportDXF"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export DXF<small>R12 / R2000 · feet</small></button>
+  <button class="mrow" id="mExportPDF"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>Export PDF<small>to print scale</small></button>
+  <button class="mrow" id="mExportSVG"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 16c1.5-4 6.5-4 8 0"/></svg>Export SVG<small>for Illustrator / web</small></button>
+  <button class="mrow" id="mExportPNG"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Export PNG<small>with title block</small></button>
   <button class="mrow" id="mLayouts"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="1"/><path d="M3 16h18"/></svg>Layouts<small>paper space</small></button>
   <button class="mrow" id="mSchedules"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 4v16"/></svg>Place schedules<small>door · window · room</small></button>
   <button class="mrow" id="mSchedCSV"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 4v16M4 9h16M4 14h16"/></svg>Door schedule CSV<small>takeoff</small></button>
@@ -250,10 +254,11 @@ export function shellHTML(){
   </div>
   <button class="mrow" id="mSample"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M9 6v12"/></svg>Sample 24×36 cabin<small>walls, doors, hatch, dims</small></button>
   <button class="mrow" id="mNew"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg><span id="mNewLabel">New drawing</span></button>
-  <div class="subtle" id="menuFooter">Sovereign Draft. Decimal feet, Y-up. Dimensions to the nearest ½″. Drawing never leaves this device until you export.</div>
+  <div class="subtle" id="menuFooter">Sovereign Draft is the editor. Open a DXF from AutoCAD, LibreCAD or DraftSight — units follow $INSUNITS (mm, inches, meters → feet). Drawing stays on this device until you export.</div>
 </div>
-<input type="file" id="fileOpen" accept=".json,application/json" style="display:none">
-<input type="file" id="fileDXF" accept=".dxf" style="display:none">
+<input type="file" id="fileOpen" accept=".dxf,.json,.dwg,application/json,application/dxf" style="display:none">
+<input type="file" id="fileDXF" accept=".dxf,application/dxf" style="display:none">
 <input type="file" id="fileImage" accept="image/*" style="display:none">
+<div id="dropmask"><span>Drop a DXF or JSON to open it as the drawing</span></div>
 <div id="toast"></div>`;
 }
