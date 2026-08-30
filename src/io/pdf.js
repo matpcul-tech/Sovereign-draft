@@ -5,7 +5,8 @@
 import { arcPoints, dimGeom } from '../core/geometry.js';
 import { fmtFtIn } from '../core/format.js';
 import { membersBBox, explodeForIO } from '../core/entities.js';
-import { hatchLines } from '../core/hatch.js';
+import { hatchLines, hatchPlan, ppfToScaleFactor } from '../core/hatch.js';
+import { helveticaWidth } from '../core/textmetrics.js';
 import { sheetOf } from '../core/layout.js';
 
 export const SCALE_LADDER = [
@@ -79,7 +80,18 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts)
     else if (e.type === 'circle') path(circlePts(e.cx, e.cy, e.r), false);
     else if (e.type === 'arc') path(arcPoints(e), false);
     else if (e.type === 'hatch'){
-      hatchLines(e).forEach(sg => seg(sg[0][0], sg[0][1], sg[1][0], sg[1][1]));
+      /* Spacing is a paper value converted at plot time, so the pattern reads
+       * the same at 1/16" as it does at 1/2". */
+      const sf = ppfToScaleFactor(ppf);
+      const plan = hatchPlan(e, sf);
+      if (plan.mode === 'lines'){
+        hatchLines(e, sf).forEach(sg => seg(sg[0][0], sg[0][1], sg[1][0], sg[1][1]));
+      } else if (plan.mode === 'tone'){
+        /* Too fine to read as lines. A light tone instead of a smear. */
+        P('q 0.88 g');
+        pathFill(e.pts);
+        P('Q');
+      }
     }
     else if (e.type === 'text'){
       textAt(TX(e.x), TY(e.y), Math.max(e.size * ppf, 4), e.content || '', 0, false, 0.1);
@@ -95,7 +107,7 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts)
       });
       if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
       const txt = fmtFtIn(g.len, e.precision), sz = 7.5;
-      const wtxt = txt.length * sz * 0.5;
+      const wtxt = helveticaWidth(txt, sz, false);
       const mx = (pa[0] + pb[0]) / 2, my = (pa[1] + pb[1]) / 2;
       const nx = -Math.sin(ang), ny = Math.cos(ang);
       textAt(mx - Math.cos(ang) * wtxt / 2 + nx * 2.5, my - Math.sin(ang) * wtxt / 2 + ny * 2.5, sz, txt, ang, false, 0.25);
@@ -135,6 +147,13 @@ export function buildPDF(entities, opts){
     let s = f2(TX(pts[0][0])) + ' ' + f2(TY(pts[0][1])) + ' m';
     for (let i = 1; i < pts.length; i++) s += ' ' + f2(TX(pts[i][0])) + ' ' + f2(TY(pts[i][1])) + ' l';
     P(s + (close ? ' h S' : ' S'));
+  }
+  /* Filled version of path(), for the too-fine-to-draw hatch tone. */
+  function pathFill(pts){
+    if (!pts || !pts.length) return;
+    let s = f2(TX(pts[0][0])) + ' ' + f2(TY(pts[0][1])) + ' m';
+    for (let i = 1; i < pts.length; i++) s += ' ' + f2(TX(pts[i][0])) + ' ' + f2(TY(pts[i][1])) + ' l';
+    P(s + ' h f');
   }
   function circlePts(ccx, ccy, r){
     const pts = [];

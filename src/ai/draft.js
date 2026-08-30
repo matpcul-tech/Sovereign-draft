@@ -11,7 +11,7 @@ import { alignedDim } from '../core/dimStyle.js';
 import { SYMBOLS } from '../core/symbols.js';
 import { filletLines } from '../core/modify.js';
 import { makeInsert, locateInsert } from '../core/dynblock.js';
-import { rulesFor, closeDimChains, placeLabel, textBox, dimObstacles, polygonArea, centroidOf } from '../core/annotate.js';
+import { rulesFor, closeDimChains, placeLabel, textBox, dimObstacles, polygonArea, centroidOf, assertNoImpliedFill } from '../core/annotate.js';
 
 export const AI_SCHEMA_SPEC =
 'You are the drafting engine inside a professional 2D CAD application. Convert the request into constrained architectural geometry.\n' +
@@ -274,16 +274,23 @@ export function schemaToEntities(schema, ensureLayer){
     fresh.push({
       type: 'hatchRegion', layer: ensureLayer('HATCH'),
       pts: hr.pts.map(p => snap6(num(p[0]), num(p[1]))),
-      pattern: String(hr.pattern || 'ANSI31')
+      pattern: String(hr.pattern || 'ANSI31'),
+      explicit: true
     });
   });
 
   (schema.profiles || []).forEach(pr => {
     if (!pr || !Array.isArray(pr.pts) || pr.pts.length < 3) return;
+    /* A profile is an outline. It only carries a fill where the drawing type
+     * allows implied hatch, so an elevation or a part stays unfilled unless an
+     * explicit hatchRegion asked for one. */
+    if (pr.fill && !rules.impliedHatch){
+      console.warn('[ai] dropped fill on a profile: not valid on a ' + drawingType);
+    }
     fresh.push({
       type: 'profile', layer: ensureLayer('PROFILE'),
       pts: pr.pts.map(p => snap6(num(p[0]), num(p[1]))),
-      fill: pr.fill || null
+      fill: rules.impliedHatch ? (pr.fill || null) : null
     });
   });
 
@@ -341,6 +348,9 @@ export function schemaToEntities(schema, ensureLayer){
       content, textH: 0.8
     });
   });
+
+  /* Nothing downstream may reintroduce a fill the drawing type forbids. */
+  assertNoImpliedFill(fresh, drawingType);
 
   if (!fresh.length) throw new Error('Nothing drawable in the response');
 

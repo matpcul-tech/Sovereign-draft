@@ -4,12 +4,56 @@
  */
 import { dist, pointInPoly, polyArea } from './geometry.js';
 
+/* `paper` is the spacing as it prints, in inches, and is the real definition.
+ * `spacing` is the model-space value it works out to at the reference scale
+ * below, kept so callers that have no scale to offer behave as before.
+ */
 export const HATCH_PATTERNS = {
-  ANSI31: { angle: 45, spacing: 0.5, name: 'ANSI31' },
-  ANSI32: { angle: 45, spacing: 0.35, name: 'ANSI32' },
-  NET:    { angle: 0,  spacing: 0.6,  cross: true, name: 'NET' },
-  SOLID:  { angle: 0,  spacing: 0,    solid: true, name: 'SOLID' }
+  ANSI31: { angle: 45, spacing: 0.5,  paper: 1 / 8,   name: 'ANSI31' },
+  ANSI32: { angle: 45, spacing: 0.35, paper: 0.0875,  name: 'ANSI32' },
+  NET:    { angle: 0,  spacing: 0.6,  paper: 0.15, cross: true, name: 'NET' },
+  SOLID:  { angle: 0,  spacing: 0,    paper: 0,    solid: true, name: 'SOLID' }
 };
+
+/* Paper inches per model foot at 1/4" = 1'-0", the scale the old fixed model
+ * spacings were tuned for. Used when a caller supplies no scale. */
+export const REFERENCE_SCALE = 0.25;
+
+/* Below this the lines merge into a smear and read as solid fill, so we stop
+ * drawing them as lines. */
+export const MIN_PAPER_SPACING = 1 / 32;
+
+/* Points per model foot, as the PDF exporter thinks in, to paper inches per
+ * model foot. 72 points to the inch. */
+export function ppfToScaleFactor(ppf){ return (ppf || 0) / 72; }
+
+/* Canvas pixels per model foot to paper inches per model foot, at 96 dpi. */
+export function pxPerFootToScaleFactor(px){ return (px || 0) / 96; }
+
+/* Spacing is authored on paper and converted at plot time. A fixed model
+ * spacing collapses at small scales, which is the bug this replaces.
+ *   modelSpacing = paperSpacing / scaleFactor
+ */
+export function paperToModelSpacing(paperInches, scaleFactor){
+  const sf = scaleFactor || REFERENCE_SCALE;
+  return paperInches / sf;
+}
+
+/* What should actually be drawn for this hatch at this scale.
+ * Returns { mode: 'lines' | 'tone' | 'none', spacing, paper }.
+ */
+export function hatchPlan(e, scaleFactor){
+  const pat = HATCH_PATTERNS[e && e.pattern] || HATCH_PATTERNS.ANSI31;
+  if (pat.solid) return { mode: 'none', spacing: 0, paper: 0 };
+  const sf = scaleFactor || REFERENCE_SCALE;
+  const userScale = (e && e.scale) || 1;
+  const paper = (pat.paper || 0) * userScale;
+  if (paper > 0 && paper < MIN_PAPER_SPACING){
+    /* Never render hatch that reads as fill. */
+    return { mode: 'tone', spacing: paperToModelSpacing(paper, sf), paper };
+  }
+  return { mode: 'lines', spacing: paperToModelSpacing(paper, sf), paper };
+}
 
 function bbox(pts){
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
@@ -50,12 +94,14 @@ function clipLineToPoly(pts, ox, oy, ux, uy, span){
   return segs;
 }
 
-export function hatchLines(e){
+export function hatchLines(e, scaleFactor){
   const pts = e.pts; if (!pts || pts.length < 3) return [];
   const pat = HATCH_PATTERNS[e.pattern] || HATCH_PATTERNS.ANSI31;
   if (pat.solid) return [];
-  const scale = e.scale || 1;
-  const spacing = (pat.spacing || 0.5) * scale;
+  const plan = hatchPlan(e, scaleFactor);
+  if (plan.mode !== 'lines') return [];
+  const spacing = plan.spacing;
+  if (!(spacing > 0)) return [];
   const angle = ((e.angle != null ? e.angle : pat.angle) || 0) * Math.PI / 180;
   const ux = Math.cos(angle), uy = Math.sin(angle);
   const nx = -uy, ny = ux;

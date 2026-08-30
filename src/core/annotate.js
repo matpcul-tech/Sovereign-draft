@@ -5,6 +5,7 @@
  * swing on an elevation or a square-foot tag on a rocket.
  */
 import { polyArea, pointInPoly, dist } from './geometry.js';
+import { textWidth, boxWidth } from './textmetrics.js';
 
 /* Per drawing type: what the annotation pass is allowed to emit.
  *   areaTags     square-foot tags
@@ -25,6 +26,26 @@ export const ANNOTATION_RULES = {
 
 export function rulesFor(drawingType){
   return ANNOTATION_RULES[drawingType] || ANNOTATION_RULES.plan;
+}
+
+/* An implied fill is one the drawing type did not ask for: a profile that
+ * carries a fill style, or hatch derived from geometry. Only an explicit
+ * hatchRegion may put a fill on an elevation or a part.
+ */
+export function impliedFillAllowed(drawingType){ return rulesFor(drawingType).impliedHatch; }
+
+/* Throws when a fill slipped through that the drawing type forbids. Explicit
+ * hatchRegion entities are always allowed; they were asked for by name. */
+export function assertNoImpliedFill(entities, drawingType){
+  if (impliedFillAllowed(drawingType)) return true;
+  const offenders = (entities || []).filter(e =>
+    (e.type === 'profile' && e.fill) ||
+    (e.type === 'hatch' && !e.explicit)
+  );
+  if (offenders.length){
+    throw new Error('implied fill on a ' + drawingType + ': ' + offenders.length + ' entity(s)');
+  }
+  return true;
 }
 
 /* Only a plan reports floor area. */
@@ -106,9 +127,11 @@ export function closeDimChains(segs, unit){
 
 /* ---------- label placement ---------- */
 
-export function textBox(x, y, content, size){
+/* The box is sized with the same measurement the renderer draws with, and the
+ * result is padded. A per-character estimate is what clipped NOSE CONE. */
+export function textBox(x, y, content, size, opts){
   const h = size || 1;
-  const w = String(content || '').length * h * 0.58;
+  const w = boxWidth(content, h, opts);
   return [x, y - h * 0.25, x + w, y + h];
 }
 
@@ -144,7 +167,7 @@ export function placeLabel(opts){
   const clash = box => obstacles.some(o => boxesIntersect(box, o, 0.15));
 
   if (pts.length > 2){
-    const w = String(content).length * size * 0.58;
+    const w = boxWidth(content, size, opts.metrics);
     const c = centroidOf(pts);
     const box = textBox(c[0] - w / 2, c[1], content, size);
     if (boxInsidePoly(box, pts, size * 0.3) && !clash(box)){
@@ -152,7 +175,7 @@ export function placeLabel(opts){
     }
   }
 
-  const w = String(content).length * size * 0.58;
+  const w = boxWidth(content, size, opts.metrics);
   const gap = size * 1.5;
   const sides = [
     { name: 'right', x: ext[2] + gap,         y: anchor[1], free: 1 },

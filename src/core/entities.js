@@ -29,6 +29,7 @@ import { expandInsert, insertGrips } from './dynblock.js';
 import { tableFrags, tableCorners } from './schedule.js';
 import { dimLabel } from './dimStyle.js';
 import { expandGrid } from './grid.js';
+import { boxWidth, textWidth } from './textmetrics.js';
 
 /* Composite drafting entities used by non-building drawings. Each reduces to
  * primitives, so hit testing, bounds and every exporter run on the expansion
@@ -55,7 +56,7 @@ export function expandComposite(e){
   }
   if (e.type === 'hatchRegion'){
     if (!e.pts || e.pts.length < 3) return [];
-    return [{ type: 'hatch', layer: e.layer, pts: e.pts, pattern: e.pattern || 'ANSI31', scale: e.scale || 1, angle: e.angle || 0 }];
+    return [{ type: 'hatch', layer: e.layer, pts: e.pts, pattern: e.pattern || 'ANSI31', scale: e.scale || 1, angle: e.angle || 0, explicit: true }];
   }
   if (e.type === 'callout'){
     const out = [];
@@ -63,7 +64,7 @@ export function expandComposite(e){
     if (pts) out.push({ type: 'poly', closed: false, pts, layer: e.layer, lt: e.lt });
     const tip = pts ? pts[pts.length - 1] : (e.anchor || [0, 0]);
     const h = e.textH || 0.8;
-    const w = String(e.content || '').length * h * 0.58;
+    const w = boxWidth(e.content, h);
     out.push({ type: 'poly', closed: true, layer: e.layer, pts: [
       [tip[0], tip[1] - h * 0.35], [tip[0] + w + h * 0.4, tip[1] - h * 0.35],
       [tip[0] + w + h * 0.4, tip[1] + h * 1.05], [tip[0], tip[1] + h * 1.05]
@@ -231,7 +232,7 @@ export function entHit(e, w, tol){
     return false;
   }
   if (e.type === 'text'){
-    const wd = (e.content || '').length * e.size * 0.58;
+    const wd = boxWidth(e.content, e.size);
     return w[0] >= e.x - tol && w[0] <= e.x + wd + tol && w[1] >= e.y - tol && w[1] <= e.y + e.size + tol;
   }
   if (e.type === 'table') return pointInPoly(w[0], w[1], tableCorners(e));
@@ -279,7 +280,7 @@ export function entBBox(e, bb){
   else if (e.type === 'ellipse'){ ellipsePoints(e).forEach(p => add(p[0], p[1])); }
   else if (e.type === 'circle'){ add(e.cx - e.r, e.cy - e.r); add(e.cx + e.r, e.cy + e.r); }
   else if (e.type === 'arc'){ const ap = arcPoints(e); for (let j = 0; j < ap.length; j++) add(ap[j][0], ap[j][1]); }
-  else if (e.type === 'text'){ add(e.x, e.y); add(e.x + (e.content || '').length * e.size * 0.58, e.y + e.size); }
+  else if (e.type === 'text'){ add(e.x, e.y); add(e.x + boxWidth(e.content, e.size), e.y + e.size); }
   else if (e.type === 'table'){ tableCorners(e).forEach(p => add(p[0], p[1])); }
   else if (e.type === 'image'){ imageCorners(e).forEach(p => add(p[0], p[1])); }
   else if (e.type === 'dim'){

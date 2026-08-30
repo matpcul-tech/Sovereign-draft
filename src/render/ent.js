@@ -4,7 +4,7 @@
 import { arcPoints, dimGeom, ellipsePoints, cloudPoints, angularGeom } from '../core/geometry.js';
 import { fmtFtIn } from '../core/format.js';
 import { dashFor, lwToPx } from '../core/style.js';
-import { hatchLines } from '../core/hatch.js';
+import { hatchLines, hatchPlan, pxPerFootToScaleFactor } from '../core/hatch.js';
 import { flattenEnt, spanXline, isComposite, expandComposite} from '../core/entities.js';
 import { tableFrags } from '../core/schedule.js';
 import { dimLabel } from '../core/dimStyle.js';
@@ -57,8 +57,24 @@ export function drawEnt(c, e, color, sel, toS, scl, bg){
       c.globalAlpha = 1;
       c.restore();
     } else {
-      c.lineWidth = 1;
-      for (const seg of hatchLines(e)) strokePathOn(c, toS, seg);
+      const sf = pxPerFootToScaleFactor(scl);
+      const plan = hatchPlan(e, sf);
+      if (plan.mode === 'lines'){
+        c.lineWidth = 1;
+        for (const seg of hatchLines(e, sf)) strokePathOn(c, toS, seg);
+      } else if (plan.mode === 'tone'){
+        /* Too fine to read as lines at this zoom. Light tone, never a smear. */
+        c.save();
+        c.beginPath();
+        let t = toS(e.pts[0][0], e.pts[0][1]); c.moveTo(t[0], t[1]);
+        for (let i = 1; i < e.pts.length; i++){ t = toS(e.pts[i][0], e.pts[i][1]); c.lineTo(t[0], t[1]); }
+        c.closePath();
+        c.globalAlpha = 0.12;
+        c.fillStyle = sel ? '#d4a843' : color;
+        c.fill();
+        c.globalAlpha = 1;
+        c.restore();
+      }
     }
     if (sel){
       c.setLineDash([4, 3]);
