@@ -8,6 +8,7 @@ import { defaultDimStyles } from './dimStyle.js';
 import { defaultLayouts } from './layout.js';
 import { refreshAssocDims } from './assoc.js';
 import { syncAutoRooms } from './rooms.js';
+import { setDisplayUnits } from './format.js';
 
 export const LAYER_COLORS = ['#00d4b8', '#c45a3c', '#d4af37', '#8fa3c0', '#4ade80', '#e8e4dd'];
 export const GRID_SNAP = 0.5;
@@ -67,6 +68,7 @@ export const state = {
   activeSym: { u: false, i: 0 },
   pdfPPF: 'fit',
   dxfVer: 'R12',
+  units: 'ft',
   dimStyles: defaultDimStyles(),
   currentDimStyle: 'ARCH',
   layouts: normalizeSheets(defaultLayouts()),
@@ -89,6 +91,7 @@ export const state = {
 let changeHandler = null;
 export function onChange(fn){ changeHandler = fn; }
 export function afterChange(){
+  setDisplayUnits(state.units || 'ft');
   refreshAssocDims(state.entities);
   if (state.autoRooms) syncAutoRooms(state);
   if (changeHandler) changeHandler();

@@ -16,6 +16,7 @@ This is how we democratize CAD: the 80% of drawings that are plans, elevations, 
 | `SHEETSET` — cover, overall, one page per room or part | A substitute for a professional of record |
 | AI first pass (your Anthropic key) | Invented materials or pretended tolerances |
 | JSON you can diff in git + DXF in/out | A server that holds your drawings |
+| Share link in the URL hash, millimetres or metres on the glass | A CAD license |
 
 A cabin floor plan with walls, doors, rooms, dims, and a G-001/A-101 set is the job. A rocket silhouette with a parts table is a general arrangement, not a build spec — we will not pretend otherwise.
 
@@ -23,7 +24,9 @@ A cabin floor plan with walls, doors, rooms, dims, and a G-001/A-101 set is the 
 
 The editor is free. MIT licensed. Geometry is local. The only optional network call is `api.anthropic.com` with **your** key. No seat, no trial, no watermark.
 
-Later we may charge for hosted AI (so you don’t paste a key) and share links. Never for drawing.
+Tap **FT** in the status bar to cycle feet → millimetres → metres. World coordinates stay decimal feet; the glass and the command line follow you. Type `2400mm` or `3.6m` in any mode.
+
+Copy share link (Sheet menu) puts a gzipped drawing in the URL hash. No server. If it is too big, export HTML instead.
 
 ## Draw
 
@@ -142,7 +145,9 @@ writeFileSync('plan.pdf', toPDF(set), 'latin1')
 npx --yes github:matpcul-tech/Sovereign-draft --sample --pdf cabin.pdf
 npx sovereign-draft plan.json --pdf plan.pdf
 npx sovereign-draft plan.dxf --sheets --pdf set.pdf --svg set.svg --html set.html
-npx sovereign-draft --prompt "24x36 cabin, 3 rooms" --pdf cabin.pdf   # needs ANTHROPIC_API_KEY
+npx sovereign-draft plan.json --html plan.html
+npx sovereign-draft plan.json --share
+npx sovereign-draft --prompt "24x36 cabin" --pdf cabin.pdf
 npx sovereign-draft drawing.dwg --json drawing.json
 ```
 

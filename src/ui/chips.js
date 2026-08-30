@@ -78,6 +78,11 @@ export function syncCtx(){
   if ($('stOrtho')) $('stOrtho').classList.toggle('on', state.orthoOn);
   if ($('stPolar')) $('stPolar').classList.toggle('on', state.polarOn);
   if ($('stWall')) $('stWall').classList.toggle('on', state.wallMode || state.tool === 'wall');
+  if ($('stUnits')){
+    const u = state.units === 'mm' ? 'MM' : (state.units === 'm' ? 'M' : 'FT');
+    $('stUnits').textContent = u;
+    $('stUnits').classList.toggle('on', state.units !== 'ft');
+  }
   const th = WALL_THICKNESS.find(t => Math.abs(t.th - state.wallTh) < 1e-6);
   if ($('chipWall')){
     $('chipWall').classList.toggle('on', state.wallMode || state.tool === 'wall');

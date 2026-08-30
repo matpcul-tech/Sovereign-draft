@@ -3,6 +3,7 @@ import { PROJECT_VERSION, defaultLayers } from '../core/state.js';
 import { normalizeSheets, DOC_VERSION } from '../core/document.js';
 import { defaultDimStyles } from '../core/dimStyle.js';
 import { defaultLayouts } from '../core/layout.js';
+import { setDisplayUnits } from '../core/format.js';
 
 export const AUTOSAVE_KEY = 'sovereign-draft.autosave.v1';
 
@@ -33,7 +34,8 @@ export function serializeProject(state, pretty){
     layouts: state.layouts,
     currentLayout: state.currentLayout,
     space: state.space,
-    dxfVer: state.dxfVer
+    dxfVer: state.dxfVer,
+    units: state.units === 'mm' || state.units === 'm' ? state.units : 'ft'
   }, null, pretty ? 1 : 0);
 }
 
@@ -56,6 +58,7 @@ export function validateProject(o){
     currentLayout: o.currentLayout || 'A1',
     space: o.space === 'model' || o.space ? o.space : 'model',
     dxfVer: o.dxfVer === 'R2000' ? 'R2000' : 'R12',
+    units: o.units === 'mm' || o.units === 'm' ? o.units : 'ft',
     firm: {
       company: String(o.firm && o.firm.company || '').slice(0, 80),
       copyright: String(o.firm && o.firm.copyright || '').slice(0, 160),
@@ -77,6 +80,8 @@ export function applyProject(state, p){
   if (p.currentLayout) state.currentLayout = p.currentLayout;
   if (p.space) state.space = p.space;
   if (p.dxfVer) state.dxfVer = p.dxfVer;
+  if (p.units) state.units = p.units;
+  setDisplayUnits(state.units || 'ft');
   if (p.firm) state.firm = p.firm;
   ['SCHEDULES', 'UNDERLAY'].forEach(n => {
     if (!state.layers.find(l => l.name === n)){
