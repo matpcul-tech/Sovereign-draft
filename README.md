@@ -13,7 +13,7 @@ This is how we democratize CAD: the 80% of drawings that are plans, elevations, 
 | 2D drafting in the browser (PWA) | 3D solids, CAM, or CATIA |
 | Command line (`L`, `TR`, `@8<45`, F8) | Native DWG *write* (we read DWG, write DXF) |
 | Issued sheets: title block, copyright, multi-page PDF | Shop-floor GD&T / welding maps |
-| `SHEETSET` — cover, overall, one page per room or part | A substitute for a professional of record |
+| `XREF` / `BIND` — attach another drawing as an underlay | A substitute for a professional of record |
 | AI first pass (your Anthropic key) | Invented materials or pretended tolerances |
 | JSON you can diff in git + DXF in/out | A server that holds your drawings |
 | Share link in the URL hash, millimetres or metres on the glass | A CAD license |
@@ -43,7 +43,8 @@ Copy share link (Sheet menu) puts a gzipped drawing in the URL hash. No server. 
 | `RC` | Revision cloud | `LE` | Leader |
 | `IMG` | Image underlay | `XL` | Construction line |
 | `GRID` | Column grid | `OPEN` | Open DXF / JSON |
-| `DXFIN` | Insert DXF (merge) | `SHEETSET` | Generate sheet set |
+| `DXFIN` | Insert DXF (merge) | `XREF` | Attach xref |
+| `BIND` | Bind xref | `SHEETSET` | Generate sheet set |
 
 **Wall mode** draws two parallel faces + caps. Thickness chip: 4″ / 6″ / 8″. Walls **heal as you draw** — L-corners miter and T-junctions recut automatically. Doors and windows are **dynamic INSERT blocks**: stretch the width grip, tap the diamond to flip swing, type `2'6"` with the door selected. They recut the host wall. **Explode** (`XP`) yields ordinary lines and arcs. Fixtures (stove, bed, …) are the same INSERT type with rotate + flip grips.
 
@@ -147,7 +148,8 @@ npx sovereign-draft plan.json --pdf plan.pdf
 npx sovereign-draft plan.dxf --sheets --pdf set.pdf --svg set.svg --html set.html
 npx sovereign-draft plan.json --html plan.html
 npx sovereign-draft plan.json --share
-npx sovereign-draft --prompt "24x36 cabin" --pdf cabin.pdf
+npx sovereign-draft site.json --xref cabin.json --pdf site.pdf
+npx sovereign-draft plan.json --units mm --pdf plan.pdf
 npx sovereign-draft drawing.dwg --json drawing.json
 ```
 

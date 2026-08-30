@@ -18,6 +18,8 @@ import { isDwgBuffer, parseDwg } from './io/dwg.js';
 import { buildSVG } from './io/svg.js';
 import { toHTML } from './io/html.js';
 import { cabin24x36 } from './core/demo.js';
+import { attachXref } from './core/xref.js';
+import { setDisplayUnits } from './core/format.js';
 
 export function makeEnsureLayer(layers){
   const list = layers || [];
@@ -107,6 +109,13 @@ export async function openAsync(input, filename, opts){
   return open(input, filename);
 }
 
+export function attach(doc, other, opts){
+  const d = doc || createDocument();
+  const xref = attachXref(d.entities, other, opts || {});
+  d.entities = (d.entities || []).concat([xref]);
+  return d;
+}
+
 export function sheetset(doc, opts){
   const d = doc || {};
   const entities = (d.entities || []).slice();
@@ -146,6 +155,7 @@ export async function draw(prompt, opts){
 export function toPDF(doc, opts){
   const o = opts || {};
   const d = doc || {};
+  if (d.units) setDisplayUnits(d.units);
   const layouts = d.layouts || [];
   if (o.model || !layouts.length){
     return buildPDF(d.entities || [], {

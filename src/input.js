@@ -15,7 +15,7 @@ import {
   finishArc, commitTyped, closePoly, explodeSelection, flipSelection,
   applyStretchBox, matchTap, areaTap, listTap, idTap, dimRadTap, finishDimAng,
   placeScheduleAt, applyCleanup, applyOverkill, applyRooms, applyTakeoff,
-  applySheetSet, layerIsolate, layerUnisolate
+  applySheetSet, layerIsolate, layerUnisolate, bindSelection
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
 import { setTool } from './ui/tools.js';
@@ -443,6 +443,12 @@ export function handleCommand(text){
   if (res.action === 'rooms'){ applyRooms(); return; }
   if (res.action === 'takeoff'){ applyTakeoff(); return; }
   if (res.action === 'sheetset'){ applySheetSet(); return; }
+  if (res.action === 'xref'){
+    const el = document.getElementById('fileXref');
+    if (el) el.click();
+    return;
+  }
+  if (res.action === 'bind'){ bindSelection(); return; }
   if (res.action === 'layiso'){ layerIsolate(); return; }
   if (res.action === 'layuniso'){ layerUnisolate(); return; }
   if (res.action === 'open'){

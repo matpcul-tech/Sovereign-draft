@@ -60,7 +60,9 @@ export const COMMANDS = {
   EXPLODE: { aliases: ['EXPLODE', 'XP'],                 tool: null,     action: 'explode' },
   FLIP:    { aliases: ['FLIP'],                          tool: null,     action: 'flip' },
   ZFIT:    { aliases: ['ZOOMFIT', 'ZFIT'],              tool: null,     action: 'zoomfit' },
-  SHEETSET:{ aliases: ['SHEETSET', 'SS', 'SHEETS'],     tool: null,     action: 'sheetset' }
+  SHEETSET:{ aliases: ['SHEETSET', 'SS', 'SHEETS'],     tool: null,     action: 'sheetset' },
+  XREF:    { aliases: ['XREF', 'XR', 'XA', 'ATTACH'],   tool: null,     action: 'xref' },
+  BIND:    { aliases: ['BIND'],                         tool: null,     action: 'bind' }
 };
 
 const ALIAS = {};

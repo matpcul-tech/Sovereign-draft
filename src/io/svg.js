@@ -18,6 +18,7 @@ function flatten(entities){
   const out = [];
   (entities || []).forEach(e => {
     if (e.type === 'insert') out.push(...expandInsert(e));
+    else if (e.type === 'xref') out.push(...explodeForIO(e));
     else if (e.type === 'table') out.push(...tableFrags(e));
     else if (e.type === 'ellipse') out.push({ type: 'poly', closed: true, pts: ellipsePoints(e), layer: e.layer, lt: e.lt });
     else if (e.type === 'cloud') out.push({ type: 'poly', closed: true, pts: cloudPoints(e.pts || []), layer: e.layer, lt: e.lt });
