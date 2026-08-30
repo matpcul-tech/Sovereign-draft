@@ -188,7 +188,7 @@ export function buildLegend(entities, layers, opts){
     });
   }
 
-  const callouts = collectCallouts(entities);
+  const callouts = opts.skipCallouts ? [] : collectCallouts(entities);
   if (callouts.length){
     items.push({ kind: 'header', name: opts.partsTitle || 'PARTS / CALLOUTS' });
     callouts.forEach((c, i) => {

@@ -32,6 +32,7 @@ import { overkill } from './core/overkill.js';
 import { buildTakeoffTable, takeoffSummary } from './core/takeoff.js';
 import { syncAutoRooms } from './core/rooms.js';
 import { generateSheetSet } from './core/sheetset.js';
+import { envelopeDims } from './core/spec.js';
 
 export function applyConstraint(p1, p2){
   if (!p1 || !p2) return p2;
@@ -825,13 +826,14 @@ export function applyTakeoff(){
 export function applySheetSet(){
   if (!state.entities.length){ toast('Nothing to sheet yet'); return 0; }
   pushUndo();
+  envelopeDims(state.entities).forEach(d => addEntity(d));
   const layouts = generateSheetSet(state.entities, state.layers, { projectName: state.projectName });
   state.layouts = layouts;
   state.currentLayout = layouts[0].id;
   state.space = layouts[0].id;
   afterChange();
   try { document.dispatchEvent(new Event('sd-sheets-changed')); } catch (e){ /* node */ }
-  toast(layouts.length + ' sheets — cover, overall, one page per section');
+  toast(layouts.length + ' sheets — cover, overall, specs per section');
   return layouts.length;
 }
 

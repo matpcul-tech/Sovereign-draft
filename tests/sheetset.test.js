@@ -215,6 +215,38 @@ describe('AI callout elevation sheet set', () => {
     const boxes = [...pdf.matchAll(/MediaBox \[0 0 (\d+) (\d+)\]/g)].map(m => m[1] + 'x' + m[2]);
     expect(boxes[0]).toBe(Math.round(24 * 72) + 'x' + Math.round(36 * 72));
   });
+
+  it('puts a parts schedule with qty and size on the cover', () => {
+    const layouts = generateSheetSet(ents, layers);
+    const cover = layouts[0];
+    const sched = (cover.annotations || []).find(a => a.table && /PARTS SCHEDULE/i.test(a.table.title));
+    expect(sched).toBeTruthy();
+    const blob = (sched.table.cells || []).map(r => r.join(' ')).join(' | ');
+    expect(blob).toMatch(/MERLIN/);
+    expect(blob).toMatch(/\b9\b/);
+    expect(blob).toMatch(/GRID FINS/);
+    expect(blob).toMatch(/\b4\b/);
+    expect(blob).toMatch(/'/);
+    const section = layouts.find(L => L.kind === 'section' && /MERLIN|ENGINE|OCTAWEB|LANDING/i.test(L.name));
+    expect(section).toBeTruthy();
+    const spec = (section.annotations || []).find(a => a.table && /SPECIFICATION/i.test(a.table.title));
+    expect(spec).toBeTruthy();
+    const sblob = (spec.table.cells || []).map(r => r.join(' ')).join(' | ');
+    expect(sblob).toMatch(/MERLIN|ENGINE|OCTAWEB|LANDING|LEG/);
+    expect(sblob).not.toMatch(/NOSE CONE TIP/);
+  });
+
+  it('exports the schedule and envelope into the PDF', () => {
+    const layouts = generateSheetSet(ents, layers);
+    const { pdf } = buildAllSheetsPDF(ents, {
+      sheets: layouts,
+      projectName: 'Falcon 9',
+      dateStr: '8/30/2026'
+    });
+    expect(pdf).toContain('PARTS SCHEDULE');
+    expect(pdf).toContain('SPECIFICATIONS');
+    expect(pdf).toContain('Overall envelope');
+  });
 });
 
 describe('legend from a bbox', () => {

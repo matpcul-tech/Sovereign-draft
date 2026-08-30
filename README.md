@@ -93,7 +93,7 @@ Layers lock (click the padlock — locked objects can't be selected) and a **P**
 
 One model space + N layouts. Each layout has a sheet (Letter / Tabloid / Arch D), plot scale, and viewports that clip + scale model geometry. PDF export plots an **issued sheet**: double border, a title block (ISSUED BY / PROJECT / DRAWING TITLE / SCALE / SHEET), and your company copyright. Set the firm name, copyright line and “drawn by” in the Sheet menu — they stamp every page and stay on this device.
 
-**Sheet set** (`SHEETSET` / `SS`, or Sheet → Generate sheets) splits the model into a real CAD sheet set: **G-001** cover with a drawing index, **A-101** overall, and one sheet per room or labeled section. Each page carries a legend of the layers, symbols and callouts actually visible in that view. Export all sheets as one PDF from the Sheet menu. PageUp / PageDown walks the set.
+**Sheet set** (`SHEETSET` / `SS`, or Sheet → Generate sheets) splits the model into a real CAD sheet set: **G-001** cover with a drawing index and a **parts schedule** (mark, qty, description, size), **A-101** overall, and one sheet per room or labeled section with that sheet's specifications. Envelope dimensions (overall height and width) are stamped when the model has none, so the print can be built from. Each page still carries a legend of the layers, symbols and callouts in that view. Export all sheets as one PDF from the Sheet menu. PageUp / PageDown walks the set.
 
 ## DXF
 
