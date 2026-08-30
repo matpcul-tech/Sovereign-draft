@@ -5,12 +5,14 @@
 import { deep } from './geometry.js';
 import { defaultDimStyles } from './dimStyle.js';
 import { defaultLayouts } from './layout.js';
+import { refreshAssocDims } from './assoc.js';
+import { syncAutoRooms } from './rooms.js';
 
 export const LAYER_COLORS = ['#00d4b8', '#c45a3c', '#d4af37', '#8fa3c0', '#4ade80', '#e8e4dd'];
 export const GRID_SNAP = 0.5;
 export const OFFSETS = [0.5, 1, 2, 4];
 export const UNDO_LIMIT = 50;
-export const PROJECT_VERSION = 5;
+export const PROJECT_VERSION = 6;
 export const POLAR_STEP = 15;
 
 export function defaultLayers(){
@@ -21,7 +23,12 @@ export function defaultLayers(){
     { name: 'DIMS',     color: '#8fa3c0', aci: 8, visible: true },
     { name: 'TEXT',     color: '#e8e4dd', aci: 7, visible: true },
     { name: 'HATCH',    color: '#6b7c93', aci: 8, visible: true },
-    { name: 'CENTER',   color: '#c45a3c', aci: 1, visible: true, lt: 'CENTER' }
+    { name: 'CENTER',   color: '#c45a3c', aci: 1, visible: true, lt: 'CENTER' },
+    { name: 'SCHEDULES', color: '#e8e4dd', aci: 7, visible: true },
+    { name: 'UNDERLAY',  color: '#4a5a73', aci: 8, visible: true, plot: false },
+    { name: 'ROOMS',     color: '#4ade80', aci: 3, visible: true },
+    { name: 'GRID',      color: '#8fa3c0', aci: 8, visible: true, lt: 'CENTER' },
+    { name: 'DEFPOINTS', color: '#6b7c93', aci: 8, visible: true, plot: false }
   ];
 }
 
@@ -69,16 +76,28 @@ export const state = {
   cmdHistory: [],
   hatchPattern: 'ANSI31',
   currentLt: 'CONTINUOUS',
-  currentLw: 0
+  currentLw: 0,
+  lastTool: 'line',
+  autoRooms: false,
+  arrayCount: 6,
+  arrayFill: 360,
+  layerIsoPrev: null
 };
 
 let changeHandler = null;
 export function onChange(fn){ changeHandler = fn; }
-export function afterChange(){ if (changeHandler) changeHandler(); }
+export function afterChange(){
+  refreshAssocDims(state.entities);
+  if (state.autoRooms) syncAutoRooms(state);
+  if (changeHandler) changeHandler();
+}
 
 export function layerByName(n){ return state.layers.find(l => l.name === n) || null; }
 export function entById(id){ return state.entities.find(e => e.id === id) || null; }
 export function layerVisible(name){ const L = layerByName(name); return !L || L.visible; }
+export function layerLocked(name){ const L = layerByName(name); return !!(L && L.locked); }
+export function layerPlottable(name){ const L = layerByName(name); return !L || L.plot !== false; }
+export function layerEditable(name){ return layerVisible(name) && !layerLocked(name); }
 
 export function activeLayout(){
   return state.layouts.find(l => l.id === state.currentLayout) || state.layouts[0] || null;

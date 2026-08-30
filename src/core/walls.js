@@ -17,11 +17,12 @@ export function wallFrags(x1, y1, x2, y2, th, layer){
   const dx = x2 - x1, dy = y2 - y1, L = hypot(dx, dy) || 1e-9;
   const nx = -dy / L * th / 2, ny = dx / L * th / 2;
   const ly = layer || 'WALLS';
+  const ocl = { x1, y1, x2, y2, th, layer: ly };
   return [
-    { type: 'line', layer: ly, kind: 'wall', th, role: 'a', x1: x1 + nx, y1: y1 + ny, x2: x2 + nx, y2: y2 + ny },
-    { type: 'line', layer: ly, kind: 'wall', th, role: 'b', x1: x1 - nx, y1: y1 - ny, x2: x2 - nx, y2: y2 - ny },
-    { type: 'line', layer: ly, kind: 'wall', th, role: 'cap0', x1: x1 + nx, y1: y1 + ny, x2: x1 - nx, y2: y1 - ny },
-    { type: 'line', layer: ly, kind: 'wall', th, role: 'cap1', x1: x2 + nx, y1: y2 + ny, x2: x2 - nx, y2: y2 - ny }
+    { type: 'line', layer: ly, kind: 'wall', th, role: 'a', ocl, x1: x1 + nx, y1: y1 + ny, x2: x2 + nx, y2: y2 + ny },
+    { type: 'line', layer: ly, kind: 'wall', th, role: 'b', ocl, x1: x1 - nx, y1: y1 - ny, x2: x2 - nx, y2: y2 - ny },
+    { type: 'line', layer: ly, kind: 'wall', th, role: 'cap0', ocl, x1: x1 + nx, y1: y1 + ny, x2: x1 - nx, y2: y1 - ny },
+    { type: 'line', layer: ly, kind: 'wall', th, role: 'cap1', ocl, x1: x2 + nx, y1: y2 + ny, x2: x2 - nx, y2: y2 - ny }
   ];
 }
 

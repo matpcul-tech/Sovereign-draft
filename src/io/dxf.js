@@ -3,10 +3,10 @@
  * HATCH. Units are assumed to be feet both ways.
  */
 import { fmtN, dimGeom, arcPoints } from '../core/geometry.js';
-import { fmtFtIn } from '../core/format.js';
 import { LTYPE_NAMES, LINETYPES } from '../core/style.js';
 import { hatchLines } from '../core/hatch.js';
-import { expandInsert } from '../core/dynblock.js';
+import { explodeForIO } from '../core/entities.js';
+import { dimLabel } from '../core/dimStyle.js';
 
 function ltypeName(e){ return (e && e.lt) ? String(e.lt).toUpperCase() : 'CONTINUOUS'; }
 
@@ -107,7 +107,7 @@ function writeEnt(w, e, r2000, inBlock){
         e.pts.forEach(p => w(10, fmtN(p[0]), 20, fmtN(p[1])));
       }
     }
-  } else if (e.type === 'dim'){
+  } else if (e.type === 'dim' && e.kind !== 'angular' && e.kind !== 'radius' && e.kind !== 'diameter'){
     const g = dimGeom(e);
     [g.e1, g.e2, g.d].forEach(seg => {
       w(0, 'LINE', 8, 'DIMS', 10, fmtN(seg[0][0]), 20, fmtN(seg[0][1]), 30, 0, 11, fmtN(seg[1][0]), 21, fmtN(seg[1][1]), 31, 0);
@@ -119,9 +119,9 @@ function writeEnt(w, e, r2000, inBlock){
     });
     let deg = g.ang * 180 / Math.PI;
     if (deg > 90 || deg < -90) deg += 180;
-    w(0, 'TEXT', 8, 'DIMS', 10, fmtN(g.mid[0]), 20, fmtN(g.mid[1]), 30, 0, 40, 0.8, 50, fmtN(deg), 72, 1, 11, fmtN(g.mid[0]), 21, fmtN(g.mid[1]), 31, 0, 1, fmtFtIn(g.len, e.precision));
-  } else if (e.type === 'insert'){
-    expandInsert(e).forEach(f => writeEnt(w, f, r2000, inBlock));
+    w(0, 'TEXT', 8, 'DIMS', 10, fmtN(g.mid[0]), 20, fmtN(g.mid[1]), 30, 0, 40, 0.8, 50, fmtN(deg), 72, 1, 11, fmtN(g.mid[0]), 21, fmtN(g.mid[1]), 31, 0, 1, dimLabel(e));
+  } else if (e.type === 'insert' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
+    explodeForIO(e).forEach(f => writeEnt(w, f, r2000, inBlock));
   }
   void arcPoints;
 }

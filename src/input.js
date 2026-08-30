@@ -12,7 +12,10 @@ import {
   snapPt, applyConstraint, hitTest, cancelPoly, deleteSelection, placeSymbolAt,
   offsetTap, trimTap, extendTap, eraseTap, boxSelect, finishDraw, applyFillet,
   applyChamfer, applyJoin, hatchTap, transformSelection, applyArray, placeDoorOnWall,
-  finishArc, commitTyped, closePoly, explodeSelection, flipSelection
+  finishArc, commitTyped, closePoly, explodeSelection, flipSelection,
+  applyStretchBox, matchTap, areaTap, listTap, idTap, dimRadTap, finishDimAng,
+  placeScheduleAt, applyCleanup, applyOverkill, applyRooms, applyTakeoff,
+  layerIsolate, layerUnisolate
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
 import { setTool } from './ui/tools.js';
@@ -22,6 +25,7 @@ import { lookupCommand, defaultPrompt } from './core/command.js';
 import { continueDim, baselineDim } from './core/dimStyle.js';
 import { addEntity } from './core/state.js';
 import { paramOnCl, locateInsert, syncHostWall } from './core/dynblock.js';
+import { bindAlignedDim } from './core/assoc.js';
 
 function findGrip(sx, sy){
   const ms = selMembers();
@@ -34,9 +38,10 @@ function findGrip(sx, sy){
   return null;
 }
 
-const DRAW_TOOLS = ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'wall'];
-const TAP_TOOLS = ['erase', 'text', 'symbol', 'offset', 'trim', 'extend'];
+const DRAW_TOOLS = ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'wall', 'ellipse', 'image', 'calibrate', 'xline', 'grid', 'arraypolar'];
+const TAP_TOOLS = ['erase', 'text', 'symbol', 'offset', 'trim', 'extend', 'match', 'area', 'list', 'id', 'dimrad', 'dimdia', 'schedule'];
 const TWO_PICK = ['fillet', 'chamfer', 'mirror', 'move', 'copy', 'rotate', 'scale'];
+const POLY_TOOLS = ['poly', 'hatch', 'cloud', 'leader'];
 
 function onPointerDown(ev){
   const cv = ev.currentTarget;
@@ -93,13 +98,21 @@ function onPointerDown(ev){
   if (tool === 'hatch'){ ix.drag = { kind: 'hatchtap', s0: [sx, sy] }; return; }
   if (tool === 'array'){ ix.drag = { kind: 'arraytap', s0: [sx, sy] }; return; }
   if (tool === 'dimcont' || tool === 'dimbase'){ ix.drag = { kind: 'dimmore', s0: [sx, sy] }; return; }
-  if (tool === 'poly'){
+  if (POLY_TOOLS.includes(tool)){
     ix.drag = { kind: 'polytap', s0: [sx, sy] };
     ix.hoverPt = applyConstraint(ix.polyPts[ix.polyPts.length - 1] || null, snapPt(sx, sy));
     draw(); return;
   }
-  if (tool === 'arc'){
+  if (tool === 'arc' || tool === 'dimang'){
     ix.drag = { kind: 'arctap', s0: [sx, sy] };
+    draw(); return;
+  }
+  if (tool === 'stretch'){
+    if (ix.stretchBox){
+      ix.drag = { kind: 'draw', p1: snapPt(sx, sy, state.lastPt), p2: null, s0: [sx, sy] };
+    } else {
+      ix.drag = { kind: 'stretchbox', s0: [sx, sy], cur: null };
+    }
     draw(); return;
   }
   if (TWO_PICK.includes(tool)){
@@ -122,8 +135,8 @@ function onPointerMove(ev){
       const p = applyConstraint(from || null, snapPt(sx, sy, from));
       ix.hoverPt = p;
       updateStatus(p);
-      if ((state.tool === 'poly' || state.tool === 'hatch') && ix.polyPts.length) draw();
-      else if (ev.pointerType === 'mouse' && ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'symbol', 'wall', 'arc', 'mirror', 'move', 'copy'].includes(state.tool)) draw();
+      if ((state.tool === 'poly' || state.tool === 'hatch' || state.tool === 'cloud' || state.tool === 'leader') && ix.polyPts.length) draw();
+      else if (ev.pointerType === 'mouse' && ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'symbol', 'wall', 'arc', 'mirror', 'move', 'copy', 'ellipse', 'image', 'stretch', 'dimang', 'xline', 'grid', 'arraypolar'].includes(state.tool)) draw();
     }
     return;
   }
@@ -140,6 +153,7 @@ function onPointerMove(ev){
   if (!ix.drag) return;
   const drag = ix.drag;
   if (drag.kind === 'box'){ drag.cur = [sx, sy]; draw(); return; }
+  if (drag.kind === 'stretchbox'){ drag.cur = [sx, sy]; draw(); return; }
   if (drag.kind === 'pan' || drag.kind === 'panMaybe'){
     const dx = sx - drag.last[0], dy = sy - drag.last[1];
     if (drag.kind === 'panMaybe' && !drag.moved && dist(sx, sy, drag.s0[0], drag.s0[1]) < 6) return;
@@ -199,6 +213,11 @@ function endPointer(ev){
     }
     state.boxMode = false; syncCtx();
   }
+  else if (drag.kind === 'stretchbox'){
+    const moved = drag.cur && dist(drag.cur[0], drag.cur[1], drag.s0[0], drag.s0[1]) > 6;
+    if (moved) applyStretchBox(drag.s0, drag.cur);
+    else toast('Drag a crossing box');
+  }
   else if (drag.kind === 'panMaybe' && !drag.moved){ state.selIds = []; syncCtx(); }
   else if (drag.kind === 'opentap'){
     placeDoorOnWall(sx, sy, drag.opening);
@@ -206,6 +225,13 @@ function endPointer(ev){
     syncCtx();
   }
   else if (drag.kind === 'erasetap'){ eraseTap(sx, sy); }
+  else if (drag.kind === 'matchtap'){ matchTap(sx, sy); }
+  else if (drag.kind === 'areatap'){ areaTap(sx, sy); }
+  else if (drag.kind === 'listtap'){ listTap(sx, sy); }
+  else if (drag.kind === 'idtap'){ idTap(sx, sy); }
+  else if (drag.kind === 'dimradtap'){ dimRadTap(sx, sy, false); }
+  else if (drag.kind === 'dimdiatap'){ dimRadTap(sx, sy, true); }
+  else if (drag.kind === 'scheduletap'){ placeScheduleAt(snapPt(sx, sy), ix.schedKind); }
   else if (drag.kind === 'texttap'){
     ix.pendingTextPt = snapPt(sx, sy); ix.editTextId = null;
     const el = document.getElementById('txtval'); if (el) el.value = '';
@@ -229,9 +255,9 @@ function endPointer(ev){
     const p = snapPt(sx, sy);
     const style = currentDimStyleObj();
     if (tool === 'dimcont' && ix.dimLast){
-      pushUndo(); const e = continueDim(ix.dimLast, p, style); addEntity(e); ix.dimLast = e; afterChange();
+      pushUndo(); const e = continueDim(ix.dimLast, p, style); bindAlignedDim(e, state.entities); addEntity(e); ix.dimLast = e; afterChange();
     } else if (tool === 'dimbase' && ix.dimBase){
-      pushUndo(); const e = baselineDim(ix.dimBase, p, style); addEntity(e); afterChange();
+      pushUndo(); const e = baselineDim(ix.dimBase, p, style); bindAlignedDim(e, state.entities); addEntity(e); afterChange();
     } else toast('Place a linear dimension first');
   }
   else if (drag.kind === 'modpick'){
@@ -251,8 +277,12 @@ function endPointer(ev){
   else if (drag.kind === 'arctap'){
     const p = applyConstraint(ix.arcPts[ix.arcPts.length - 1] || null, snapPt(sx, sy));
     ix.arcPts.push(p); state.lastPt = p;
-    if (ix.arcPts.length >= 3) finishArc();
-    else setPrompt(ix.arcPts.length === 1 ? 'ARC Specify second point:' : 'ARC Specify end point:');
+    if (ix.arcPts.length >= 3){
+      if (tool === 'dimang') finishDimAng();
+      else finishArc();
+    } else setPrompt(ix.arcPts.length === 1
+      ? (tool === 'dimang' ? 'DIMANGULAR Specify vertex:' : 'ARC Specify second point:')
+      : (tool === 'dimang' ? 'DIMANGULAR Specify second endpoint:' : 'ARC Specify end point:'));
   }
   else if (drag.kind === 'draw' && drag.p2){
     if (TWO_PICK.includes(tool) && tool !== 'fillet' && tool !== 'chamfer'){
@@ -313,7 +343,17 @@ function onKeyDown(ev){
     cancelLive();
   }
   else if (ev.key === 'Enter'){
-    if (state.tool === 'poly' && ix.polyPts.length > 1) cancelPoly(true);
+    if (state.tool === 'select' && state.lastTool){ setTool(state.lastTool); }
+    else if (state.tool === 'poly' && ix.polyPts.length > 1) cancelPoly(true);
+    else if ((state.tool === 'cloud' || state.tool === 'leader') && ix.polyPts.length > 1){
+      if (state.tool === 'cloud') closePoly();
+      else cancelPoly(true);
+      if (state.tool === 'leader' && ix.pendingLeader){
+        const el = document.getElementById('txtval'); if (el) el.value = '';
+        openSheet('sheetText');
+        setTimeout(() => { const t = document.getElementById('txtval'); if (t) t.focus(); }, 200);
+      }
+    }
     else if (state.tool === 'hatch' && ix.polyPts.length > 2){ closePoly(); }
     else if (state.tool === 'join') applyJoin();
     else if (state.tool === 'array') applyArray();
@@ -321,6 +361,10 @@ function onKeyDown(ev){
   else if (ev.key === 'F3'){ ev.preventDefault(); state.snapOn = !state.snapOn; syncCtx(); toast(state.snapOn ? 'SNAP on' : 'SNAP off'); }
   else if (ev.key === 'F8'){ ev.preventDefault(); state.orthoOn = !state.orthoOn; if (state.orthoOn) state.polarOn = false; syncCtx(); toast(state.orthoOn ? 'ORTHO on' : 'ORTHO off'); }
   else if (ev.key === 'F10'){ ev.preventDefault(); state.polarOn = !state.polarOn; if (state.polarOn) state.orthoOn = false; syncCtx(); toast(state.polarOn ? 'POLAR 15° on' : 'POLAR off'); }
+  else if ((ev.key === ' ' || ev.code === 'Space') && (state.tool === 'select' || state.tool === 'pan') && state.lastTool){
+    ev.preventDefault();
+    setTool(state.lastTool);
+  }
   else if (!ev.ctrlKey && !ev.metaKey && !ev.altKey){
     if (k === 'f'){ zoomFit(); draw(); }
     else if (isNumericStart(ev.key) && isLiveCommand()){
@@ -340,18 +384,27 @@ function isLiveCommand(){
     const ms = selMembers();
     if (ms.length === 1 && ms[0].type === 'insert' && (ms[0].def === 'door' || ms[0].def === 'window')) return true;
   }
-  return DRAW_TOOLS.includes(state.tool) || TWO_PICK.includes(state.tool) || state.tool === 'poly' || state.tool === 'arc' || state.tool === 'offset' || state.tool === 'fillet' || state.tool === 'chamfer' || state.tool === 'scale' || state.tool === 'rotate';
+  return DRAW_TOOLS.includes(state.tool) || TWO_PICK.includes(state.tool) || POLY_TOOLS.includes(state.tool) || state.tool === 'arc' || state.tool === 'offset' || state.tool === 'fillet' || state.tool === 'chamfer' || state.tool === 'scale' || state.tool === 'rotate' || state.tool === 'stretch' || state.tool === 'calibrate' || state.tool === 'dimang';
 }
 
 function cancelLive(){
   cancelPoly(false); ix.arcPts = []; ix.modA = null; state.selIds = []; state.boxMode = false;
-  ix.drag = null; syncCtx(); setPrompt('Command:'); draw();
+  ix.drag = null; ix.stretchBox = null; ix.matchSrc = null; ix.calibratePts = [];
+  syncCtx(); setPrompt('Command:'); draw();
 }
 
 export function handleCommand(text){
   const res = commitTyped(text);
   if (!res) return;
   if (res.command){
+    if (res.command === 'schedule'){
+      if (res.rest){
+        const k = res.rest.toLowerCase();
+        ix.schedKind = k.indexOf('win') >= 0 ? 'window' : (k.indexOf('room') >= 0 ? 'room' : 'door');
+      }
+      setTool('schedule');
+      return;
+    }
     setTool(res.command);
     if (res.rest) handleCommand(res.rest);
     return;
@@ -359,15 +412,28 @@ export function handleCommand(text){
   if (res.action === 'zoomfit'){ zoomFit(); draw(); return; }
   if (res.action === 'explode'){ explodeSelection(); return; }
   if (res.action === 'flip'){ flipSelection(); return; }
+  if (res.action === 'cleanup'){ applyCleanup(); return; }
+  if (res.action === 'overkill'){ applyOverkill(); return; }
+  if (res.action === 'rooms'){ applyRooms(); return; }
+  if (res.action === 'takeoff'){ applyTakeoff(); return; }
+  if (res.action === 'layiso'){ layerIsolate(); return; }
+  if (res.action === 'layuniso'){ layerUnisolate(); return; }
+  if (res.action === 'svg'){
+    try { document.dispatchEvent(new Event('sd-export-svg')); } catch (e){ /* node */ }
+    return;
+  }
   if (res.numeric != null){ syncCtx(); setPrompt(defaultPrompt(state.tool, state)); return; }
   if (res.point){
     const p = applyConstraint(state.lastPt, res.point);
-    if (state.tool === 'poly' || state.tool === 'hatch'){
+    if (POLY_TOOLS.includes(state.tool) || state.tool === 'hatch'){
       ix.polyPts.push(p); state.lastPt = p; syncCtx(); draw(); return;
     }
-    if (state.tool === 'arc'){
+    if (state.tool === 'arc' || state.tool === 'dimang'){
       ix.arcPts.push(p); state.lastPt = p;
-      if (ix.arcPts.length >= 3) finishArc();
+      if (ix.arcPts.length >= 3){
+        if (state.tool === 'dimang') finishDimAng();
+        else finishArc();
+      }
       draw(); return;
     }
     if (ix.drag && ix.drag.kind === 'draw' && ix.drag.p1){

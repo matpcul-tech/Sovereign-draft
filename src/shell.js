@@ -83,11 +83,17 @@ export function shellHTML(){
       ${tool('circle','CIRCLE','Circle (C)','<circle cx="12" cy="12" r="8"/>')}
       ${tool('arc','ARC','3-point Arc (A)','<path d="M5 18a9 9 0 0 1 14-12"/>')}
       ${tool('wall','WALL','Wall','<path d="M4 8h16M4 16h16M4 8v8M20 8v8"/>')}
+      ${tool('xline','XLINE','Construction line (XL)','<path d="M3 21 21 3"/><path d="M3 3h.01M21 21h.01"/>')}
+      ${tool('grid','GRID','Column grid','<path d="M4 4h16v16H4zM4 10h16M4 16h16M10 4v16M16 4v16"/>')}
       ${tool('symbol','SYMB','Symbols (S)','<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><path d="M17 13v8M13 17h8"/>')}
       ${tool('dim','DIM','Dimension (D)','<path d="M4 6v12M20 6v12M4 12h16"/>')}
       ${tool('dimali','ALN','Aligned dim','<path d="M5 19 19 5M7 17h3M14 7h3"/>')}
       ${tool('text','TEXT','Text (T)','<path d="M5 6V4h14v2M12 4v16M9 20h6"/>')}
       ${tool('hatch','HATCH','Hatch (K)','<path d="M4 20 20 4M4 14l10-10M4 8l4-4M10 20l10-10M16 20l4-4"/>')}
+      ${tool('ellipse','ELPS','Ellipse','<ellipse cx="12" cy="12" rx="8" ry="5"/>')}
+      ${tool('cloud','CLOUD','Revision cloud','<path d="M5 16a3 3 0 0 1 1-5 4 4 0 0 1 7-2 4 4 0 0 1 6 4 3 3 0 0 1-1 6H6"/>')}
+      ${tool('leader','LEAD','Leader','<path d="M4 20 14 8M14 8h6M14 8v6"/>')}
+      ${tool('image','IMG','Image underlay','<rect x="3" y="5" width="18" height="14" rx="1"/><circle cx="9" cy="11" r="2"/><path d="m21 16-5-5-4 4-2-2-5 5"/>')}
       ${tool('measure','MEAS','Measure (M)','<path d="m3 17 4 4L21 7l-4-4z"/>')}
       ${tool('erase','ERASE','Erase (Q)','<path d="M19 13 9 3 3 9l10 10h6"/>')}
     </div>
@@ -104,9 +110,18 @@ export function shellHTML(){
       ${tool('move','MOVE','Move (W)','<path d="M5 12h14"/><path d="m15 8 4 4-4 4"/>')}
       ${tool('copy','COPY','Copy (U)','<rect x="8" y="8" width="10" height="10" rx="1"/><path d="M6 16V6h10"/>')}
       ${tool('array','ARRAY','Array (Y)','<rect x="3" y="3" width="6" height="6"/><rect x="15" y="3" width="6" height="6"/><rect x="3" y="15" width="6" height="6"/><rect x="15" y="15" width="6" height="6"/>')}
+      ${tool('arraypolar','POLAR','Polar array','<circle cx="12" cy="12" r="2"/><circle cx="12" cy="4" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="12" cy="20" r="2"/><circle cx="5" cy="12" r="2"/>')}
       ${tool('join','JOIN','Join (J)','<path d="M4 12h6M14 12h6M10 8v8M14 8v8"/>')}
       ${tool('dimcont','CONT','Continue dim','<path d="M4 12h7M13 12h7M4 8v8M11 8v8M20 8v8"/>')}
       ${tool('dimbase','BASE','Baseline dim','<path d="M4 18h16M4 12h12M4 6h8"/>')}
+      ${tool('dimang','ANG','Angular dim','<path d="M12 20a8 8 0 0 1 0-16"/><path d="M12 12h8M12 12v-8"/>')}
+      ${tool('dimrad','RAD','Radius dim','<circle cx="12" cy="12" r="8"/><path d="M12 12 18 7"/>')}
+      ${tool('dimdia','DIA','Diameter dim','<circle cx="12" cy="12" r="8"/><path d="M5 12h14"/>')}
+      ${tool('stretch','STR','Stretch','<path d="M4 8h10v8H4zM14 10h6v4h-6"/>')}
+      ${tool('match','MATCH','Match properties','<path d="M7 4h6l4 4v12H7z"/><path d="M13 4v4h4"/><path d="m8 14 2 2 4-4"/>')}
+      ${tool('area','AREA','Area','<path d="M4 20V8l6-4 6 4v12z"/>')}
+      ${tool('list','LIST','List object','<path d="M8 6h12M8 12h12M8 18h8M4 6h.01M4 12h.01M4 18h.01"/>')}
+      ${tool('schedule','SCH','Place schedule','<path d="M4 4h16v16H4zM4 9h16M9 4v16"/>')}
     </div>
   </div>
 </div>
@@ -214,11 +229,19 @@ export function shellHTML(){
   <input id="projName" type="text" class="field" placeholder="Untitled" style="height:44px;margin-bottom:6px">
   <button class="mrow" id="mExportPDF"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>Export PDF<small>to print scale</small></button>
   <button class="mrow" id="mExportDXF"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export DXF<small>opens in LibreCAD</small></button>
+  <button class="mrow" id="mExportSVG"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 16c1.5-4 6.5-4 8 0"/></svg>Export SVG<small>for Illustrator / web</small></button>
   <button class="mrow" id="mImportDXF"><svg viewBox="0 0 24 24"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 3v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3"/></svg>Import DXF<small>LINE ARC CIRCLE PLINE INSERT HATCH</small></button>
   <button class="mrow" id="mExportPNG"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Export PNG<small>with title block</small></button>
   <button class="mrow" id="mSaveJSON"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg>Save project<small>.json</small></button>
   <button class="mrow" id="mOpenJSON"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Open project<small>.json</small></button>
   <button class="mrow" id="mLayouts"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="1"/><path d="M3 16h18"/></svg>Layouts<small>paper space</small></button>
+  <button class="mrow" id="mSchedules"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 4v16"/></svg>Place schedules<small>door · window · room</small></button>
+  <button class="mrow" id="mSchedCSV"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 4v16M4 9h16M4 14h16"/></svg>Door schedule CSV<small>takeoff</small></button>
+  <button class="mrow" id="mCleanup"><svg viewBox="0 0 24 24"><path d="M4 20V10h6M14 4v10h6"/></svg>Heal wall joints<small>L-corners + T-junctions</small></button>
+  <button class="mrow" id="mRooms"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4z"/><path d="M16 16h4v4h-4z"/></svg>Detect rooms<small>live area from walls</small></button>
+  <button class="mrow" id="mTakeoff"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 4v16"/></svg>Quantity takeoff<small>walls · doors · rooms</small></button>
+  <button class="mrow" id="mOverkill"><svg viewBox="0 0 24 24"><path d="M4 12h16M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg>Overkill<small>drop duplicates</small></button>
+  <button class="mrow" id="mTrace"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1"/><circle cx="9" cy="11" r="2"/><path d="m21 16-5-5-4 4-2-2-5 5"/></svg>Trace image<small>place an underlay</small></button>
   <button class="mrow" id="mHistory"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h10M4 19h13"/></svg>Command history<small>this session</small></button>
   <button class="mrow" id="mSettings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>AI settings<small>API key, model</small></button>
   <div class="row" style="margin-top:8px">
@@ -231,5 +254,6 @@ export function shellHTML(){
 </div>
 <input type="file" id="fileOpen" accept=".json,application/json" style="display:none">
 <input type="file" id="fileDXF" accept=".dxf" style="display:none">
+<input type="file" id="fileImage" accept="image/*" style="display:none">
 <div id="toast"></div>`;
 }
