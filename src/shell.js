@@ -1,0 +1,235 @@
+/* CAD chrome. Injected into the React host so the kernel stays vanilla JS. */
+
+const SVG = {
+  undo: '<svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>',
+  redo: '<svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>',
+  fit: '<svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
+  menu: '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>',
+  props: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 12h8M8 15h5"/></svg>'
+};
+
+function tool(id, label, title, path){
+  return `<button class="tool" data-tool="${id}" title="${title}"><svg viewBox="0 0 24 24">${path}</svg><span>${label}</span></button>`;
+}
+
+export function shellHTML(){
+  return `
+<div id="wrap"><canvas id="cv"></canvas></div>
+<div id="hint">
+  <h2>Blank sheet</h2>
+  <p>Tap <span class="k">AI</span> and describe a blueprint, or pick a tool and draw.<br>
+  Type <span class="k">/</span> for the command line. One finger draws, two fingers pan and zoom.</p>
+</div>
+<div id="topbar">
+  <div class="sovereign">
+    <div class="pulse"></div>
+    <div>
+      <div class="sovlabel">SOVEREIGN</div>
+      <div id="title">Sovereign <b>Draft</b></div>
+    </div>
+  </div>
+  <div class="tb-spacer"></div>
+  <div id="spacetabs">
+    <button class="stab on" data-space="model">Model</button>
+    <button class="stab" data-space="layout" id="tabLayout">A-1</button>
+  </div>
+  <button class="tb-btn" id="btnUndo" aria-label="Undo">${SVG.undo}</button>
+  <button class="tb-btn" id="btnRedo" aria-label="Redo">${SVG.redo}</button>
+  <button class="tb-btn" id="btnFit" aria-label="Zoom to fit">${SVG.fit}</button>
+  <button class="tb-btn" id="btnProps" aria-label="Properties">${SVG.props}</button>
+  <button class="tb-btn" id="btnMenu" aria-label="Menu">${SVG.menu}</button>
+</div>
+<div id="cmdline">
+  <span id="cmdprompt">Command:</span>
+  <input id="cmdinput" autocomplete="off" spellcheck="false" placeholder="LINE  FILLET  @8<45  12'6"">
+</div>
+<div id="bottom">
+  <div id="ctxrow">
+    <button class="chip gold" id="chipAI">AI</button>
+    <button class="chip" id="chipLayer"><span class="sw" id="chipLayerSw"></span><span id="chipLayerNm">WALLS</span></button>
+    <button class="chip on" id="chipSnap">SNAP</button>
+    <button class="chip" id="chipOrtho">ORTHO</button>
+    <button class="chip" id="chipPolar">POLAR</button>
+    <button class="chip" id="chipWall">WALL 6"</button>
+    <button class="chip" id="chipLt">LT CONT</button>
+    <button class="chip" id="chipLw">LW DEF</button>
+    <button class="chip" id="chipDimSt">DIM ARCH</button>
+    <button class="chip" id="chipHatchPat" style="display:none">ANSI31</button>
+    <button class="chip" id="chipBox" style="display:none">BOX SELECT</button>
+    <button class="chip" id="chipOffDist" style="display:none">OFFSET 6"</button>
+    <button class="chip" id="chipFilletR" style="display:none">RADIUS 6"</button>
+    <button class="chip" id="chipChamferD" style="display:none">CHAMFER 6"</button>
+    <button class="chip" id="chipClose" style="display:none">Close shape</button>
+    <button class="chip" id="chipDone" style="display:none">Done</button>
+    <button class="chip warn" id="chipDelete" style="display:none">Delete</button>
+    <button class="chip" id="chipRotate" style="display:none">Rotate 90°</button>
+    <button class="chip" id="chipDup" style="display:none">Duplicate</button>
+    <button class="chip" id="chipAssign" style="display:none">Layer</button>
+    <button class="chip" id="chipBlock" style="display:none">Save block</button>
+    <button class="chip" id="chipExplode" style="display:none">Explode</button>
+    <button class="chip" id="chipEditTxt" style="display:none">Edit text</button>
+    <button class="chip" id="chipFlip" style="display:none">Flip dim</button>
+    <button class="chip" id="chipDoor" style="display:none">Door</button>
+    <button class="chip" id="chipWindow" style="display:none">Window</button>
+  </div>
+  <div id="toolstrip">
+    <div class="toolrow-label">Draw</div>
+    <div id="toolrow-draw" class="toolrow">
+      ${tool('select','SELECT','Select (V)','<path d="M5 3l14 7-6 2-2 6z"/>')}
+      ${tool('pan','PAN','Pan (H)','<path d="M12 3v18M3 12h18"/><path d="m9 6 3-3 3 3M9 18l3 3 3-3M6 9 3 12l3 3M18 9l3 3-3 3"/>')}
+      ${tool('line','LINE','Line (L)','<path d="M5 19 19 5"/><circle cx="5" cy="19" r="1.5"/><circle cx="19" cy="5" r="1.5"/>')}
+      ${tool('poly','POLY','Polyline (P)','<path d="M4 18 9 7l6 8 5-11"/>')}
+      ${tool('rect','RECT','Rectangle (R)','<rect x="4" y="6" width="16" height="12" rx="1"/>')}
+      ${tool('circle','CIRCLE','Circle (C)','<circle cx="12" cy="12" r="8"/>')}
+      ${tool('arc','ARC','3-point Arc (A)','<path d="M5 18a9 9 0 0 1 14-12"/>')}
+      ${tool('wall','WALL','Wall','<path d="M4 8h16M4 16h16M4 8v8M20 8v8"/>')}
+      ${tool('symbol','SYMB','Symbols (S)','<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><path d="M17 13v8M13 17h8"/>')}
+      ${tool('dim','DIM','Dimension (D)','<path d="M4 6v12M20 6v12M4 12h16"/>')}
+      ${tool('dimali','ALN','Aligned dim','<path d="M5 19 19 5M7 17h3M14 7h3"/>')}
+      ${tool('text','TEXT','Text (T)','<path d="M5 6V4h14v2M12 4v16M9 20h6"/>')}
+      ${tool('hatch','HATCH','Hatch (K)','<path d="M4 20 20 4M4 14l10-10M4 8l4-4M10 20l10-10M16 20l4-4"/>')}
+      ${tool('measure','MEAS','Measure (M)','<path d="m3 17 4 4L21 7l-4-4z"/>')}
+      ${tool('erase','ERASE','Erase (Q)','<path d="M19 13 9 3 3 9l10 10h6"/>')}
+    </div>
+    <div class="toolrow-label">Modify</div>
+    <div id="toolrow-mod" class="toolrow">
+      ${tool('offset','OFFS','Offset (O)','<path d="M5 4v16M12 4v16"/><path d="m16 8 4 4-4 4"/>')}
+      ${tool('trim','TRIM','Trim (X)','<path d="M8 8 21 21M8 16 21 3"/>')}
+      ${tool('extend','EXT','Extend (E)','<path d="M3 12h11"/><path d="m11 8 4 4-4 4"/><path d="M19 5v14"/>')}
+      ${tool('fillet','FILLET','Fillet (B)','<path d="M5 19V5h6"/><path d="M11 5a8 8 0 0 1 8 8v6"/>')}
+      ${tool('chamfer','CHAM','Chamfer (N)','<path d="M5 19V5h8l6 6v8z"/>')}
+      ${tool('mirror','MIRR','Mirror (I)','<path d="M12 3v18M5 8l7 4-7 4M19 8l-7 4 7 4"/>')}
+      ${tool('scale','SCALE','Scale (G)','<path d="M4 20V8h12"/><path d="M8 4h12v12"/>')}
+      ${tool('rotate','ROT','Rotate by angle','<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>')}
+      ${tool('move','MOVE','Move (W)','<path d="M5 12h14"/><path d="m15 8 4 4-4 4"/>')}
+      ${tool('copy','COPY','Copy (U)','<rect x="8" y="8" width="10" height="10" rx="1"/><path d="M6 16V6h10"/>')}
+      ${tool('array','ARRAY','Array (Y)','<rect x="3" y="3" width="6" height="6"/><rect x="15" y="3" width="6" height="6"/><rect x="3" y="15" width="6" height="6"/><rect x="15" y="15" width="6" height="6"/>')}
+      ${tool('join','JOIN','Join (J)','<path d="M4 12h6M14 12h6M10 8v8M14 8v8"/>')}
+      ${tool('dimcont','CONT','Continue dim','<path d="M4 12h7M13 12h7M4 8v8M11 8v8M20 8v8"/>')}
+      ${tool('dimbase','BASE','Baseline dim','<path d="M4 18h16M4 12h12M4 6h8"/>')}
+    </div>
+  </div>
+</div>
+<div id="statusbar">
+  <span id="stXY">X 0'-0"&nbsp;&nbsp;Y 0'-0"</span>
+  <span id="stLen">L —</span>
+  <span id="stAng">A —</span>
+  <button type="button" id="stSnap" class="on">SNAP</button>
+  <button type="button" id="stOrtho">ORTHO</button>
+  <button type="button" id="stPolar">POLAR</button>
+  <button type="button" id="stWall">WALL</button>
+  <span id="stSpace">MODEL</span>
+</div>
+<div id="backdrop"></div>
+<div class="sheet" id="sheetLayers">
+  <h3><i>Layers</i></h3>
+  <div id="assignNote">Tap a layer to move the selection onto it</div>
+  <div id="layerlist"></div>
+  <button class="addlayer" id="btnAddLayer">+ New layer</button>
+</div>
+<div class="sheet" id="sheetSymbols">
+  <h3><i>Symbols</i></h3>
+  <div id="symgrid"></div>
+  <div id="blkwrap" style="display:none">
+    <h4>Your blocks</h4>
+    <div id="blkgrid"></div>
+  </div>
+  <div class="subtle">Pick one, then tap the sheet to place it. Doors and windows cut walls they land on.</div>
+</div>
+<div class="sheet" id="sheetAI">
+  <h3><i>AI</i> Drafting</h3>
+  <textarea id="aiprompt" placeholder="Two bed one bath cabin, 24 by 36 feet, front porch, kitchen on the north wall"></textarea>
+  <button class="chip on" id="chipCtx" style="margin-top:10px">Sheet context: ON</button>
+  <button class="primary" id="btnGenerate">Generate blueprint</button>
+  <div id="aistatus"></div>
+  <div class="subtle">Claude returns walls, openings, fixtures, rooms and dims — then we snap to a 6" grid, hatch rooms and dimension. AI only adds; undo drops a pass. Key stays in this browser and is sent only to api.anthropic.com.</div>
+  <button class="linkish" id="btnAISettings">AI settings…</button>
+</div>
+<div class="sheet" id="sheetSettings">
+  <h3><i>AI settings</i></h3>
+  <h4>Anthropic API key</h4>
+  <input id="setKey" type="password" class="field" placeholder="sk-ant-..." autocomplete="off" style="height:44px">
+  <h4>Model</h4>
+  <select id="setModel" class="field" style="height:44px">
+    <option value="claude-opus-4-5">Claude Opus 4.5</option>
+    <option value="claude-sonnet-4-5">Claude Sonnet 4.5</option>
+    <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
+    <option value="claude-opus-5">Claude Opus 5</option>
+    <option value="claude-sonnet-5">Claude Sonnet 5</option>
+  </select>
+  <button class="primary" id="btnSaveSettings">Save settings</button>
+  <div class="subtle">Your key is stored only in this browser (localStorage) and sent only to api.anthropic.com.</div>
+</div>
+<div class="sheet" id="sheetText">
+  <h3><i>Text</i></h3>
+  <input id="txtval" type="text" class="field" placeholder="KITCHEN" style="height:44px">
+  <button class="primary" id="btnPlaceText">Place text</button>
+</div>
+<div class="sheet" id="sheetBlock">
+  <h3><i>Save block</i></h3>
+  <input id="blkname" type="text" class="field" placeholder="Kitchen island" style="height:44px">
+  <button class="primary" id="btnSaveBlock">Save selection as block</button>
+</div>
+<div class="sheet" id="sheetPDF">
+  <h3><i>Export PDF</i></h3>
+  <div class="subtle" style="margin-top:0">Plots the active layout at a true architectural scale. Switch to a layout tab first for title-block sheets.</div>
+  <div id="pdfscl">
+    <button class="chip on" data-ppf="fit">FIT</button>
+    <button class="chip" data-ppf="9">1/8"</button>
+    <button class="chip" data-ppf="18">1/4"</button>
+    <button class="chip" data-ppf="36">1/2"</button>
+  </div>
+  <button class="primary" id="btnExportPDF">Export PDF</button>
+</div>
+<div class="sheet" id="sheetLayouts">
+  <h3><i>Layouts</i></h3>
+  <div id="layoutlist"></div>
+  <h4>Sheet size</h4>
+  <div id="sheetSizes" class="chiprow">
+    <button class="chip" data-sheet="letter">Letter</button>
+    <button class="chip" data-sheet="tabloid">Tabloid</button>
+    <button class="chip on" data-sheet="archd">Arch D</button>
+  </div>
+  <h4>Plot scale</h4>
+  <div id="layoutScl" class="chiprow">
+    <button class="chip" data-ppf="9">1/8"</button>
+    <button class="chip on" data-ppf="18">1/4"</button>
+    <button class="chip" data-ppf="36">1/2"</button>
+  </div>
+  <button class="primary" id="btnFitVP">Fit viewport to drawing</button>
+  <button class="addlayer" id="btnAddLayout">+ New layout</button>
+</div>
+<div class="sheet" id="sheetProps">
+  <h3><i>Properties</i></h3>
+  <div id="proplist" class="proplist"></div>
+  <div class="subtle" id="propHint">Select an object to edit layer, linetype, lineweight.</div>
+</div>
+<div class="sheet" id="sheetHistory">
+  <h3><i>Command history</i></h3>
+  <pre id="cmdhist" class="cmdhist"></pre>
+</div>
+<div class="sheet" id="sheetMenu">
+  <h3><i>Sheet</i></h3>
+  <h4>Project name</h4>
+  <input id="projName" type="text" class="field" placeholder="Untitled" style="height:44px;margin-bottom:6px">
+  <button class="mrow" id="mExportPDF"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>Export PDF<small>to print scale</small></button>
+  <button class="mrow" id="mExportDXF"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export DXF<small>opens in LibreCAD</small></button>
+  <button class="mrow" id="mImportDXF"><svg viewBox="0 0 24 24"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 3v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3"/></svg>Import DXF<small>LINE ARC CIRCLE PLINE INSERT HATCH</small></button>
+  <button class="mrow" id="mExportPNG"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>Export PNG<small>with title block</small></button>
+  <button class="mrow" id="mSaveJSON"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg>Save project<small>.json</small></button>
+  <button class="mrow" id="mOpenJSON"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Open project<small>.json</small></button>
+  <button class="mrow" id="mLayouts"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="1"/><path d="M3 16h18"/></svg>Layouts<small>paper space</small></button>
+  <button class="mrow" id="mHistory"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h10M4 19h13"/></svg>Command history<small>this session</small></button>
+  <button class="mrow" id="mSettings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>AI settings<small>API key, model</small></button>
+  <div class="row" style="margin-top:8px">
+    <span class="nm">DXF version</span>
+    <button class="chip on" id="chipDxfVer">R12</button>
+  </div>
+  <button class="mrow" id="mSample"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M9 6v12"/></svg>Sample 24×36 cabin<small>walls, doors, hatch, dims</small></button>
+  <button class="mrow" id="mNew"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg><span id="mNewLabel">New drawing</span></button>
+  <div class="subtle" id="menuFooter">Sovereign Draft. Decimal feet, Y-up. Dimensions to the nearest ½″. Drawing never leaves this device until you export.</div>
+</div>
+<input type="file" id="fileOpen" accept=".json,application/json" style="display:none">
+<input type="file" id="fileDXF" accept=".dxf" style="display:none">
+<div id="toast"></div>`;
+}

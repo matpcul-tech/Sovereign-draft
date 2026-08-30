@@ -1,115 +1,106 @@
 # Sovereign Draft
 
-A touch-first 2D CAD program for architectural drafting that runs entirely in the browser. Draw in feet, dimension in feet-and-inches, and exchange work with desktop CAD via DXF. Installable as an offline PWA; every drawing autosaves to the device and nothing leaves it until you export.
+Touch-first 2D CAD for schematic-to-CD architectural drafting. Runs entirely in the browser: decimal feet, Y-up, dimensions in feet-and-inches to the nearest ½″. The drawing never leaves the device until you export.
 
-![CI](https://github.com/matpcul-tech/Sovereign-draft/actions/workflows/ci.yml/badge.svg)
+## Draw
 
-## Features
+| Key | Command | Key | Command |
+|-----|---------|-----|---------|
+| `L` | Line | `P` | Polyline |
+| `R` | Rectangle | `C` | Circle |
+| `A` | 3-point arc | `D` | Linear dimension |
+| `T` | Text | `K` | Hatch (ANSI31) |
+| `S` | Symbols / blocks | `M` | Measure |
+| `Q` | Erase | `V` | Select |
+| `H` | Pan | `F` | Zoom fit |
+| `/` | Focus command line | | |
 
-**Drawing and editing**
-- Line, polyline (open/closed), rectangle, circle, text, linear dimensions, measure
-- Trim, extend and parallel offset against lines, polylines, circles and arcs
-- Object snaps (endpoint, midpoint, center) plus a 6" grid snap, ortho mode
-- Select by tap or box, move, rotate 90°, duplicate, grip editing, per-entity layer assignment
-- Layers with visibility toggles and per-layer colors; blocks — save any selection as a reusable symbol
-- Built-in architectural symbol library (doors, windows, fixtures, furniture, stairs)
-- 50-level undo/redo covering entities *and* layers
+**Wall mode** draws two parallel faces + caps. Thickness chip: 4″ / 6″ / 8″. Doors and windows are **dynamic INSERT blocks**: stretch the width grip, tap the diamond to flip swing, type `2'6"` with the door selected. They recut the host wall. **Explode** (`XP`) yields ordinary lines and arcs. Fixtures (stove, bed, …) are the same INSERT type with rotate + flip grips.
 
-**Input**
-- Touch: one finger draws, two fingers pan and zoom
-- Desktop: scroll-wheel zoom, middle-drag pan, hover snap preview and full keyboard shortcuts
+## Modify
 
-**File formats**
-- **DXF out** (R12/AC1009 — opens in AutoCAD, LibreCAD, QCAD…) and **DXF in** (LINE, CIRCLE, ARC, TEXT, LWPOLYLINE, POLYLINE)
-- **PDF out** at a true architectural print scale (1/16" … 1" = 1'-0", or FIT) with title block and scale bar
-- **PNG out** with title block
-- **Project files** (.json) carrying layers, entities and user blocks; autosave/restore via localStorage
+| Key | Command | Key | Command |
+|-----|---------|-----|---------|
+| `O` | Offset | `X` | Trim |
+| `E` | Extend | `B` | Fillet (incl. r=0) |
+| `N` | Chamfer | `I` | Mirror |
+| `G` | Scale | `W` | Move |
+| `U` | Copy | `Y` | Rectangular array |
+| `J` | Join | `XP` | Explode block |
 
-**AI drafting**
-- Describe a floor plan ("two bed one bath cabin, 24 by 36 feet…") and Claude drafts walls, doors, fixtures, labels and dimensions
-- Sheet-context mode: the model reads what is already drawn and extends it; AI only ever adds — undo removes a pass
-- Bring your own Anthropic API key (Menu → AI settings). The key is stored only in your browser's localStorage and sent only to `api.anthropic.com`.
+Fillet / chamfer / offset / scale accept a typed radius or factor at the command line before the second pick. Live prompt example: `FILLET Specify radius <0'-6">:`.
 
-## Keyboard shortcuts
+## Command-line numeric input
 
-| Key | Action | Key | Action |
-|-----|--------|-----|--------|
-| `V` | Select | `O` | Offset |
-| `H` | Pan | `X` | Trim |
-| `L` | Line | `E` | Extend |
-| `P` | Polyline | `D` | Dimension |
-| `R` | Rectangle | `M` | Measure |
-| `C` | Circle | `T` | Text |
-| `S` | Symbols | `Q` | Erase |
-| `F` | Zoom to fit | `Enter` | Finish polyline |
-| `Esc` | Cancel / deselect / close sheet | `Del` | Delete selection |
-| `Ctrl/⌘+Z` | Undo | `Ctrl/⌘+Y` or `Ctrl/⌘+Shift+Z` | Redo |
+While a command is live:
 
-## Development
+| Typed | Meaning |
+|-------|---------|
+| `10` | Distance along the rubber-band (feet) |
+| `12'6"` | 12 feet 6 inches |
+| `@8<45` | Relative polar: 8 ft at 45° |
+| `#24,36` | Absolute coordinates |
+| `10,20` | Absolute coordinates |
 
-```bash
-npm install
-npm run dev        # dev server with hot reload
-npm test           # unit tests (vitest)
-npm run build      # production build in dist/
-npm run preview    # serve the production build
+`F3` SNAP · `F8` ORTHO · `F10` POLAR (15°) · `Esc` cancel · `Enter` finish polyline / join.
+
+## Dim styles
+
+Named styles (`ARCH` tick / `ARROW` / `DECIMAL`) with text height, offset, tick vs arrow, precision (½″ / ¼″ / decimal) and layer. Tools: aligned, continue, baseline. DXF export still explodes dimensions to R12 LINE+TEXT.
+
+## Paper space
+
+One model space + N layouts. Each layout has a sheet (Letter / Tabloid / Arch D), plot scale, title block, and viewports that clip + scale model geometry. PDF export plots the active layout at the chosen architectural scale.
+
+## DXF
+
+**In:** LINE, ARC, CIRCLE, TEXT, MTEXT (flattened), LWPOLYLINE, POLYLINE, INSERT (as a block group), HATCH.  
+**Out:** R12 (POLYLINE + LTYPE table + 370 weights) or R2000 (LWPOLYLINE). Toggle in the Sheet menu. Stays pure JS.
+
+## AI drafting (BYO Anthropic key)
+
+Key lives in `localStorage`, calls only `api.anthropic.com`, **adds only** — undo drops a pass. Sheet-context mode reads existing walls and appends. Invalid JSON is retried once, then toasted. Never deletes user entities.
+
+Claude is asked for this schema (not leftover raw lines):
+
+```json
+{
+  "walls": [{ "a": [x1, y1, x2, y2], "th": 0.5 }],
+  "openings": [{ "kind": "door|window", "wall": 0, "t": 0.5, "w": 3, "swing": "L|R" }],
+  "fixtures": [{ "kind": "Toilet|Sink|Tub|Shower|Stove|Fridge|Bed|Sofa|Stairs|Table", "x": 0, "y": 0, "rot": 0 }],
+  "rooms": [{ "name": "KITCHEN", "pts": [[x, y], ...] }],
+  "dims": [{ "a": [x1, y1, x2, y2] }]
+}
 ```
 
-Regenerate the PWA icons after changing the mark:
+The app snaps to a 6″ grid, fillets wall corners, hatches rooms, and places overall + room dimensions.
 
-```bash
-node scripts/gen-icons.mjs
-```
+## Status & properties
 
-## Deployment
+Status bar: X, Y, last length, last angle, SNAP / ORTHO / POLAR / WALL. Context chips **LT**, **LW**, and **DIM** cycle current linetype, millimetre lineweight, and dim style (`ARCH` ticks / `ARROW` / `DECIMAL`) — they also apply to the selection. Properties (the sheet button): edit layer, linetype, lineweight, dim style; length and area are read-only. Command history in the Sheet menu. Draw vs Modify are two independently swipeable rows so the toolstrip stays usable on a phone.
 
-`npm run build` emits a fully static site in `dist/` — deploy it to any static host (GitHub Pages, Netlify, Cloudflare Pages, S3…). The service worker precaches the app shell so it installs and runs offline; Google Fonts are runtime-cached with system-font fallbacks.
+**Hatch (`K`):** tap a closed polyline or tap *inside* a closed shape / circle. Tap an existing hatch to cycle ANSI31 → ANSI32 → NET → SOLID. Or draw a boundary and Close.
 
-Requirements: HTTPS (for the service worker and installability), no server-side code needed. The Anthropic API is called directly from the browser with the user's own key, so no proxy is required — though you can front it with one if you'd rather issue scoped keys.
+## Dynamic blocks
 
-### GitHub Pages
+Doors, windows and symbols are live `insert` entities (no frozen `g` group). Grips:
 
-`.github/workflows/deploy.yml` builds and publishes on every push to the repository's **default branch**, and can also be run on demand from the Actions tab.
+| Grip | Shape | Action |
+|------|-------|--------|
+| Move | square | Slide along the host wall, or free-move a fixture |
+| Stretch | circle | Door leaf / window width (snaps to 1″) |
+| Flip | diamond | Door swing L↔R, or mirror a fixture |
+| Rotate | circle (red) | Fixture / user-block angle |
 
-It targets the default branch because GitHub restricts the `github-pages` environment to that branch: a deploy triggered from any other branch is rejected before its first step runs, with the `deploy` job failing in about a second having executed nothing. Pointing the trigger at a fixed branch name that is *not* the default produces a deadlock — the branch that runs the workflow is not allowed to deploy, and the branch that is allowed never runs it. Deploying from the default branch keeps those the same branch and survives a rename.
-
-**One-time setup:** turn Pages on under **Settings → Pages → Build and deployment → Source: GitHub Actions**. Until that is done the deploy job fails at `configure-pages` with *"Please verify that the repository has Pages enabled"*; the workflow cannot do it for you, because creating a Pages site needs admin rights that the workflow's `GITHUB_TOKEN` does not carry. Once the setting is on, the next push to the default branch deploys with no further changes, and the published URL appears on the run's `deploy` job.
-
-To publish from a branch that is not the default (say, keep `main` as trunk while some other branch is default), widen the `github-pages` environment instead: **Settings → Environments → github-pages → Deployment branches**.
-
-### Serving from a subdirectory
-
-A GitHub Pages *project* site is served from `https://<user>.github.io/<repo>/`, so the bundle needs a matching base path. Set `VITE_BASE` at build time:
-
-```bash
-VITE_BASE=/Sovereign-draft/ npm run build
-```
-
-The deploy workflow does this automatically from the repository name. Leave `VITE_BASE` unset (defaults to `/`) for a user/org site, a custom domain, or any host serving from the domain root.
-
-## Architecture
-
-```
-src/
-  core/       pure, unit-tested CAD math and document state
-    geometry.js    distances, intersections, arcs, dimension geometry
-    entities.js    snap points, hit tests, bboxes, transforms, grips
-    offset.js      parallel offset for lines/polys/circles/arcs
-    trimExtend.js  trim + extend against the whole drawing
-    symbols.js     built-in symbol library
-    state.js       document, layers, selection, undo/redo
-    viewport.js    world<->screen mapping, zoom
-  io/         file formats: dxf.js, pdf.js, png.js, project.js
-  ai/         Anthropic API integration (draft.js) + local settings
-  render/     canvas rendering (shared between screen and PNG export)
-  ui/         sheets, chips, panels, toast
-  input.js    pointer/wheel/keyboard handling
-  main.js     wiring
-tests/        vitest suite for core, io and ai modules
-```
-
-Units are decimal feet with the Y axis pointing up (world space); dimensions display as feet-and-inches rounded to the nearest half inch.
+Type a length (`3`, `2'6"`) with a door or window selected to set width. Properties sheet also edits width and swing. Copy of a hosted insert detaches it (does not punch a second opening). DXF and PDF expand inserts to ordinary geometry so LibreCAD still opens the file.
 
 ## Privacy
 
-All drawing data stays in the browser (localStorage autosave + explicit file exports). The only network calls are Google Fonts and — when you use AI drafting with your own key — `api.anthropic.com`.
+Autosave to `localStorage`. No account, no backend. The only optional network call is `api.anthropic.com` with your key.
+
+## Development
+
+```
+npm test          # vitest (geometry, modify, dxf, pdf, AI schema) + workspace gates
+npm run build     # static PWA
+```

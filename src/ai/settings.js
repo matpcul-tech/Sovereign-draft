@@ -3,8 +3,8 @@
  */
 const KEY = 'sovereign-draft.ai-settings.v1';
 
-export const DEFAULT_MODEL = 'claude-opus-5';
-export const MODELS = ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5'];
+export const DEFAULT_MODEL = 'claude-sonnet-4-5';
+export const MODELS = ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-5', 'claude-sonnet-5'];
 
 export function loadAISettings(){
   try {

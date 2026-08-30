@@ -3,12 +3,15 @@
  * owns the document.
  */
 import { deep } from './geometry.js';
+import { defaultDimStyles } from './dimStyle.js';
+import { defaultLayouts } from './layout.js';
 
 export const LAYER_COLORS = ['#00d4b8', '#c45a3c', '#d4af37', '#8fa3c0', '#4ade80', '#e8e4dd'];
 export const GRID_SNAP = 0.5;
 export const OFFSETS = [0.5, 1, 2, 4];
 export const UNDO_LIMIT = 50;
-export const PROJECT_VERSION = 4;
+export const PROJECT_VERSION = 5;
+export const POLAR_STEP = 15;
 
 export function defaultLayers(){
   return [
@@ -16,7 +19,9 @@ export function defaultLayers(){
     { name: 'DOORS',    color: '#00d4b8', aci: 4, visible: true },
     { name: 'FIXTURES', color: '#c45a3c', aci: 1, visible: true },
     { name: 'DIMS',     color: '#8fa3c0', aci: 8, visible: true },
-    { name: 'TEXT',     color: '#e8e4dd', aci: 7, visible: true }
+    { name: 'TEXT',     color: '#e8e4dd', aci: 7, visible: true },
+    { name: 'HATCH',    color: '#6b7c93', aci: 8, visible: true },
+    { name: 'CENTER',   color: '#c45a3c', aci: 1, visible: true, lt: 'CENTER' }
   ];
 }
 
@@ -32,14 +37,39 @@ export const state = {
   tool: 'select',
   snapOn: true,
   orthoOn: false,
+  polarOn: false,
+  wallMode: false,
+  wallTh: 6 / 12,
   aiCtxOn: true,
   boxMode: false,
   selIds: [],
   undoStack: [],
   redoStack: [],
   offIdx: 0,
+  offsetDist: 0.5,
+  filletR: 0.5,
+  chamferD: 0.5,
+  scaleFactor: 1,
+  rotateAngle: 90,
+  arrayCols: 3,
+  arrayRows: 2,
+  arrayColDist: 4,
+  arrayRowDist: 4,
   activeSym: { u: false, i: 0 },
-  pdfPPF: 'fit'
+  pdfPPF: 'fit',
+  dxfVer: 'R12',
+  dimStyles: defaultDimStyles(),
+  currentDimStyle: 'ARCH',
+  layouts: defaultLayouts(),
+  currentLayout: 'A1',
+  space: 'model',          /* 'model' or a layout id */
+  lastLen: 0,
+  lastAng: 0,
+  lastPt: null,
+  cmdHistory: [],
+  hatchPattern: 'ANSI31',
+  currentLt: 'CONTINUOUS',
+  currentLw: 0
 };
 
 let changeHandler = null;
@@ -49,6 +79,14 @@ export function afterChange(){ if (changeHandler) changeHandler(); }
 export function layerByName(n){ return state.layers.find(l => l.name === n) || null; }
 export function entById(id){ return state.entities.find(e => e.id === id) || null; }
 export function layerVisible(name){ const L = layerByName(name); return !L || L.visible; }
+
+export function activeLayout(){
+  return state.layouts.find(l => l.id === state.currentLayout) || state.layouts[0] || null;
+}
+
+export function currentDimStyleObj(){
+  return state.dimStyles.find(s => s.name === state.currentDimStyle) || state.dimStyles[0];
+}
 
 /* Selection expanded to whole blocks: selecting one member selects the group. */
 export function selMembers(){
@@ -64,11 +102,24 @@ export function selMembers(){
 }
 
 function snapshot(){
-  return { entities: deep(state.entities), layers: deep(state.layers) };
+  return {
+    entities: deep(state.entities),
+    layers: deep(state.layers),
+    dimStyles: deep(state.dimStyles),
+    layouts: deep(state.layouts),
+    currentDimStyle: state.currentDimStyle,
+    currentLayout: state.currentLayout,
+    space: state.space
+  };
 }
 function restore(s){
   state.entities = s.entities;
   state.layers = s.layers;
+  if (s.dimStyles) state.dimStyles = s.dimStyles;
+  if (s.layouts) state.layouts = s.layouts;
+  if (s.currentDimStyle) state.currentDimStyle = s.currentDimStyle;
+  if (s.currentLayout) state.currentLayout = s.currentLayout;
+  if (s.space) state.space = s.space;
   if (!layerByName(state.currentLayer)) state.currentLayer = state.layers[0] ? state.layers[0].name : 'WALLS';
 }
 
@@ -110,7 +161,19 @@ export function addLayer(){
   return n;
 }
 
-export function addEntity(e){ e.id = state.idSeq++; state.entities.push(e); return e; }
+export function addEntity(e){
+  if (!e.lt && e.type !== 'dim' && e.type !== 'text' && e.type !== 'hatch' && e.type !== 'insert'){
+    if (state.currentLt && state.currentLt !== 'CONTINUOUS') e.lt = state.currentLt;
+    else {
+      const L = layerByName(e.layer || state.currentLayer);
+      if (L && L.lt && L.lt !== 'CONTINUOUS') e.lt = L.lt;
+    }
+  }
+  if (state.currentLw && e.lw == null && e.type !== 'dim' && e.type !== 'text' && e.type !== 'hatch' && e.type !== 'insert') e.lw = state.currentLw;
+  e.id = state.idSeq++;
+  state.entities.push(e);
+  return e;
+}
 
 export function deleteEntities(ids){
   const kill = {}; ids.forEach(id => { kill[id] = 1; });
@@ -125,4 +188,30 @@ export function replaceEntity(orig, newOnes){
   newOnes.forEach(ne => { ne.id = state.idSeq++; state.entities.push(ne); });
   state.selIds = [];
   afterChange();
+}
+
+export function replaceMany(pairs, extra){
+  pushUndo();
+  const kill = {};
+  pairs.forEach(p => { kill[p.orig.id] = 1; });
+  state.entities = state.entities.filter(x => !kill[x.id]);
+  pairs.forEach(p => p.ents.forEach(ne => { ne.id = state.idSeq++; state.entities.push(ne); }));
+  (extra || []).forEach(ne => { ne.id = state.idSeq++; state.entities.push(ne); });
+  state.selIds = [];
+  afterChange();
+}
+
+export function pushCmd(line){
+  state.cmdHistory.push(line);
+  if (state.cmdHistory.length > 40) state.cmdHistory.shift();
+}
+
+export function rememberVec(p1, p2){
+  if (!p1 || !p2) return;
+  const dx = p2[0] - p1[0], dy = p2[1] - p1[1];
+  state.lastLen = Math.sqrt(dx * dx + dy * dy);
+  let a = Math.atan2(dy, dx) * 180 / Math.PI;
+  if (a < 0) a += 360;
+  state.lastAng = a;
+  state.lastPt = [p2[0], p2[1]];
 }

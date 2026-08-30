@@ -1,8 +1,7 @@
-/* Project (de)serialization plus localStorage autosave. The on-disk format is
- * the same JSON the original prototype used, with a version bump and an
- * optional project name; v3 files still open.
- */
-import { PROJECT_VERSION } from '../core/state.js';
+/* Project (de)serialization plus localStorage autosave. */
+import { PROJECT_VERSION, defaultLayers } from '../core/state.js';
+import { defaultDimStyles } from '../core/dimStyle.js';
+import { defaultLayouts } from '../core/layout.js';
 
 export const AUTOSAVE_KEY = 'sovereign-draft.autosave.v1';
 
@@ -15,21 +14,32 @@ export function serializeProject(state, pretty){
     gSeq: state.gSeq,
     layers: state.layers,
     entities: state.entities,
-    userBlocks: state.userBlocks
+    userBlocks: state.userBlocks,
+    dimStyles: state.dimStyles,
+    currentDimStyle: state.currentDimStyle,
+    layouts: state.layouts,
+    currentLayout: state.currentLayout,
+    space: state.space,
+    dxfVer: state.dxfVer
   }, null, pretty ? 1 : 0);
 }
 
-/* Validate a parsed project object; throws with a friendly message. */
 export function validateProject(o){
   if (!o || typeof o !== 'object' || !Array.isArray(o.entities) || !Array.isArray(o.layers))
     throw new Error('Not a Sovereign Draft project');
   return {
     name: typeof o.name === 'string' && o.name.trim() ? o.name.trim().slice(0, 80) : 'Untitled',
-    layers: o.layers,
+    layers: o.layers && o.layers.length ? o.layers : defaultLayers(),
     entities: o.entities,
     idSeq: Number(o.idSeq) || (o.entities.length + 1),
     gSeq: Number(o.gSeq) || 1,
-    userBlocks: Array.isArray(o.userBlocks) ? o.userBlocks : []
+    userBlocks: Array.isArray(o.userBlocks) ? o.userBlocks : [],
+    dimStyles: Array.isArray(o.dimStyles) && o.dimStyles.length ? o.dimStyles : defaultDimStyles(),
+    currentDimStyle: o.currentDimStyle || 'ARCH',
+    layouts: Array.isArray(o.layouts) && o.layouts.length ? o.layouts : defaultLayouts(),
+    currentLayout: o.currentLayout || 'A1',
+    space: o.space === 'model' || o.space ? o.space : 'model',
+    dxfVer: o.dxfVer === 'R2000' ? 'R2000' : 'R12'
   };
 }
 
@@ -40,6 +50,12 @@ export function applyProject(state, p){
   state.idSeq = p.idSeq;
   state.gSeq = p.gSeq;
   state.userBlocks = p.userBlocks;
+  if (p.dimStyles) state.dimStyles = p.dimStyles;
+  if (p.currentDimStyle) state.currentDimStyle = p.currentDimStyle;
+  if (p.layouts) state.layouts = p.layouts;
+  if (p.currentLayout) state.currentLayout = p.currentLayout;
+  if (p.space) state.space = p.space;
+  if (p.dxfVer) state.dxfVer = p.dxfVer;
   if (!state.layers.find(l => l.name === state.currentLayer))
     state.currentLayer = state.layers[0] ? state.layers[0].name : 'WALLS';
   state.selIds = [];

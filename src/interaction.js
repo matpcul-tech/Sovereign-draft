@@ -6,9 +6,16 @@ export const ix = {
   gesture: null,
   drag: null,
   polyPts: [],
+  arcPts: [],
   hoverPt: null,
   snapMark: null,
   pendingTextPt: null,
   editTextId: null,
-  assignMode: false
+  assignMode: false,
+  cmdBuf: '',
+  lastPrompt: 'Command:',
+  hatchPts: [],
+  dimLast: null,
+  dimBase: null,
+  openingKind: 'door'
 };
