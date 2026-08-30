@@ -22,6 +22,8 @@ export const LAYER_MEANING = {
   UNDERLAY:  'Reference (n.p.)',
   ROOMS:     'Rooms / areas',
   GRID:      'Column grid',
+  PROFILE:   'Outline',
+  NOTES:     'Notes & callouts',
   DEFPOINTS: 'Defpoints (n.p.)'
 };
 
@@ -77,23 +79,37 @@ function symbolDesc(e){
   return e.mark || '';
 }
 
-/* TEXT / LEADER callouts that look like part or room names, not dims. */
+/* TEXT / LEADER / CALLOUT labels that look like part or room names, not dims.
+ * AI elevations emit type:'callout' with an anchor on the part — those are
+ * always collected. Plain text still has to look like a name (mostly caps). */
 export function isCalloutText(e){
   if (!e) return false;
   let t = '';
-  if (e.type === 'text') t = String(e.content || '').trim();
-  else if (e.type === 'leader') t = String(e.content || '').trim();
+  if (e.type === 'text' || e.type === 'leader' || e.type === 'callout') t = String(e.content || '').trim();
   else return false;
-  if (t.length < 3 || t.length > 42) return false;
+  if (t.length < 3 || t.length > 64) return false;
   if (/schedule/i.test(t)) return false;
   if (/^[0-9.'\-x×\s"/]+$/i.test(t)) return false;
   const letters = t.replace(/[^A-Za-z]/g, '');
   if (letters.length < 3) return false;
+  if (e.type === 'callout') return true;
   const upper = letters.replace(/[^A-Z]/g, '').length / letters.length;
   return upper > 0.55;
 }
 
 export function calloutAnchor(e){
+  if (e.type === 'callout'){
+    const a = e.anchor;
+    let x, y;
+    if (Array.isArray(a) && a.length >= 2){ x = a[0]; y = a[1]; }
+    else if (a && typeof a === 'object' && a.x != null){ x = a.x; y = a.y; }
+    if (x == null || y == null){
+      const p = (e.pts && e.pts[0]) || null;
+      if (!p) return null;
+      x = p[0]; y = p[1];
+    }
+    return { x: Number(x), y: Number(y), name: String(e.content || '').trim() };
+  }
   if (e.type === 'text') return { x: e.x, y: e.y, name: String(e.content || '').trim() };
   if (e.type === 'leader'){
     const last = (e.pts || [])[(e.pts || []).length - 1] || (e.pts || [])[0] || [0, 0];

@@ -10,10 +10,22 @@ export const SHEET_MARGIN = 0.5;
 export const TITLE_BLOCK_H = 1.65;
 
 export const SHEETS = {
-  letter:  { name: 'Letter',  w: 11,  h: 8.5,  code: 'LETTER' },
-  tabloid: { name: 'Tabloid', w: 17,  h: 11,   code: 'TABLOID' },
-  archd:   { name: 'Arch D',  w: 36,  h: 24,   code: 'ARCHD' }
+  letter:  { name: 'Letter',           w: 11, h: 8.5,  code: 'LETTER' },
+  tabloid: { name: 'Tabloid',          w: 17, h: 11,   code: 'TABLOID' },
+  archd:   { name: 'Arch D',           w: 36, h: 24,   code: 'ARCHD' },
+  archdp:  { name: 'Arch D Portrait',  w: 24, h: 36,   code: 'ARCHDP' }
 };
+
+/* Tall skinny elevations (rockets, stacks, towers) go on portrait paper so
+ * the drawing is a column, not a hairline on a landscape sheet. Floor plans
+ * stay landscape Arch D. */
+export function pickSheetForBBox(bbox){
+  if (!bbox || bbox[0] > 1e8) return 'archd';
+  const w = Math.max(bbox[2] - bbox[0], 0.01);
+  const h = Math.max(bbox[3] - bbox[1], 0.01);
+  if (h / w > 2.2) return 'archdp';
+  return 'archd';
+}
 
 /* Points-per-foot for architectural scales (same ladder as PDF). */
 export const PLOT_SCALES = [

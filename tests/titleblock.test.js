@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveStamp, drawingTitleOf, fitPaperText, titleBlockModel, viewportClearOfTitle } from '../src/core/titleblock.js';
+import { resolveStamp, drawingTitleOf, fitPaperText, titleBlockModel, viewportClearOfTitle, projectLabel } from '../src/core/titleblock.js';
 import { makeLayout, TITLE_BLOCK_H, SHEET_MARGIN } from '../src/core/layout.js';
 import { normalizeSheets } from '../src/core/document.js';
 import { tableFrags, makeTable } from '../src/core/schedule.js';
@@ -30,6 +30,21 @@ describe('drawing titles', () => {
   it('strips a leading sheet number from the layout name', () => {
     expect(drawingTitleOf({ sheetNumber: 'A-1', name: 'A-1 Full Stack Elevation' })).toBe('Full Stack Elevation');
     expect(drawingTitleOf({ sheetNumber: 'G-001', name: 'G-001 Cover & Index' })).toBe('Cover & Index');
+  });
+  it('does not copy the drawing title into PROJECT when untitled', () => {
+    expect(projectLabel('Untitled')).toBe('');
+    expect(projectLabel('Falcon 9')).toBe('Falcon 9');
+    const m = titleBlockModel('archd', {
+      projectName: 'Untitled',
+      drawingTitle: 'Cover & Index',
+      sheetNumber: 'G-001',
+      dateStr: '8/30/2026'
+    });
+    const p = m.cells.find(c => c.id === 'project');
+    const vals = m.labels.filter(l => l.x >= p.x && l.x < p.x + p.w).map(l => l.text);
+    expect(vals).toContain('PROJECT');
+    expect(vals.join(' ')).not.toMatch(/COVER/);
+    expect(vals.some(t => t === '-')).toBe(true);
   });
 });
 

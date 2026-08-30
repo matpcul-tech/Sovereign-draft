@@ -213,6 +213,7 @@ export function shellHTML(){
     <button class="chip" data-sheet="letter">Letter</button>
     <button class="chip" data-sheet="tabloid">Tabloid</button>
     <button class="chip on" data-sheet="archd">Arch D</button>
+    <button class="chip" data-sheet="archdp">D Portrait</button>
   </div>
   <h4>Plot scale</h4>
   <div id="layoutScl" class="chiprow">

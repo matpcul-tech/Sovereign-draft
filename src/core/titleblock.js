@@ -163,7 +163,7 @@ export function titleBlockModel(sheetKey, info){
   if (byId.project){
     const p = byId.project;
     labels.push(label(p, { y: top - 0.22, size: 0.08, text: 'PROJECT', gray: 0.4 }));
-    labels.push(label(p, { y: top - 0.52, size: 0.15, text: (project || title).toUpperCase(), bold: true }));
+    labels.push(label(p, { y: top - 0.52, size: 0.15, text: (project || '-').toUpperCase(), bold: true }));
     labels.push(label(p, { y: y + 0.38, size: 0.09, text: dateStr ? 'DATE  ' + dateStr : '', gray: 0.25 }));
     labels.push(label(p, { y: y + 0.16, size: 0.085, text: units, gray: 0.4 }));
   }
