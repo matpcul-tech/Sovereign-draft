@@ -245,7 +245,7 @@ describe('AI callout elevation sheet set', () => {
     });
     expect(pdf).toContain('PARTS SCHEDULE');
     expect(pdf).toContain('SPECIFICATIONS');
-    expect(pdf).toContain('Overall envelope');
+    expect(pdf).toContain('Envelope');
   });
 });
 

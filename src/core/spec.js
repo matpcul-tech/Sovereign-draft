@@ -83,7 +83,7 @@ export function collectParts(entities){
       qty,
       desc: desc || c.name,
       size,
-      material: attrs.material ? String(attrs.material) : '',
+      material: (attrs.material && !attrs.materialInvented) ? String(attrs.material) : '',
       x: c.x,
       y: c.y
     };
@@ -156,15 +156,15 @@ export function specNotes(body, parts){
   const h = Math.max(b[3] - b[1], 0);
   const notes = [];
   if (w > 0.05 && h > 0.05){
-    notes.push('Overall envelope: ' + fmtFtIn(w) + ' × ' + fmtFtIn(h) + '.');
+    notes.push('Envelope ' + fmtFtIn(w) + ' x ' + fmtFtIn(h) + '.');
   }
   const n = (parts || []).reduce((s, p) => s + (Number(p.qty) || 0), 0);
   if (n){
-    notes.push(n + ' part' + (n === 1 ? '' : 's') + ' scheduled. Sizes are station length × outline width.');
+    notes.push(n + ' part' + (n === 1 ? '' : 's') + '. Station x outline width.');
   } else {
-    notes.push('See the sheet legend for rooms, symbols and finishes.');
+    notes.push('See the legend for rooms, symbols, finishes.');
   }
-  notes.push('Dimensions are in feet and inches. Do not scale this drawing.');
+  notes.push('Do not scale. Dims in feet-inches.');
   return notes;
 }
 

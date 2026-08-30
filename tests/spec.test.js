@@ -86,7 +86,7 @@ describe('specNotes', () => {
   it('names the envelope and the part count', () => {
     const parts = collectParts(falcon());
     const notes = specNotes(bodyBBox(falcon()), parts);
-    expect(notes.join(' ')).toMatch(/Overall envelope/);
+    expect(notes.join(' ')).toMatch(/Envelope/);
     expect(notes.join(' ')).toMatch(/12/);
     expect(notes.join(' ')).toMatch(/230/);
     expect(notes.join(' ')).toMatch(/part/);

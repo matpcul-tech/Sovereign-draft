@@ -78,6 +78,29 @@ export function fitPaperText(str, sizePt, maxIn, bold){
   return s ? s + '...' : '';
 }
 
+/* Split onto up to maxLines so a schedule cell is readable instead of "COMPO..." */
+export function wrapPaperText(str, sizePt, maxIn, bold, maxLines){
+  const words = String(str == null ? '' : str).split(/\s+/).filter(Boolean);
+  const max = Math.max(0, maxIn) * 72;
+  const cap = Math.max(1, maxLines || 2);
+  if (!words.length) return [''];
+  const lines = [];
+  let cur = '';
+  words.forEach(w => {
+    const trial = cur ? cur + ' ' + w : w;
+    if (helveticaWidth(trial, sizePt, !!bold) <= max + 0.01) cur = trial;
+    else {
+      if (cur) lines.push(cur);
+      cur = w;
+    }
+  });
+  if (cur) lines.push(cur);
+  if (lines.length <= cap) return lines;
+  const kept = lines.slice(0, cap);
+  kept[cap - 1] = fitPaperText(lines.slice(cap - 1).join(' '), sizePt, maxIn, bold);
+  return kept;
+}
+
 function cell(id, x, y, w, h){
   return { id, x, y, w, h };
 }

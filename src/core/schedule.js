@@ -4,6 +4,7 @@
 import { polyArea, polyCentroid, pointInPoly } from './geometry.js';
 import { fmtFtIn } from './format.js';
 import { clFromMembers } from './dynblock.js';
+import { wrapPaperText } from './titleblock.js';
 
 export function nextMark(entities, prefix){
   let max = 0;
@@ -142,14 +143,20 @@ function tableFragsFromTop(e){
     const rowBottom = gridTop - (ri + 1) * rowH;
     let cx = e.x;
     row.forEach((cell, ci) => {
-      fr.push({
-        type: 'text',
-        layer: e.layer || 'TEXT',
-        x: cx + 0.1,
-        y: rowBottom + rowH * 0.28,
-        size: ri === 0 ? 0.1 : 0.09,
-        content: String(cell == null ? '' : cell),
-        maxW: (colW[ci] || 3) - 0.18
+      const maxW = (colW[ci] || 3) - 0.18;
+      const sz = ri === 0 ? 0.1 : 0.085;
+      const lines = wrapPaperText(String(cell == null ? '' : cell), sz * 72, maxW, ri === 0, 2);
+      const lineH = rowH / Math.max(lines.length, 1);
+      lines.forEach((line, li) => {
+        fr.push({
+          type: 'text',
+          layer: e.layer || 'TEXT',
+          x: cx + 0.1,
+          y: rowBottom + rowH - (li + 1) * lineH + lineH * 0.28,
+          size: sz,
+          content: line,
+          maxW
+        });
       });
       cx += colW[ci] || 3;
     });

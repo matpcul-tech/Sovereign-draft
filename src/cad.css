@@ -42,6 +42,17 @@ canvas{display:block;width:100%;height:100%;touch-action:none;background:var(--n
   background:var(--navy-2);color:var(--ink);font-size:13px;font-weight:500}
 #hint .hint-actions button#hintOpen{border-color:var(--gold);color:var(--navy);background:var(--gold);font-weight:600}
 
+/* Embed: the drawing only. Host page supplies chrome. */
+html.embed, body.embed{background:transparent}
+body.embed #topbar .sovereign,
+body.embed #cmdline,
+body.embed #bottom,
+body.embed #hint,
+body.embed #btnMenu,
+body.embed #btnProps{display:none !important}
+body.embed #topbar{background:transparent;border-bottom:none;padding:6px 8px}
+body.embed #spacetabs{margin-left:0}
+
 #dropmask{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
   background:rgba(7,16,31,.78);pointer-events:none}
 #dropmask.on{display:flex}

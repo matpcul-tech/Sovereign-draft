@@ -9,7 +9,13 @@ export default defineConfig({
   base,
   build: {
     target: 'es2020',
-    sourcemap: true
+    sourcemap: true,
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        embed: 'embed.html'
+      }
+    }
   },
   plugins: [
     VitePWA({
