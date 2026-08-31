@@ -703,6 +703,28 @@ export function finishArc(){
   pushUndo(); addEntity(a); afterChange();
 }
 
+export function applyStoryHeight(raw){
+  const n = typeof raw === 'number' ? raw : parseLength(raw);
+  if (!isFinite(n) || n <= 0){
+    toast('Height must be a length — try 9 or 9\'');
+    return false;
+  }
+  const h = Math.max(6, Math.min(40, n));
+  pushUndo();
+  state.storyHeight = h;
+  state.heightAssumed = false;
+  afterChange();
+  toast('Story height ' + fmtFtIn(h));
+  try { document.dispatchEvent(new CustomEvent('sd-height')); } catch (e){ /* node */ }
+  return true;
+}
+
+export function beginHeightPrompt(){
+  ix.awaitHeight = true;
+  toast('Story height ' + fmtFtIn(state.storyHeight || 8) + (state.heightAssumed ? ' ASSUMED' : ''));
+}
+
+
 /* Command-line commit: command alias, or numeric input for the live tool. */
 export function commitTyped(text){
   const raw = String(text || '').trim();
@@ -713,9 +735,20 @@ export function commitTyped(text){
     const rest = raw.slice(raw.indexOf(' ') + 1).trim();
     return { command: cmd.tool, rest: rest === raw ? '' : rest };
   }
-  if (cmd && cmd.action) return { action: cmd.action };
+  if (cmd && cmd.action){
+    const rest = raw.slice(raw.indexOf(' ') + 1).trim();
+    return { action: cmd.action, rest: rest === raw ? '' : rest };
+  }
 
   const tool = state.tool;
+  if (ix.awaitHeight){
+    const n = parseLength(raw);
+    if (isFinite(n) && n > 0){
+      applyStoryHeight(n);
+      ix.awaitHeight = false;
+      return { numeric: n };
+    }
+  }
   /* Width of a selected door/window insert. */
   if (tool === 'select'){
     const ms = selMembers();

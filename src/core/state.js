@@ -6,7 +6,7 @@ import { deep } from './geometry.js';
 import { normalizeSheets } from './document.js';
 import { defaultDimStyles } from './dimStyle.js';
 import { defaultLayouts } from './layout.js';
-import { refreshAssocDims } from './assoc.js';
+import { refreshAssocDims, bindAllDims } from './assoc.js';
 import { syncAutoRooms } from './rooms.js';
 import { setDisplayUnits } from './format.js';
 
@@ -70,7 +70,7 @@ export const state = {
   arrayRowDist: 4,
   activeSym: { u: false, i: 0 },
   pdfPPF: 'fit',
-  dxfVer: 'R12',
+  dxfVer: 'R2000',
   units: 'ft',
   dimStyles: defaultDimStyles(),
   currentDimStyle: 'ARCH',
@@ -88,13 +88,17 @@ export const state = {
   autoRooms: false,
   arrayCount: 6,
   arrayFill: 360,
-  layerIsoPrev: null
+  layerIsoPrev: null,
+  storyHeight: 8,
+  heightAssumed: true,
+  view3d: false
 };
 
 let changeHandler = null;
 export function onChange(fn){ changeHandler = fn; }
 export function afterChange(){
   setDisplayUnits(state.units || 'ft');
+  bindAllDims(state.entities);
   refreshAssocDims(state.entities);
   if (state.autoRooms) syncAutoRooms(state);
   if (changeHandler) changeHandler();

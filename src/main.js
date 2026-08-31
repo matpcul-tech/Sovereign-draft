@@ -26,7 +26,7 @@ import { membersBBox } from './core/entities.js';
 import { addSheet, addViewToSheet, normalizeSheets, findSheet } from './core/document.js';
 import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys, markScheduleCSV, paperKeynoteColW, paperScheduleColW } from './core/keynote.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation, makeDetailCallout, danglingDetails, detailBubbleText } from './core/sheetspace.js';
-import { cabin24x36 } from './core/demo.js';
+import { cabin24x36, partPlate, gaDiagram } from './core/demo.js';
 import { loadFirm, saveFirm, defaultFirm } from './core/titleblock.js';
 import { generateSheetSet } from './core/sheetset.js';
 import { toHTML } from './io/html.js';
@@ -66,6 +66,7 @@ export function boot(root){
     }
     syncCtx();
     draw();
+    if (state.view3d) syncOpen3d();
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(() => autosave(state), 800);
   });
@@ -122,18 +123,83 @@ async function loadShareFromLocation(){
     toast('Share link could not be read');
   }
 }
-function download(name, text, mime){
-  const blob = new Blob([text], { type: mime });
+function download(name, data, mime){
+  const blob = data instanceof Blob ? data : new Blob([data], { type: mime || 'application/octet-stream' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = name;
   document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800);
 }
 
+let view3dMod = null;
+async function loadView3d(){
+  if (!view3dMod) view3dMod = await import('./render/view3d.js');
+  return view3dMod;
+}
+
+function solidOpts(){
+  return {
+    entities: state.entities,
+    layers: state.layers,
+    height: state.storyHeight,
+    assumed: state.heightAssumed,
+    onHeight: (h) => {
+      const n = Math.max(6, Math.min(40, Number(h) || 8));
+      state.storyHeight = n;
+      state.heightAssumed = false;
+      afterChange();
+    },
+    onClose: () => {
+      state.view3d = false;
+      syncCtx();
+    },
+    download: (name, buf, mime) => download((fileSlug() + '-' + name).replace(/-model/, ''), buf, mime)
+  };
+}
+
+async function openView3d(){
+  if (!state.entities.length){ toast('Nothing to view in 3D yet'); return; }
+  try {
+    const m = await loadView3d();
+    if (m.isView3dOpen()){
+      m.syncView3d(solidOpts());
+      state.view3d = true;
+      syncCtx();
+      return;
+    }
+    m.showView3d(solidOpts());
+    state.view3d = true;
+    state.space = 'model';
+    syncCtx();
+    toast('3D · ' + (state.heightAssumed ? (fmtFtIn(state.storyHeight || 8) + ' ASSUMED') : fmtFtIn(state.storyHeight || 8)));
+  } catch (err){
+    toast((err && err.message) || '3D view failed');
+  }
+}
+
+function closeView3d(){
+  if (view3dMod && view3dMod.isView3dOpen()) view3dMod.hideView3d();
+  state.view3d = false;
+  syncCtx();
+}
+
+function toggleView3d(){
+  if (state.view3d) closeView3d();
+  else openView3d();
+}
+
+function syncOpen3d(){
+  if (view3dMod && view3dMod.isView3dOpen()) view3dMod.syncView3d(solidOpts());
+}
+
 function wireUi(){
   $('btnUndo') && $('btnUndo').addEventListener('click', doUndo);
   $('btnRedo') && $('btnRedo').addEventListener('click', doRedo);
   $('btnFit') && $('btnFit').addEventListener('click', () => { zoomFit(); draw(); });
+  $('btn3d') && $('btn3d').addEventListener('click', () => toggleView3d());
+  $('stHeight') && $('stHeight').addEventListener('click', () => {
+    try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* ignore */ }
+  });
   $('btnMenu') && $('btnMenu').addEventListener('click', () => {
     $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
     fillFirmFields();
@@ -350,21 +416,31 @@ function wireUi(){
   $('btnExportPDF') && $('btnExportPDF').addEventListener('click', () => {
     closeSheets();
     if (!state.entities.length){ toast('Nothing to export yet'); return; }
-    const layout = state.space !== 'model' ? activeLayout() : null;
-    if (layout){
-      /* Fit viewport if still at origin. */
-      const vp0 = layout.viewports[0];
+    const layerVisible = name => {
+      const L = layerByName(name);
+      return !L || (L.visible !== false && L.plot !== false);
+    };
+    const sheets = (state.layouts || []).filter(Boolean);
+    sheets.forEach(layout => {
+      const vp0 = layout.viewports && layout.viewports[0];
       if (vp0 && vp0.mx === 0 && vp0.my === 0) fitViewport(vp0, membersBBox(state.entities));
+    });
+    if (sheets.length){
+      const { pdf, ppf } = buildAllSheetsPDF(state.entities, {
+        sheets,
+        layerVisible,
+        projectName: state.projectName,
+        firm: state.firm
+      });
+      download(fileSlug() + '.pdf', pdf, 'application/pdf');
+      toast('PDF · ' + sheets.length + ' sheet' + (sheets.length === 1 ? '' : 's') + ' at ' + scaleLabel(ppf));
+      return;
     }
     const { pdf, ppf } = buildPDF(state.entities, {
-      ppf: layout ? layout.ppf : state.pdfPPF,
-      layerVisible: name => {
-        const L = layerByName(name);
-        return !L || (L.visible !== false && L.plot !== false);
-      },
+      ppf: state.pdfPPF,
+      layerVisible,
       projectName: state.projectName,
-      firm: state.firm,
-      layout: layout || undefined
+      firm: state.firm
     });
     download(fileSlug() + '.pdf', pdf, 'application/pdf');
     toast('PDF exported at ' + scaleLabel(ppf));
@@ -375,6 +451,28 @@ function wireUi(){
     download(fileSlug() + '.dxf', buildDXF(state.entities, state.layers, { ver: state.dxfVer, userBlocks: state.userBlocks }), 'application/dxf');
     toast('DXF ' + state.dxfVer + ' exported');
   });
+  async function exportDwg(){
+    closeSheets();
+    if (!state.entities.length){ toast('Nothing to export yet'); return; }
+    toast('Writing DWG…');
+    try {
+      const { writeDwg } = await import('./io/dwgwrite.js');
+      const r = await writeDwg(state.entities, state.layers, {
+        userBlocks: state.userBlocks,
+        height: state.storyHeight,
+        assumed: state.heightAssumed,
+        layouts: state.layouts
+      });
+      download(fileSlug() + '.dwg', r.bytes, 'application/acad');
+    toast(r.source === 'libredwg'
+      ? 'DWG R2000 exported'
+      : 'DWG R2000 — this app reopens it. AutoCAD Open: Export DXF R2000');
+    } catch (err){
+      toast((err && err.message) || 'DWG export failed — try DXF');
+    }
+  }
+  $('mExportDWG') && $('mExportDWG').addEventListener('click', exportDwg);
+  document.addEventListener('sd-export-dwg', exportDwg);
   function exportSvg(){
     closeSheets();
     if (!state.entities.length){ toast('Nothing to export yet'); return; }
@@ -449,7 +547,7 @@ function wireUi(){
     if (insunits === 1 || insunits === 4 || insunits === 5 || insunits === 6) return ' · ' + units + ' → feet';
     return '';
   }
-  function replaceWithEntities(ents, name){
+  function replaceWithEntities(ents, name, layouts){
     pushUndo();
     state.entities = [];
     state.selIds = [];
@@ -467,9 +565,17 @@ function wireUi(){
     });
     state.currentLt = prevLt;
     state.currentLw = prevLw;
+    if (layouts && layouts.length){
+      state.layouts = layouts;
+      state.currentLayout = layouts[0].id;
+      state.space = layouts[0].id;
+    }
     state.projectName = name || 'Untitled';
     if ($('projName')) $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
     closeSheets(); afterChange(); zoomFit(); draw();
+    if (layouts && layouts.length){
+      try { renderLayouts(); renderSpaceTabs(); } catch (err){ /* chrome not ready */ }
+    }
   }
   function openDrawingText(text, filename, opts){
     opts = opts || {};
@@ -494,7 +600,7 @@ function wireUi(){
       return;
     }
     try {
-      const { entities, count, insunits, units } = openDXF(text, n => String(n || 'WALLS').toUpperCase().slice(0, 24));
+      const { entities, count, insunits, units, layouts } = openDXF(text, n => String(n || 'WALLS').toUpperCase().slice(0, 24));
       if (!count){ toast('No supported objects in that file'); return; }
       if (opts.xref){
         applyAttachXref({ name: nameFromFile(filename), entities }, { name: nameFromFile(filename), path: filename });
@@ -507,8 +613,8 @@ function wireUi(){
         afterChange(); zoomFit(); draw();
         toast('Inserted ' + count + ' objects' + unitsNote(insunits, units));
       } else {
-        replaceWithEntities(entities, nameFromFile(filename));
-        toast('Opened ' + count + ' objects' + unitsNote(insunits, units));
+        replaceWithEntities(entities, nameFromFile(filename), layouts);
+        toast('Opened ' + count + ' objects' + unitsNote(insunits, units) + (layouts && layouts.length ? ' · ' + layouts.length + ' layout' + (layouts.length === 1 ? '' : 's') : ''));
       }
     } catch (err){ toast((opts.merge ? 'Insert' : 'Open') + ' failed: ' + err.message); }
   }
@@ -540,8 +646,8 @@ function wireUi(){
             afterChange(); zoomFit(); draw();
             toast('Inserted ' + r.entities.length + ' objects from DWG');
           } else {
-            replaceWithEntities(r.entities, nameFromFile(file.name));
-            toast('Opened ' + r.entities.length + ' objects from DWG');
+            replaceWithEntities(r.entities, nameFromFile(file.name), r.layouts);
+            toast('Opened ' + r.entities.length + ' objects from DWG' + (r.layouts && r.layouts.length ? ' · paperspace kept' : ''));
           }
         } catch (err){
           toast((err && err.message) || 'DWG open failed — Save As DXF in the other CAD');
@@ -634,6 +740,31 @@ function wireUi(){
     toast(state.layouts.length + ' sheets — cover, overall, one page per room');
   });
   $('hintSample') && $('hintSample').addEventListener('click', () => $('mSample') && $('mSample').click());
+
+  function loadSample(name, ents, layoutOpts){
+    closeSheets();
+    pushUndo();
+    state.entities = [];
+    ents.forEach(e => addEntity(e));
+    state.projectName = name;
+    state.autoRooms = false;
+    if ($('projName')) $('projName').value = name;
+    const layout = makeLayout(layoutOpts);
+    if (layout.viewports[0]) fitViewport(layout.viewports[0], membersBBox(state.entities));
+    state.layouts = [layout];
+    state.currentLayout = layout.id;
+    state.space = layout.id;
+    afterChange(); zoomFit(); draw();
+    renderLayouts(); renderSpaceTabs();
+  }
+  $('mSamplePart') && $('mSamplePart').addEventListener('click', () => {
+    loadSample('12x8 Plate', partPlate(), { id: 'D1', name: 'D-1 Plate', sheet: 'letter', ppf: 864 });
+    toast('Plate · 1:1 · GD&T with a named tolerance');
+  });
+  $('mSampleGA') && $('mSampleGA').addEventListener('click', () => {
+    loadSample('GA Diagram', gaDiagram(), { id: 'G1', name: 'G-1 General Arrangement', sheet: 'archdp', ppf: 18 });
+    toast('General arrangement — not a build spec');
+  });
 
   $('mLayouts') && $('mLayouts').addEventListener('click', () => { renderLayouts(); openSheet('sheetLayouts'); });
   $('mSheetSet') && $('mSheetSet').addEventListener('click', () => {
@@ -854,6 +985,9 @@ function wireUi(){
   window.addEventListener('error', ev => {
     toast('Something went wrong: ' + (ev.message || 'unknown error'), 4000);
   });
+  document.addEventListener('sd-view3d', () => openView3d());
+  document.addEventListener('sd-view2d', () => closeView3d());
+  document.addEventListener('sd-height', () => { syncCtx(); if (state.view3d) syncOpen3d(); });
 }
 
 function requireLayout(){
@@ -922,7 +1056,8 @@ if (typeof document !== 'undefined'){
   if (staticRoot && !booted && !embedMode){
     boot(staticRoot);
     if ('serviceWorker' in navigator){
-      import('virtual:pwa-register').then(({ registerSW }) => {
+      const spec = 'virtual:pwa-register';
+      import(/* @vite-ignore */ spec).then(({ registerSW }) => {
         registerSW({ immediate: true });
       }).catch(() => { /* PWA plugin not in this build */ });
     }

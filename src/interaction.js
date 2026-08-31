@@ -23,5 +23,6 @@ export const ix = {
   imageSrc: null,
   schedKind: 'door',
   pendingLeader: null,
-  calibratePts: []
+  calibratePts: [],
+  awaitHeight: false
 };

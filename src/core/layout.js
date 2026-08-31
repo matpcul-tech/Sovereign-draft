@@ -29,6 +29,8 @@ export function pickSheetForBBox(bbox){
 
 /* Points-per-foot for architectural scales (same ladder as PDF). */
 export const PLOT_SCALES = [
+  { ppf: 864,  lbl: '1:1' },
+  { ppf: 432,  lbl: '6" = 1\'-0"' },
   { ppf: 72,   lbl: '1" = 1\'-0"' },
   { ppf: 54,   lbl: '3/4" = 1\'-0"' },
   { ppf: 36,   lbl: '1/2" = 1\'-0"' },

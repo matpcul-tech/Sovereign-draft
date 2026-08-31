@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
-import { createDocument, open, toPDF, toDXF, toJSON, toSVG, toHTML, sampleCabin } from '../src/api.js';
+import { createDocument, open, toPDF, toDXF, toDWG, toJSON, toSVG, toHTML, sampleCabin } from '../src/api.js';
 import { cabin24x36 } from '../src/core/demo.js';
 import { defaultLayers } from '../src/core/state.js';
 import { buildDXF } from '../src/io/dxf.js';
@@ -35,6 +35,9 @@ describe('sheetset + PDF', () => {
     expect(pdf).toContain('ROOM SCHEDULE');
     const dxf = toDXF(doc);
     expect(dxf).toContain('EOF');
+    const dwg = toDWG(doc);
+    expect(dwg[0]).toBe('A'.charCodeAt(0));
+    expect(dwg[1]).toBe('C'.charCodeAt(0));
     const svg = toSVG(doc);
     expect(svg).toContain('<svg');
     expect(svg).toContain('</svg>');

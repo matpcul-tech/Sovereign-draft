@@ -1,0 +1,368 @@
+{
+ "app": "sovereign-draft",
+ "v": 7,
+ "name": "12x8 Plate",
+ "firm": {
+  "company": "",
+  "copyright": "",
+  "drawnBy": ""
+ },
+ "idSeq": 14,
+ "gSeq": 1,
+ "layers": [
+  {
+   "name": "WALLS",
+   "color": "#d4a843",
+   "aci": 2,
+   "visible": true
+  },
+  {
+   "name": "DOORS",
+   "color": "#00d4b8",
+   "aci": 4,
+   "visible": true
+  },
+  {
+   "name": "FIXTURES",
+   "color": "#c45a3c",
+   "aci": 1,
+   "visible": true
+  },
+  {
+   "name": "DIMS",
+   "color": "#8fa3c0",
+   "aci": 8,
+   "visible": true
+  },
+  {
+   "name": "TEXT",
+   "color": "#e8e4dd",
+   "aci": 7,
+   "visible": true
+  },
+  {
+   "name": "HATCH",
+   "color": "#6b7c93",
+   "aci": 8,
+   "visible": true
+  },
+  {
+   "name": "CENTER",
+   "color": "#c45a3c",
+   "aci": 1,
+   "visible": true,
+   "lt": "CENTER"
+  },
+  {
+   "name": "SCHEDULES",
+   "color": "#e8e4dd",
+   "aci": 7,
+   "visible": true
+  },
+  {
+   "name": "UNDERLAY",
+   "color": "#4a5a73",
+   "aci": 8,
+   "visible": true,
+   "plot": false
+  },
+  {
+   "name": "ROOMS",
+   "color": "#4ade80",
+   "aci": 3,
+   "visible": true
+  },
+  {
+   "name": "GRID",
+   "color": "#8fa3c0",
+   "aci": 8,
+   "visible": true,
+   "lt": "CENTER"
+  },
+  {
+   "name": "DEFPOINTS",
+   "color": "#6b7c93",
+   "aci": 8,
+   "visible": true,
+   "plot": false
+  },
+  {
+   "name": "SECTION",
+   "color": "#00d4b8",
+   "aci": 4,
+   "visible": true
+  },
+  {
+   "name": "GDT",
+   "color": "#e8e4dd",
+   "aci": 7,
+   "visible": true
+  },
+  {
+   "name": "NOTES",
+   "color": "#e8e4dd",
+   "aci": 7,
+   "visible": true
+  }
+ ],
+ "entities": [
+  {
+   "type": "profile",
+   "layer": "WALLS",
+   "pts": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     0.6666666666666666
+    ],
+    [
+     0,
+     0.6666666666666666
+    ]
+   ],
+   "fill": false
+  },
+  {
+   "type": "poly",
+   "layer": "WALLS",
+   "closed": true,
+   "pts": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     0.6666666666666666
+    ],
+    [
+     0,
+     0.6666666666666666
+    ]
+   ],
+   "lw": 0.5
+  },
+  {
+   "type": "circle",
+   "layer": "DOORS",
+   "cx": 0.2,
+   "cy": 0.2,
+   "r": 0.041666666666666664,
+   "id": "h0"
+  },
+  {
+   "type": "circle",
+   "layer": "DOORS",
+   "cx": 0.8,
+   "cy": 0.2,
+   "r": 0.041666666666666664,
+   "id": "h1"
+  },
+  {
+   "type": "circle",
+   "layer": "DOORS",
+   "cx": 0.8,
+   "cy": 0.4666666666666666,
+   "r": 0.041666666666666664,
+   "id": "h2"
+  },
+  {
+   "type": "circle",
+   "layer": "DOORS",
+   "cx": 0.2,
+   "cy": 0.4666666666666666,
+   "r": 0.041666666666666664,
+   "id": "h3"
+  },
+  {
+   "type": "dim",
+   "layer": "DIMS",
+   "x1": 0,
+   "y1": 0,
+   "x2": 1,
+   "y2": 0,
+   "off": -0.22,
+   "kind": "aligned",
+   "dimStyle": "ARCH",
+   "arrow": "tick",
+   "textH": 0.8,
+   "precision": "1/2",
+   "assoc": [
+    {
+     "kind": "ent",
+     "k": "p0"
+    },
+    {
+     "kind": "ent",
+     "k": "p1"
+    }
+   ]
+  },
+  {
+   "type": "dim",
+   "layer": "DIMS",
+   "x1": 0,
+   "y1": 0,
+   "x2": 0,
+   "y2": 0.6666666666666666,
+   "off": -0.22,
+   "kind": "aligned",
+   "dimStyle": "ARCH",
+   "arrow": "tick",
+   "textH": 0.8,
+   "precision": "1/2",
+   "assoc": [
+    {
+     "kind": "ent",
+     "k": "p0"
+    },
+    {
+     "kind": "ent",
+     "k": "p3"
+    }
+   ]
+  },
+  {
+   "type": "dim",
+   "layer": "DIMS",
+   "x1": 0.2,
+   "y1": 0.2,
+   "x2": 0.8,
+   "y2": 0.2,
+   "off": 0.18,
+   "kind": "aligned",
+   "dimStyle": "ARCH",
+   "arrow": "tick",
+   "textH": 0.8,
+   "precision": "1/2",
+   "assoc": [
+    {
+     "kind": "ent",
+     "id": "h0",
+     "k": "c"
+    },
+    {
+     "kind": "ent",
+     "id": "h1",
+     "k": "c"
+    }
+   ]
+  },
+  {
+   "type": "fcf",
+   "layer": "GDT",
+   "x": 1.15,
+   "y": 0.45,
+   "char": "position",
+   "tol": 0.0008333333333333334,
+   "dia": false,
+   "h": 0.12,
+   "datums": [
+    "A"
+   ]
+  },
+  {
+   "type": "datum",
+   "layer": "GDT",
+   "x": 0.5,
+   "y": -0.08,
+   "letter": "A",
+   "h": 0.12
+  },
+  {
+   "type": "text",
+   "layer": "NOTES",
+   "x": 0,
+   "y": 0.9466666666666667,
+   "size": 0.12,
+   "content": "PLATE  12\" x 8\"  4x 0.50\" HOLES"
+  },
+  {
+   "type": "text",
+   "layer": "NOTES",
+   "x": 0,
+   "y": 0.7866666666666666,
+   "size": 0.09,
+   "content": "MATERIAL AS SPECIFIED BY THE BUYER  ·  DO NOT SCALE"
+  }
+ ],
+ "userBlocks": [],
+ "dimStyles": [
+  {
+   "name": "ARCH",
+   "textHeight": 0.8,
+   "offset": 2,
+   "ext": 0.3,
+   "arrow": "tick",
+   "tickSize": 0.4,
+   "precision": "1/2",
+   "layer": "DIMS",
+   "continueGap": 0
+  },
+  {
+   "name": "ARROW",
+   "textHeight": 0.7,
+   "offset": 2,
+   "ext": 0.25,
+   "arrow": "arrow",
+   "tickSize": 0.45,
+   "precision": "1/2",
+   "layer": "DIMS",
+   "continueGap": 0
+  },
+  {
+   "name": "DECIMAL",
+   "textHeight": 0.7,
+   "offset": 2,
+   "ext": 0.25,
+   "arrow": "arrow",
+   "tickSize": 0.4,
+   "precision": "decimal",
+   "layer": "DIMS",
+   "continueGap": 0
+  }
+ ],
+ "currentDimStyle": "ARCH",
+ "layouts": [
+  {
+   "id": "D1",
+   "name": "D-1 Plate",
+   "sheet": "letter",
+   "ppf": 864,
+   "titleBlock": true,
+   "viewports": [
+    {
+     "px": 0.5,
+     "py": 2.15,
+     "pw": 10,
+     "ph": 5.85,
+     "mx": 0.7,
+     "my": 0.35,
+     "ppf": 72,
+     "id": 1,
+     "name": "PLAN",
+     "drawingType": "plan"
+    }
+   ],
+   "sheetNumber": "A-1",
+   "annotations": []
+  }
+ ],
+ "currentLayout": "D1",
+ "space": "model",
+ "dxfVer": "R2000",
+ "units": "ft",
+ "storyHeight": 8,
+ "heightAssumed": true
+}

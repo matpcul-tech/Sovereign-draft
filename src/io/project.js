@@ -35,7 +35,9 @@ export function serializeProject(state, pretty){
     currentLayout: state.currentLayout,
     space: state.space,
     dxfVer: state.dxfVer,
-    units: state.units === 'mm' || state.units === 'm' ? state.units : 'ft'
+    units: state.units === 'mm' || state.units === 'm' ? state.units : 'ft',
+    storyHeight: state.storyHeight > 0 ? state.storyHeight : 8,
+    heightAssumed: state.heightAssumed !== false
   }, null, pretty ? 1 : 0);
 }
 
@@ -59,6 +61,8 @@ export function validateProject(o){
     space: o.space === 'model' || o.space ? o.space : 'model',
     dxfVer: o.dxfVer === 'R2000' ? 'R2000' : 'R12',
     units: o.units === 'mm' || o.units === 'm' ? o.units : 'ft',
+    storyHeight: Number(o.storyHeight) > 0 ? Number(o.storyHeight) : 8,
+    heightAssumed: o.heightAssumed !== false,
     firm: {
       company: String(o.firm && o.firm.company || '').slice(0, 80),
       copyright: String(o.firm && o.firm.copyright || '').slice(0, 160),
@@ -81,6 +85,8 @@ export function applyProject(state, p){
   if (p.space) state.space = p.space;
   if (p.dxfVer) state.dxfVer = p.dxfVer;
   if (p.units) state.units = p.units;
+  if (p.storyHeight > 0) state.storyHeight = p.storyHeight;
+  state.heightAssumed = p.heightAssumed !== false;
   setDisplayUnits(state.units || 'ft');
   if (p.firm) state.firm = p.firm;
   ['SCHEDULES', 'UNDERLAY'].forEach(n => {

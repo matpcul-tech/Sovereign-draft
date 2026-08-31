@@ -7,10 +7,11 @@ import { makeHatch } from './hatch.js';
 import { alignedDim } from './dimStyle.js';
 import { filletLines } from './modify.js';
 import { makeInsert, locateInsert } from './dynblock.js';
-import { tagInserts, buildSchedule } from './schedule.js';
+import { tagInserts, buildSchedule, makeTable } from './schedule.js';
 import { detectRooms, nameRoomsFromText } from './rooms.js';
 import { makeGrid } from './grid.js';
 import { bindAlignedDim } from './assoc.js';
+import { makeFcf, makeDatum } from './gdt.js';
 
 function gid(n){ return 'cab' + n; }
 
@@ -97,5 +98,57 @@ export function cabin24x36(){
   ents.push(Object.assign(buildSchedule(ents, 'window', [38, 8]), { layer: 'SCHEDULES' }));
   ents.push(Object.assign(buildSchedule(ents, 'room', [38, 0]), { layer: 'SCHEDULES' }));
 
+  return ents.filter(Boolean);
+}
+
+/* 12" × 8" plate — a part, not a building. GD&T only with a real tolerance. */
+export function partPlate(){
+  const ents = [];
+  const w = 1, h = 8 / 12, r = 0.5 / 12;
+  ents.push({ type: 'profile', layer: 'WALLS', pts: [[0, 0], [w, 0], [w, h], [0, h]], fill: false });
+  ents.push({ type: 'poly', layer: 'WALLS', closed: true, pts: [[0, 0], [w, 0], [w, h], [0, h]], lw: 0.5 });
+  [[0.2, 0.2], [0.8, 0.2], [0.8, h - 0.2], [0.2, h - 0.2]].forEach((p, i) => {
+    ents.push({ type: 'circle', layer: 'DOORS', cx: p[0], cy: p[1], r, id: 'h' + i });
+  });
+  ents.push(alignedDim([0, 0], [w, 0], -0.22));
+  ents.push(alignedDim([0, 0], [0, h], -0.22));
+  ents.push(alignedDim([0.2, 0.2], [0.8, 0.2], 0.18));
+  const fcf = makeFcf({ char: 'position', tol: 0.01 / 12, datum: 'A', x: 1.15, y: 0.45, h: 0.12 });
+  if (fcf) ents.push(fcf);
+  ents.push(makeDatum({ letter: 'A', x: 0.5, y: -0.08, h: 0.12 }));
+  ents.push({ type: 'text', layer: 'NOTES', x: 0, y: h + 0.28, size: 0.12, content: 'PLATE  12" x 8"  4x 0.50" HOLES' });
+  ents.push({ type: 'text', layer: 'NOTES', x: 0, y: h + 0.12, size: 0.09, content: 'MATERIAL AS SPECIFIED BY THE BUYER  ·  DO NOT SCALE' });
+  ents.forEach(e => { if (e.type === 'dim') bindAlignedDim(e, ents); });
+  return ents.filter(Boolean);
+}
+
+/* General arrangement. Stations and a parts list — not a build spec. */
+export function gaDiagram(){
+  const ents = [];
+  const body = [[0, 0], [4, 0], [4, 18], [2, 22], [0, 18]];
+  ents.push({ type: 'profile', layer: 'WALLS', pts: body, fill: 'ANSI31' });
+  ents.push({ type: 'poly', layer: 'WALLS', closed: true, pts: body, lw: 0.5 });
+  ents.push({ type: 'centerline', layer: 'CENTER', pts: [[2, -1], [2, 23]] });
+  ;[0, 6, 12, 18, 22].forEach((y, i) => {
+    ents.push({ type: 'line', layer: 'DIMS', x1: 4.3, y1: y, x2: 4.7, y2: y });
+    ents.push({ type: 'text', layer: 'TEXT', x: 4.85, y: y - 0.15, size: 0.35, content: 'STA ' + (i * 50) });
+  });
+  ents.push(alignedDim([0, 0], [4, 0], -1.2));
+  ents.push(alignedDim([2, 0], [2, 22], 3.4));
+  ents.push({ type: 'text', layer: 'NOTES', x: -0.2, y: 23.4, size: 0.45, content: 'GENERAL ARRANGEMENT' });
+  ents.push({ type: 'text', layer: 'NOTES', x: -0.2, y: 22.8, size: 0.28, content: 'NOT A BUILD SPEC  ·  NO MATERIALS INVENTED' });
+  const tbl = makeTable({
+    title: 'PARTS',
+    x: 8, y: 16,
+    colW: [1.4, 3.2, 1.2],
+    headers: ['MK', 'ITEM', 'QTY'],
+    rows: [
+      ['M1', 'AFT BODY', '1'],
+      ['M2', 'STACK', '1'],
+      ['M3', 'NOSE', '1']
+    ]
+  });
+  if (tbl) ents.push(Object.assign(tbl, { layer: 'SCHEDULES' }));
+  ents.forEach(e => { if (e.type === 'dim') bindAlignedDim(e, ents); });
   return ents.filter(Boolean);
 }
