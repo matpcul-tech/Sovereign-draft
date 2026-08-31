@@ -33,7 +33,7 @@ import { overkill } from './core/overkill.js';
 import { buildTakeoffTable, takeoffSummary } from './core/takeoff.js';
 import { syncAutoRooms } from './core/rooms.js';
 import { generateSheetSet } from './core/sheetset.js';
-import { envelopeDims } from './core/spec.js';
+import { envelopeDims, sectionDims } from './core/spec.js';
 import { buildSection, buildDetail } from './core/section.js';
 import { makeFcf, makeDatum, makeFinish, nextDatumLetter } from './core/gdt.js';
 import { addSheet } from './core/document.js';
@@ -983,8 +983,12 @@ export function applyTakeoff(){
 export function applySheetSet(){
   if (!state.entities.length){ toast('Nothing to sheet yet'); return 0; }
   pushUndo();
-  envelopeDims(state.entities).forEach(d => addEntity(d));
   const layouts = generateSheetSet(state.entities, state.layers, { projectName: state.projectName });
+  /* Envelope dims live on the cover and overall only; each section carries
+   * the dims of its own part instead. */
+  const overallIds = layouts.slice(0, 2).map(L => L.id);
+  envelopeDims(state.entities).forEach(d => { d.visibleIn = overallIds; addEntity(d); });
+  sectionDims(state.entities, layouts).forEach(d => addEntity(d));
   state.layouts = layouts;
   state.currentLayout = layouts[0].id;
   state.space = layouts[0].id;

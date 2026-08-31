@@ -9,7 +9,7 @@ import { defaultLayouts, makeLayout, fitViewport } from './core/layout.js';
 import { defaultDimStyles } from './core/dimStyle.js';
 import { normalizeSheets } from './core/document.js';
 import { generateSheetSet } from './core/sheetset.js';
-import { envelopeDims } from './core/spec.js';
+import { envelopeDims, sectionDims } from './core/spec.js';
 import { buildDXF, parseDXF, sniffDrawing, openDXF, parseDrawing } from './io/dxf.js';
 import { buildPDF, buildAllSheetsPDF } from './io/pdf.js';
 import { serializeProject, validateProject } from './io/project.js';
@@ -136,10 +136,12 @@ export function attach(doc, other, opts){
 export function sheetset(doc, opts){
   const d = doc || {};
   const entities = (d.entities || []).slice();
-  envelopeDims(entities).forEach(e => entities.push(e));
   const layouts = generateSheetSet(entities, d.layers || defaultLayers(), {
     projectName: (opts && opts.name) || d.name
   });
+  const overallIds = layouts.slice(0, 2).map(L => L.id);
+  envelopeDims(entities).forEach(e => { e.visibleIn = overallIds; entities.push(e); });
+  sectionDims(entities, layouts).forEach(e => entities.push(e));
   return createDocument(Object.assign({}, d, { entities, layouts, currentLayout: layouts[0] && layouts[0].id }));
 }
 
@@ -157,8 +159,10 @@ export async function draw(prompt, opts){
   let entities = realized.entities || [];
   let layouts = realized.sheets && realized.sheets.length ? realized.sheets : null;
   if (o.sheets !== false && !layouts){
-    envelopeDims(entities).forEach(e => entities.push(e));
     layouts = generateSheetSet(entities, layers, { projectName: o.name || prompt });
+    const overallIds = layouts.slice(0, 2).map(L => L.id);
+    envelopeDims(entities).forEach(e => { e.visibleIn = overallIds; entities.push(e); });
+    sectionDims(entities, layouts).forEach(e => entities.push(e));
   }
   return createDocument({
     name: o.name || String(prompt).trim().slice(0, 40),

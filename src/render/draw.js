@@ -154,7 +154,14 @@ function drawPaper(){
       const p = modelToPaper(vp0, x, y);
       return p2s(p[0], p[1]);
     };
-    drawModel(toS, pxPerFt, (L.section && L.section.bbox) ? entsInBBox(state.entities, L.section.bbox, 0.4) : null);
+    const scopedEnts = state.entities.filter(e => !e.visibleIn || e.visibleIn.indexOf(L.id) >= 0);
+    const secBox = L.section && L.section.bbox
+      ? (L.section.geo
+        ? [Math.min(L.section.bbox[0], L.section.geo[0]), Math.min(L.section.bbox[1], L.section.geo[1]),
+           Math.max(L.section.bbox[2], L.section.geo[2]), Math.max(L.section.bbox[3], L.section.geo[3])]
+        : L.section.bbox)
+      : null;
+    drawModel(toS, pxPerFt, secBox ? entsInBBox(scopedEnts, secBox, 0.4) : scopedEnts);
     ctx.restore();
     ctx.strokeStyle = '#8fa3c0'; ctx.lineWidth = 1;
     ctx.strokeRect(tl[0], tl[1], vp0.pw * scl, vp0.ph * scl);

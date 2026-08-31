@@ -236,9 +236,15 @@ function layoutPage(entities, opts){
   const sh = sheetOf(layout.sheet);
   const pageW = Math.round(sh.w * 72), pageH = Math.round(sh.h * 72);
   const layerVisible = opts.layerVisible || (() => true);
-  let visible = entities.filter(e => layerVisible(e.layer));
+  let visible = entities.filter(e => layerVisible(e.layer))
+    /* An entity scoped to specific sheets appears only there. */
+    .filter(e => !e.visibleIn || e.visibleIn.indexOf(layout.id) >= 0);
   if (layout.section && layout.section.bbox){
-    visible = entsInBBox(visible, layout.section.bbox, 0.4);
+    const secBox = layout.section.geo
+      ? [Math.min(layout.section.bbox[0], layout.section.geo[0]), Math.min(layout.section.bbox[1], layout.section.geo[1]),
+         Math.max(layout.section.bbox[2], layout.section.geo[2]), Math.max(layout.section.bbox[3], layout.section.geo[3])]
+      : layout.section.bbox;
+    visible = entsInBBox(visible, secBox, 0.4);
   }
   const f2 = n => String(Math.round(n * 100) / 100);
   const C = [];

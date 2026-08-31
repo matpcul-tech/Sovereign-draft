@@ -112,6 +112,46 @@ function fmtSize(bb){
   return fmtFtIn(w) + ' × ' + fmtFtIn(h);
 }
 
+/* Split a marked group into disjoint physical instances. Four grid fins share
+ * one mark but are four separate parts; their schedule size is one fin, never
+ * the span of the set. Entities whose boxes touch (a part drawn as an outline
+ * plus detail lines) merge into one instance; clear air between boxes means
+ * separate instances. */
+export function instanceBBoxes(group){
+  const TOUCH = 0.05;
+  const boxes = [];
+  (group || []).forEach(e => {
+    const bb = [1e9, 1e9, -1e9, -1e9];
+    entBBox(e, bb);
+    if (bb[0] < 1e8) boxes.push(bb);
+  });
+  let merged = true;
+  while (merged){
+    merged = false;
+    for (let i = 0; i < boxes.length && !merged; i++){
+      for (let j = i + 1; j < boxes.length && !merged; j++){
+        const a = boxes[i], b = boxes[j];
+        const apart = a[2] + TOUCH < b[0] || b[2] + TOUCH < a[0] || a[3] + TOUCH < b[1] || b[3] + TOUCH < a[1];
+        if (!apart){
+          boxes[i] = [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])];
+          boxes.splice(j, 1);
+          merged = true;
+        }
+      }
+    }
+  }
+  return boxes;
+}
+
+function largestBox(boxes){
+  let best = null, bestA = -1;
+  (boxes || []).forEach(b => {
+    const a = Math.max(b[2] - b[0], 0.01) * Math.max(b[3] - b[1], 0.01);
+    if (a > bestA){ bestA = a; best = b; }
+  });
+  return best;
+}
+
 function sizeOfPart(ents, src, sorted, i, body, vertical){
   const attrs = (src && src.attributes) || {};
   if (attrs.size) return String(attrs.size);
@@ -119,8 +159,8 @@ function sizeOfPart(ents, src, sorted, i, body, vertical){
   if (mark){
     const group = ents.filter(e => e && e.mark && String(e.mark) === mark && !SKIP_TYPES[e.type] && !SKIP_LAYERS[e.layer]);
     if (group.length){
-      const bb = membersBBox(group);
-      const s = fmtSize(bb);
+      /* One instance, not the union of the set. */
+      const s = fmtSize(largestBox(instanceBBoxes(group)));
       if (s) return s;
     }
   }
@@ -155,6 +195,23 @@ export function collectParts(entities){
       x: c.x,
       y: c.y
     };
+  });
+}
+
+/* Scope parts to a section band. Bands split the body along one axis and span
+ * it fully on the other, while callout anchors sit beside the body; testing
+ * both axes threw a part off its own sheet. Only the split axis decides. */
+export function sectionScopedParts(parts, sec, body){
+  if (!sec || !sec.bbox) return parts || [];
+  const b = sec.bbox;
+  const spansX = b[0] <= body[0] + 0.01 && b[2] >= body[2] - 0.01;
+  const spansY = b[1] <= body[1] + 0.01 && b[3] >= body[3] - 0.01;
+  return (parts || []).filter(p => {
+    const inX = p.x >= b[0] - 0.5 && p.x <= b[2] + 0.5;
+    const inY = p.y >= b[1] - 0.5 && p.y <= b[3] + 0.5;
+    if (spansX && !spansY) return inY;
+    if (spansY && !spansX) return inX;
+    return inX && inY;
   });
 }
 
@@ -218,12 +275,15 @@ export function buildingSchedule(entities, opts){
   return null;
 }
 
-export function specNotes(body, parts){
+export function specNotes(body, parts, kind){
   const b = body || [0, 0, 0, 0];
   const w = Math.max(b[2] - b[0], 0);
   const h = Math.max(b[3] - b[1], 0);
   const notes = [];
-  if (w > 0.05 && h > 0.05){
+  /* The envelope belongs to the overall. On a detail sheet the band is not
+   * the part, so the number described nothing real; it is dropped rather
+   * than computed wrong. */
+  if (kind !== 'section' && w > 0.05 && h > 0.05){
     notes.push('Envelope ' + fmtFtIn(w) + ' x ' + fmtFtIn(h) + '.');
   }
   const n = (parts || []).reduce((s, p) => s + (Number(p.qty) || 0), 0);
@@ -256,6 +316,86 @@ export function envelopeDims(entities){
   ];
   dims.forEach(d => { d.auto = true; d.layer = 'DIMS'; });
   return dims;
+}
+
+/* The geometry a section sheet is really about: its band clipped to the
+ * body, grown to include every instance of the parts scoped to it. A 14 ft
+ * leg in a 3.5 ft band gets the whole leg; a 132 ft tank gets the whole
+ * tank, and the scale follows from that instead of from the band. */
+export function sectionGeo(entities, scopedParts, sec, body){
+  const band = sec && sec.bbox ? sec.bbox : body;
+  const clamped = [
+    Math.max(band[0], body[0]), Math.max(band[1], body[1]),
+    Math.min(band[2], body[2]), Math.min(band[3], body[3])
+  ];
+  const box = (clamped[0] > clamped[2] || clamped[1] > clamped[3]) ? band.slice() : clamped;
+  /* Measure what is actually drawn in the band rather than inheriting the
+   * band itself; a band is full body width by construction, the part is not. */
+  let geo = measureInBox(entities, box) || box;
+  (scopedParts || []).forEach(pt => {
+    if (!pt || !pt.mark) return;
+    const group = (entities || []).filter(e => e && e.mark && String(e.mark) === String(pt.mark) && !SKIP_TYPES[e.type] && !SKIP_LAYERS[e.layer]);
+    instanceBBoxes(group).forEach(b => {
+      geo = [Math.min(geo[0], b[0]), Math.min(geo[1], b[1]), Math.max(geo[2], b[2]), Math.max(geo[3], b[3])];
+    });
+  });
+  return geo;
+}
+
+/* Room for the section's own dims outside the geometry. */
+export function sectionDimPad(geo){
+  const w = Math.max(geo[2] - geo[0], 0.5);
+  const h = Math.max(geo[3] - geo[1], 0.5);
+  const textH = Math.max(0.35, Math.min(w, h) / 16);
+  const off = Math.max(1.2, Math.min(w, h) * 0.18);
+  return { off, textH, pad: off + textH * 2.2 };
+}
+
+/* The window a section sheet fits: its geometry, its callout labels, and
+ * clearance for its dims. Sized from the part, not from the body, so each
+ * sheet earns its own scale. */
+export function sectionFit(entities, scopedParts, sec, body){
+  const geo = sectionGeo(entities, scopedParts, sec, body);
+  const d = sectionDimPad(geo);
+  let fit = [geo[0] - d.pad, geo[1] - d.pad, geo[2], geo[3]];
+  const band = sec && sec.bbox ? sec.bbox : geo;
+  (entities || []).forEach(e => {
+    if (!e || (e.type !== 'text' && e.type !== 'leader' && e.type !== 'callout')) return;
+    const eb = [1e9, 1e9, -1e9, -1e9];
+    entBBox(e, eb);
+    if (eb[0] > 1e8) return;
+    const cy = (eb[1] + eb[3]) / 2, cx = (eb[0] + eb[2]) / 2;
+    if (cx < band[0] - 0.5 || cx > band[2] + 8 || cy < band[1] - 0.5 || cy > band[3] + 0.5) return;
+    fit = [Math.min(fit[0], eb[0]), Math.min(fit[1], eb[1]), Math.max(fit[2], eb[2]), Math.max(fit[3], eb[3])];
+  });
+  const padOut = Math.max(0.4, Math.min(geo[2] - geo[0], geo[3] - geo[1]) * 0.04);
+  return { geo, fit: [fit[0] - padOut, fit[1] - padOut, fit[2] + padOut, fit[3] + padOut] };
+}
+
+/* Width and height of each section's geometry, stamped as dims that exist
+ * only on that sheet. The overall keeps the envelope dims; a detail sheet
+ * carries the measurements of the thing it details. */
+export function sectionDims(entities, layouts){
+  const out = [];
+  (layouts || []).forEach(L => {
+    if (!L || L.kind !== 'section' || !L.section || !L.section.geo) return;
+    const geo = L.section.geo;
+    const w = Math.max(geo[2] - geo[0], 0);
+    const h = Math.max(geo[3] - geo[1], 0);
+    if (w < 0.4 && h < 0.4) return;
+    const d = sectionDimPad(geo);
+    const style = Object.assign({}, defaultDimStyle(), { textHeight: d.textH });
+    const dims = [];
+    if (h >= 0.4) dims.push(applyStyleToDim(alignedDim([geo[0], geo[1]], [geo[0], geo[3]], -d.off, style), style));
+    if (w >= 0.4) dims.push(applyStyleToDim(alignedDim([geo[0], geo[1]], [geo[2], geo[1]], -d.off, style), style));
+    dims.forEach(dim => {
+      dim.auto = true;
+      dim.layer = 'DIMS';
+      dim.visibleIn = [L.id];
+      out.push(dim);
+    });
+  });
+  return out;
 }
 
 export function padForLabels(bbox, body, kind){

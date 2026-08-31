@@ -11,7 +11,7 @@ import { makeLayout, makeViewport, fitViewport, sheetOf, PLOT_SCALES, pickSheetF
 import { normalizeSheet } from './document.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation, makeMarkBubble } from './sheetspace.js';
 import { entsInBBox, collectCallouts, padBBox, buildLegend, legendToTable, indexToTable } from './legend.js';
-import { bodyBBox, collectParts, partsInBBox, partsToTable, buildingSchedule, specNotes, specColW, padForLabels } from './spec.js';
+import { bodyBBox, collectParts, partsInBBox, sectionScopedParts, partsToTable, buildingSchedule, specNotes, specColW, padForLabels, sectionFit } from './spec.js';
 
 const MAX_SECTIONS = 10;
 const PAPER_ROW_H = 0.22;
@@ -262,7 +262,10 @@ export function generateSheetSet(entities, layers, opts){
   detected.sections.forEach((sec, i) => {
     const num = 'A-' + String(102 + i);
     const title = sheetTitle(sec.name);
-    const fit = padForLabels(sec.bbox, body, 'section');
+    /* Fit each sheet to its own part, not to a band the width of the body.
+     * A 132 ft tank forces its own scale down the ladder until it fits. */
+    const scoped = sectionScopedParts(parts, sec, body);
+    const sf = sectionFit(entities, scoped, sec, body);
     layouts.push(buildSheet({
       id: 'A' + (102 + i),
       sheetNumber: num,
@@ -271,8 +274,8 @@ export function generateSheetSet(entities, layers, opts){
       sheet,
       ppf: 18,
       viewName: 'PLAN',
-      section: { bbox: sec.bbox, name: sec.name, source: sec.source }
-    }, fit));
+      section: { bbox: sec.bbox, geo: sf.geo, name: sec.name, source: sec.source }
+    }, sf.fit));
   });
 
   const colW = legendColW(sheet);
@@ -288,17 +291,18 @@ export function generateSheetSet(entities, layers, opts){
         if (b) out = placeTable(out, b);
       }
     } else if (out.kind === 'section' && parts.length){
-      const scoped = partsInBBox(parts, out.section && out.section.bbox, 0.5);
+      const scoped = sectionScopedParts(parts, out.section, body);
       if (scoped.length){
         out = placeTable(out, partsToTable(scoped, { title: 'SPECIFICATIONS', colW: pColW }));
       }
     }
-    const scoped = partsInBBox(parts, out.section && out.section.bbox, 0.5);
+    const scoped = out.kind === 'section' ? sectionScopedParts(parts, out.section, body) : partsInBBox(parts, out.section && out.section.bbox, 0.5);
     const legend = legendForLayout(out, entities, layers, {
       skipCallouts: parts.length && (out.kind === 'cover' || out.kind === 'section'),
       notes: specNotes(
         out.kind === 'section' && out.section && out.section.bbox ? out.section.bbox : body,
-        out.kind === 'section' ? scoped : parts
+        out.kind === 'section' ? scoped : parts,
+        out.kind
       )
     });
     out = placeTable(out, legendToTable(legend, { colW }));

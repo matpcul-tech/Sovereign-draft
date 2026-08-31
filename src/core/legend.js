@@ -59,8 +59,11 @@ export function entsInBBox(entities, bbox, pad){
   return (entities || []).filter(e => {
     if (e.layer === 'DEFPOINTS') return false;
     /* A dim belongs to a sheet only if both origins sit in the window.
-     * Bbox overlap lets a 230 ft envelope dim leak onto every station. */
+     * Bbox overlap lets a 230 ft envelope dim leak onto every station.
+     * A dim carrying visibleIn was authored for a specific sheet; the
+     * caller already filtered by id, so the heuristic stands down. */
     if (e.type === 'dim'){
+      if (e.visibleIn) return true;
       if (e.x1 == null || e.y1 == null || e.x2 == null || e.y2 == null) return false;
       return ptInBox(e.x1, e.y1, box) && ptInBox(e.x2, e.y2, box);
     }
