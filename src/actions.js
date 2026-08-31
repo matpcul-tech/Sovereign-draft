@@ -18,6 +18,7 @@ import { wallFrags, WALL_THICKNESS } from './core/walls.js';
 import { makeHatch, boundaryContaining, HATCH_PATTERNS, closedLoops, hatchWithIslands, hatchArea } from './core/hatch.js';
 import { makeSpline } from './core/spline.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
+import { makeIndexCache, queryPoint, queryBox, worthIndexing } from './core/spatial.js';
 import { alignedDim, continueDim, baselineDim, applyStyleToDim, angularDim, radiusDim, diameterDim, makeLeader } from './core/dimStyle.js';
 import { lookupCommand } from './core/command.js';
 import {
@@ -73,10 +74,22 @@ export function snapPt(sx, sy, fromPt){
 
 export function applyOrtho(p1, p2){ return applyConstraint(p1, p2); }
 
+/* One index shared by picking and box selection, rebuilt only when the
+ * drawing actually changes. */
+const pickIndex = makeIndexCache();
+
 export function hitTest(sx, sy){
   const w = S2W(sx, sy), tol = 10 / state.view.scale;
-  for (let k = state.entities.length - 1; k >= 0; k--){
-    const e = state.entities[k], L = layerByName(e.layer);
+  const ents = state.entities;
+  /* Candidates come back in index order, so walking them backwards keeps the
+   * topmost-wins rule the full scan had. Below the threshold the scan is
+   * cheaper than the index it would replace. */
+  const order = worthIndexing(ents)
+    ? queryPoint(pickIndex.get(ents, state.geomStamp), w[0], w[1], tol)
+    : null;
+  const n = order ? order.length : ents.length;
+  for (let k = n - 1; k >= 0; k--){
+    const e = ents[order ? order[k] : k], L = layerByName(e.layer);
     if (L && !L.visible) continue;
     if (L && L.locked) continue;
     if (entHit(e, w, tol)) return e;
@@ -291,7 +304,13 @@ export function boxSelect(s0, s1){
   const rx0 = Math.min(wa[0], wb[0]), rx1 = Math.max(wa[0], wb[0]);
   const ry0 = Math.min(wa[1], wb[1]), ry1 = Math.max(wa[1], wb[1]);
   const got = [];
-  state.entities.forEach(e => {
+  const ents = state.entities;
+  /* The index already answers "which boxes overlap this box", which is the
+   * whole of the test below. */
+  const cand = worthIndexing(ents)
+    ? queryBox(pickIndex.get(ents, state.geomStamp), [rx0, ry0, rx1, ry1])
+    : ents;
+  cand.forEach(e => {
     const L = layerByName(e.layer); if (L && !L.visible) return;
     if (L && L.locked) return;
     const bb = [1e9, 1e9, -1e9, -1e9]; entBBox(e, bb);

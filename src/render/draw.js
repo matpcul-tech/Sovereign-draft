@@ -46,12 +46,36 @@ export function draw(){
   drawModel();
 }
 
+const drawIndex = makeIndexCache();
+
+/* Entities that can appear on screen. Below the index threshold, or when
+ * drawing into a viewport with its own transform, everything is a candidate.
+ *
+ * Selected entities are always kept: a drag moves them without going through
+ * afterChange, so the index does not know where they are until the drag ends
+ * and culling them against a stale box would make the thing you are dragging
+ * vanish. */
+function visibleList(clipToS, only, selSet){
+  const list = only || state.entities;
+  if (clipToS || list !== state.entities || !worthIndexing(list)) return list;
+  const pad = 40 / (state.view.scale || 1);
+  const a = S2W(0, vp.CH), b = S2W(vp.CW, 0);
+  const box = [Math.min(a[0], b[0]) - pad, Math.min(a[1], b[1]) - pad,
+               Math.max(a[0], b[0]) + pad, Math.max(a[1], b[1]) + pad];
+  const idx = drawIndex.get(list, state.geomStamp);
+  const keep = new Set(queryIndices(idx, box));
+  for (let i = 0; i < list.length; i++) if (selSet[list[i].id]) keep.add(i);
+  if (keep.size === list.length) return list;
+  /* Index order is draw order, so the result paints in the same sequence. */
+  return Array.from(keep).sort((x, y) => x - y).map(i => list[i]);
+}
+
 function drawModel(clipToS, clipScl, only){
   const toS = clipToS || W2S;
   const scl = clipScl || state.view.scale;
   const ms = selMembers(), selSet = {};
   ms.forEach(e => { selSet[e.id] = 1; });
-  const list = only || state.entities;
+  const list = visibleList(clipToS, only, selSet);
   for (const e of list){
     const L = layerByName(e.layer);
     if (L && !L.visible) continue;

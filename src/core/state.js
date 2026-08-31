@@ -44,6 +44,7 @@ export const state = {
   layers: defaultLayers(),
   currentLayer: 'WALLS',
   entities: [],
+  geomStamp: 0,
   userBlocks: [],
   idSeq: 1,
   gSeq: 1,
@@ -99,6 +100,9 @@ export const state = {
 let changeHandler = null;
 export function onChange(fn){ changeHandler = fn; }
 export function afterChange(){
+  /* Anything cached off the geometry keys on this. Bumping it here means a
+   * cache can never serve a view of the drawing that no longer exists. */
+  state.geomStamp = (state.geomStamp || 0) + 1;
   setDisplayUnits(state.units || 'ft');
   bindAllDims(state.entities);
   refreshAssocDims(state.entities);
