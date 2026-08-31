@@ -12,17 +12,19 @@ This is how we democratize CAD: the 80% of drawings that are plans, elevations, 
 |---|---|
 | 2D drafting in the browser (PWA) | 3D solids, CAM, or CATIA |
 | Command line (`L`, `TR`, `@8<45`, F8) | Native DWG *write* (we read DWG, write DXF) |
-| Issued sheets: title block, copyright, multi-page PDF | Shop-floor GD&T / welding maps |
-| `XREF` / `BIND` — attach another drawing as an underlay | A substitute for a professional of record |
-| AI first pass (your Anthropic key) | Invented materials or pretended tolerances |
-| JSON you can diff in git + DXF in/out | A server that holds your drawings |
+| Issued sheets: title block, copyright, multi-page PDF | CAM, welding maps, or 3D solids |
+| Cutting planes (`SE`) that hatch a true section + a sheet | Pretending 8'-0" is a known story height |
+| Feature control frames, datums, ± tolerances (`FCF` / `DATUM`) | Invented tolerances — a frame without a number is refused |
+| Isolated detail sheets (`DET`) — a tighter viewport, not a copy | A substitute for a professional of record |
+| Grok drafts for free (optional Anthropic fallback) | Invented materials |
+| `XREF` / `BIND`, DWG open, JSON in git | A server that holds your drawings |
 | Share link in the URL hash, millimetres or metres on the glass | A CAD license |
 
 A cabin floor plan with walls, doors, rooms, dims, and a G-001/A-101 set is the job. A rocket silhouette with a parts table is a general arrangement, not a build spec — we will not pretend otherwise.
 
 ## Cost
 
-The editor is free. MIT licensed. Geometry is local. The only optional network call is `api.anthropic.com` with **your** key. No seat, no trial, no watermark.
+The editor is free. MIT licensed. Geometry is local. Grok drafts in this app with no key. The only optional network call is `api.anthropic.com` with **your** key as a fallback. No seat, no trial, no watermark.
 
 Tap **FT** in the status bar to cycle feet → millimetres → metres. World coordinates stay decimal feet; the glass and the command line follow you. Type `2400mm` or `3.6m` in any mode.
 
@@ -45,6 +47,9 @@ Copy share link (Sheet menu) puts a gzipped drawing in the URL hash. No server. 
 | `GRID` | Column grid | `OPEN` | Open DXF / JSON |
 | `DXFIN` | Insert DXF (merge) | `XREF` | Attach xref |
 | `BIND` | Bind xref | `SHEETSET` | Generate sheet set |
+| `SE` | Section cut | `DET` | Isolated detail |
+| `FCF` | Feature control frame | `DATUM` | Datum feature |
+| `SF` | Surface finish | | |
 
 **Wall mode** draws two parallel faces + caps. Thickness chip: 4″ / 6″ / 8″. Walls **heal as you draw** — L-corners miter and T-junctions recut automatically. Doors and windows are **dynamic INSERT blocks**: stretch the width grip, tap the diamond to flip swing, type `2'6"` with the door selected. They recut the host wall. **Explode** (`XP`) yields ordinary lines and arcs. Fixtures (stove, bed, …) are the same INSERT type with rotate + flip grips.
 
@@ -130,6 +135,12 @@ Envelope dimensions (overall height and width) are stamped when the model has no
 
 A sheet set is a general arrangement plus a schedule. It is not a manufacturing package.
 
+**Section** (`SE`): two picks draw a cutting plane. Walls and profiles the plane crosses become hatched bars at true thickness. Height is 8'-0" ASSUMED unless a wall carries `attrs.height` — we will not pretend a floor plan knew a story. A new S-A sheet opens on that view.
+
+**Detail** (`DET`): two corners open D-1 as a tighter viewport onto the same model (geometry is not copied) and stamp a bubble on the current sheet.
+
+**GD&T** (`FCF`, `DATUM`, `SF`): feature control frames, datum triangles, surface-finish checks. A frame without a tolerance is refused. Linear dims accept `tolPlus` / `tolMinus` and print ±.
+
 ## Kernel, CLI, embed
 
 The editor is the app. The kernel is the product.
@@ -186,13 +197,13 @@ The project JSON is the source of truth — plain objects, diffable in git, next
 **In:** LINE, ARC, CIRCLE, ELLIPSE, TEXT, MTEXT (flattened), LWPOLYLINE, POLYLINE, SPLINE (as polyline), SOLID / 3DFACE, INSERT (block geometry), HATCH, XLINE, RAY, DIMENSION (aligned), LEADER.  
 **Out:** R12 (POLYLINE + LTYPE table + 370 weights + `$INSUNITS`) or R2000 (LWPOLYLINE). Toggle in the Sheet menu. Inserts, rooms and dims explode to ordinary geometry on export. Stays pure JS.
 
-## AI drafting (BYO Anthropic key)
+## AI drafting
 
-Key lives in `localStorage`, calls only `api.anthropic.com`, **adds only** — undo drops a pass. Sheet-context mode reads existing walls and appends. Invalid JSON is retried once, then toasted. Never deletes user entities.
+Grok drafts in this app — tap AI, describe the building or part, no key. Optional Anthropic key in settings is a fallback only. **Adds only** — undo drops a pass. Sheet-context mode reads existing walls and appends. Invalid JSON is retried once, then toasted. Never deletes user entities.
 
-Claude is asked for a constrained schema (not leftover raw lines): walls, openings, fixtures, rooms, dims, profiles, centerlines, callouts. `drawingType` (`plan` / `elevation` / `section` / `part` / `diagram`) gates what is legal — a rocket does not get door swings; a floor plan does not get a nose cone.
+The model is asked for a constrained schema (not leftover raw lines): walls, openings, fixtures, rooms, dims, profiles, centerlines, callouts, GD&T frames, cutting planes. `drawingType` (`plan` / `elevation` / `section` / `part` / `diagram`) gates what is legal — a rocket does not get door swings; a floor plan does not get a nose cone.
 
-Mark repeated parts (`"mark":"M1D"`, `"attrs":{"qty":9,"size":"…","material":"…"}`) so they schedule. Include material only when the user named one. A drawing with no dimensions cannot be built from — the model is told to emit overall height, width, and stations.
+Mark repeated parts (`"mark":"M1D"`, `"attrs":{"qty":9,"size":"…","material":"…"}`) so they schedule. Include material only when the user named one. A drawing with no dimensions cannot be built from — the model is told to emit overall height, width, and stations. A feature control frame without a tolerance is dropped.
 
 The app snaps to a 6″ grid, fillets wall corners, hatches rooms, and places overall + room dimensions.
 
@@ -217,11 +228,11 @@ Type a length (`3`, `2'6"`) with a door or window selected to set width. Propert
 
 ## Privacy
 
-Autosave to `localStorage`. No account, no backend. The only optional network call is `api.anthropic.com` with your key.
+Autosave to `localStorage`. No account, no backend. Hosted Grok drafting needs no key; the standalone editor's only optional network call is `api.anthropic.com` with **your** key.
 
 ## Status
 
-Shipped in this tree: library + CLI, honest AI (materials stay blank unless you named them), untruncated schedule cells, tighter room views with marks on the drawing, DWG open, embed.
+Shipped in this tree: library + CLI, honest AI, Grok drafting with no key, untruncated schedule cells, tighter room views with marks, DWG open, embed, cutting-plane sections, isolated details, feature control frames and ± tolerances.
 
 Still ahead: DWG write (never), 3D (never), a hosted share link (maybe). Floor-plan sheets will keep getting tighter. Collaboration only after the kernel is something you can import — it already is.
 

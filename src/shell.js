@@ -127,6 +127,14 @@ export function shellHTML(){
       ${tool('list','LIST','List object','<path d="M8 6h12M8 12h12M8 18h8M4 6h.01M4 12h.01M4 18h.01"/>')}
       ${tool('schedule','SCH','Place schedule','<path d="M4 4h16v16H4zM4 9h16M9 4v16"/>')}
     </div>
+    <div class="toolrow-label">Issue</div>
+    <div id="toolrow-issue" class="toolrow">
+      ${tool('section','SECT','Section cut (SE)','<path d="M4 20 20 4"/><path d="M8 4v4M16 16v4"/><path d="M5 8h3M16 16h3"/>')}
+      ${tool('detail','DET','Isolated detail','<circle cx="12" cy="12" r="7"/><path d="M12 8v8M8 12h8"/>')}
+      ${tool('fcf','FCF','Feature control frame','<rect x="3" y="8" width="6" height="8"/><rect x="9" y="8" width="7" height="8"/><rect x="16" y="8" width="5" height="8"/>')}
+      ${tool('datum','DATUM','Datum feature','<rect x="8" y="6" width="8" height="8"/><path d="m8 14 4 5 4-5"/>')}
+      ${tool('finish','SF','Surface finish','<path d="M5 18 9 6l6 10"/>')}
+    </div>
   </div>
 </div>
 <div id="statusbar">
@@ -162,13 +170,13 @@ export function shellHTML(){
   <button class="chip on" id="chipCtx" style="margin-top:10px">Sheet context: ON</button>
   <button class="primary" id="btnGenerate">Generate blueprint</button>
   <div id="aistatus"></div>
-  <div class="subtle">Drafts plans, elevations, sections and parts. Say what you want and Claude picks the drawing type, so a rocket comes back as an outline with callouts, not as a floor plan. AI only adds; undo drops a pass. Key stays in this browser and is sent only to api.anthropic.com.</div>
+  <div class="subtle">Grok drafts for free in this app — plans, elevations, sections and parts. A rocket comes back as an outline with callouts, not as a floor plan. AI only adds; undo drops a pass. Optional Anthropic key if you want your own model.</div>
   <button class="linkish" id="btnAISettings">AI settings…</button>
 </div>
 <div class="sheet" id="sheetSettings">
   <h3><i>AI settings</i></h3>
-  <h4>Anthropic API key</h4>
-  <input id="setKey" type="password" class="field" placeholder="sk-ant-..." autocomplete="off" style="height:44px">
+  <h4>Anthropic API key (optional)</h4>
+  <input id="setKey" type="password" class="field" placeholder="sk-ant-... fallback only" autocomplete="off" style="height:44px">
   <h4>Model</h4>
   <select id="setModel" class="field" style="height:44px">
     <option value="claude-opus-4-5">Claude Opus 4.5</option>
@@ -178,7 +186,7 @@ export function shellHTML(){
     <option value="claude-sonnet-5">Claude Sonnet 5</option>
   </select>
   <button class="primary" id="btnSaveSettings">Save settings</button>
-  <div class="subtle">Your key is stored only in this browser (localStorage) and sent only to api.anthropic.com.</div>
+  <div class="subtle">Grok is the default drafter and needs no key. An Anthropic key is stored only in this browser and sent only to api.anthropic.com if Grok is unavailable.</div>
 </div>
 <div class="sheet" id="sheetText">
   <h3><i>Text</i></h3>

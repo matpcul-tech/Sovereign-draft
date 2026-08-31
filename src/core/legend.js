@@ -24,6 +24,8 @@ export const LAYER_MEANING = {
   GRID:      'Column grid',
   PROFILE:   'Outline',
   NOTES:     'Notes & callouts',
+  SECTION:   'Sections / cuts',
+  GDT:       'GD&T / finish',
   DEFPOINTS: 'Defpoints (n.p.)'
 };
 

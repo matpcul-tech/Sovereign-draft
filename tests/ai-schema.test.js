@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractResponse, schemaToEntities, realizeResponse } from '../src/ai/draft.js';
+import { extractResponse, schemaToEntities, realizeResponse, AI_SCHEMA_SPEC } from '../src/ai/draft.js';
 
 const idLayer = n => (n ? String(n).toUpperCase() : 'WALLS');
 
@@ -43,5 +43,10 @@ describe('constrained AI schema', () => {
     }, idLayer);
     const a = ents.find(e => e.role === 'a');
     expect(a.x1 % 0.5).toBeCloseTo(0);
+  });
+  it('exposes the shared Grok schema with gdt and cuts', () => {
+    expect(AI_SCHEMA_SPEC).toMatch(/"gdt"/);
+    expect(AI_SCHEMA_SPEC).toMatch(/"cuts"/);
+    expect(AI_SCHEMA_SPEC).toMatch(/Never invent a tolerance/);
   });
 });

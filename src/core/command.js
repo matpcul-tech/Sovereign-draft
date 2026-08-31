@@ -62,7 +62,12 @@ export const COMMANDS = {
   ZFIT:    { aliases: ['ZOOMFIT', 'ZFIT'],              tool: null,     action: 'zoomfit' },
   SHEETSET:{ aliases: ['SHEETSET', 'SS', 'SHEETS'],     tool: null,     action: 'sheetset' },
   XREF:    { aliases: ['XREF', 'XR', 'XA', 'ATTACH'],   tool: null,     action: 'xref' },
-  BIND:    { aliases: ['BIND'],                         tool: null,     action: 'bind' }
+  BIND:    { aliases: ['BIND'],                         tool: null,     action: 'bind' },
+  SECTION: { aliases: ['SECTION', 'SE', 'CUT'],         tool: 'section', prompt: 'Specify first point of cutting plane' },
+  DETAIL:  { aliases: ['DETAIL', 'DET'],                tool: 'detail',  prompt: 'Specify first corner of detail window' },
+  FCF:     { aliases: ['FCF', 'GDT', 'TOL'],            tool: 'fcf',     prompt: 'Specify feature, then frame location' },
+  DATUM:   { aliases: ['DATUM', 'DAT'],                 tool: 'datum',   prompt: 'Specify datum origin' },
+  SF:      { aliases: ['FINISH', 'SF', 'SURF'],         tool: 'finish',  prompt: 'Specify surface-finish origin' }
 };
 
 const ALIAS = {};
@@ -127,7 +132,12 @@ export function defaultPrompt(tool, state){
     calibrate: 'CALIBRATE Specify second point:',
     grid:    'GRID Specify opposite corner:',
     xline:   'XLINE Specify second point:',
-    arraypolar: 'ARRAYPOLAR Specify center of array:'
+    arraypolar: 'ARRAYPOLAR Specify center of array:',
+    section: 'SECTION Specify second point of cutting plane:',
+    detail:  'DETAIL Specify opposite corner:',
+    fcf:     'FCF Specify frame location:',
+    datum:   'DATUM Specify origin:',
+    finish:  'FINISH Specify origin:'
   };
   return map[tool] || ((tool || 'Command') + ':');
 }
