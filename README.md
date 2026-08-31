@@ -172,13 +172,16 @@ One model space + N layouts. Each layout has a sheet (Letter / Tabloid / Arch D 
 - **A-101** overall — the full model, with envelope height and width stamped only if the drawing had no dims of its own
 - **A-102…** one sheet per room or labeled station. That sheet’s spec table lists only the parts in that window. Mark bubbles sit on the view.
 
-`SIZE` is measured from the part: the same bbox path as stretch / `AA` / `LI`, clipped to that station. It is not station-height × envelope-width. Envelope dims stay on the overall sheet — a 230 ft overall does not leak onto A-105.
+**Marks.** An entity can carry `mark` plus `attributes` (`type`, `material`, `size`, `qty`, `label`). AI drafting writes them; `SHEETSET` writes them from callouts; JSON can carry them. Sheet → **Keynote legend** lists what this sheet actually shows. Sheet → **Mark schedule** tabulates `MARK` / `QTY` / `TYPE` / `MATERIAL` / `SIZE`.
 
-Viewports clip and scale model geometry. A dim belongs to a sheet only when both origins sit in that window.
+`SIZE` is measured from that mark’s geometry — the same bbox path as stretch / `AA` / `LI`. Nine copies of one mark measure **one instance**, not the envelope of all nine. Authored `attributes.size` wins. A constant stamped onto every different part (`X x 14'-0` on the nose, the tank, and the engines) loses to the measurement.
 
-Quantities come from marks and `x9`-style labels; sizes come from the geometry (or from `attrs.size` you actually set). Materials stay blank unless named. Export all sheets as one PDF from the Sheet menu. PageUp / PageDown walks the set.
+Envelope dims stay on the overall sheet. A dim belongs to a view only when **both origins** sit in that window, so a 230 ft overall does not leak onto A-105 — not in the plot, and not in that sheet’s legend or schedule.
+
+Quantities come from marks and `x9`-style labels. Materials stay blank unless named. Export all sheets as one PDF from the Sheet menu. PageUp / PageDown walks the set.
 
 A sheet set is a general arrangement plus a schedule. It is not a manufacturing package.
+
 
 **Section** (`SE`): two picks draw a cutting plane. Walls and profiles the plane crosses become hatched bars at true thickness. Height is 8'-0" ASSUMED unless a wall carries `attrs.height` — we will not pretend a floor plan knew a story. A new S-A sheet opens on that view.
 

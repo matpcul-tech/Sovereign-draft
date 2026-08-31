@@ -8,10 +8,20 @@
  * A legend is scoped to a sheet: it lists only what is actually visible in
  * that sheet's views, which is the whole reason a legend belongs to a sheet
  * and not to the drawing.
+ *
+ * SIZE is measured from that mark's geometry (the same bbox path stretch / AA
+ * use). Authored attributes.size wins. A constant stamped onto every different
+ * part loses to the measurement. Copies of one mark measure one instance, not
+ * the envelope of all of them.
  */
 import { modelToPaper, inViewport } from './layout.js';
-import { entBBox } from './entities.js';
+import { entBBox, membersBBox } from './entities.js';
 import { makeTable } from './schedule.js';
+import { fmtFtIn } from './format.js';
+import { ptInBox } from './geometry.js';
+
+const SKIP_MEASURE = { text: 1, leader: 1, callout: 1, table: 1, dim: 1, room: 1, grid: 1 };
+const SKIP_LAYER = { NOTES: 1, TEXT: 1, SCHEDULES: 1, DIMS: 1, UNDERLAY: 1, DEFPOINTS: 1 };
 
 /* The model rectangle a view shows, as [x0, y0, x1, y1] in model units. */
 export function viewModelWindow(view){
@@ -33,10 +43,70 @@ function overlaps(a, b){
   return !(a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]);
 }
 
-/* Entities at least partly inside a view. */
+function fmtSize(bb){
+  if (!bb || bb[0] > 1e8) return '';
+  const w = Math.max(bb[2] - bb[0], 0);
+  const h = Math.max(bb[3] - bb[1], 0);
+  if (w < 0.05 && h < 0.05) return '';
+  if (w < 0.05) return fmtFtIn(h);
+  if (h < 0.05) return fmtFtIn(w);
+  return fmtFtIn(w) + ' × ' + fmtFtIn(h);
+}
+
+function geomOf(ents){
+  const geom = (ents || []).filter(e => e && !SKIP_MEASURE[e.type] && !SKIP_LAYER[e.layer]);
+  return geom.length ? geom : [];
+}
+
+/* One instance of a mark, not the envelope of every copy. When qty is 9 and
+ * nine engines sit on the page, size is one engine. An assembly (several
+ * nearby pieces, qty 1) still unions. */
+export function measureMark(g){
+  const geom = geomOf(g && g.entities);
+  if (!geom.length) return '';
+  if ((g.qty || 1) > 1 && geom.length > 1){
+    const n = Math.max(1, Math.round(geom.length / g.qty));
+    const sorted = geom.slice().sort((a, b) => {
+      const A = bboxOf(a), B = bboxOf(b);
+      return (A[0] - B[0]) || (A[1] - B[1]);
+    });
+    return fmtSize(membersBBox(sorted.slice(0, n)));
+  }
+  return fmtSize(membersBBox(geom));
+}
+
+/* A size string written onto every different part is a stamp, not a spec. */
+function stampedSize(groups){
+  const list = groups || [];
+  const nonempty = list.map(g => String((g.attributes && g.attributes.size) || '').trim()).filter(Boolean);
+  if (nonempty.length < 2) return '';
+  const first = nonempty[0];
+  if (!nonempty.every(s => s === first)) return '';
+  const types = new Set(list.map(g => String((g.attributes && (g.attributes.type || g.attributes.label)) || g.label || g.type || '').toLowerCase()));
+  return types.size > 1 ? first : '';
+}
+
+function looksStamped(s){
+  const t = String(s || '').trim();
+  return /^x\s*[x×]/i.test(t);
+}
+
+function sizeCell(g, stamp){
+  const authored = g.attributes && g.attributes.size != null ? String(g.attributes.size).trim() : '';
+  if (authored && authored !== stamp && !looksStamped(authored)) return authored;
+  return measureMark(g) || (authored && authored !== stamp ? authored : '') || '';
+}
+
+/* Entities at least partly inside a view. A dim belongs only when both
+ * origins sit in the window — bbox overlap lets a 230 ft envelope leak onto
+ * every detail sheet, and its text then lands at the span midpoint. */
 export function entitiesInView(entities, view){
   const win = viewModelWindow(view);
   return (entities || []).filter(e => {
+    if (e && e.type === 'dim'){
+      if (e.x1 == null || e.y1 == null || e.x2 == null || e.y2 == null) return false;
+      return ptInBox(e.x1, e.y1, win) && ptInBox(e.x2, e.y2, win);
+    }
     const bb = bboxOf(e);
     if (bb[0] > 1e8) return false;
     return overlaps(bb, win);
@@ -120,13 +190,22 @@ export function buildKeynoteLegend(entities, sheet, at, opts){
   });
 }
 
-/* Schedule rows: mark, type, qty and any extra attribute columns asked for. */
+/* Schedule rows: mark, qty and any extra attribute columns asked for.
+ * The size column is measured when attributes.size is empty or stamped. */
 export function markScheduleRows(entities, sheet, columns){
   const scoped = sheet ? entitiesOnSheet(entities, sheet) : entities;
   const cols = columns && columns.length ? columns : ['type', 'material', 'size'];
-  return collectMarks(scoped).map(g => {
+  const groups = collectMarks(scoped);
+  const stamp = stampedSize(groups);
+  return groups.map(g => {
     const row = [g.mark, String(g.qty)];
-    cols.forEach(c => row.push(g.attributes[c] == null ? '' : String(g.attributes[c])));
+    cols.forEach(c => {
+      if (String(c).toLowerCase() === 'size'){
+        row.push(sizeCell(g, stamp));
+        return;
+      }
+      row.push(g.attributes[c] == null ? '' : String(g.attributes[c]));
+    });
     return row;
   });
 }
@@ -179,4 +258,3 @@ export function paperScheduleColW(columns){
     return 1.7;
   }));
 }
-
