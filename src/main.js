@@ -34,6 +34,8 @@ import { encodeShare, decodeShare, shareUrl, tokenFromHash } from './io/share.js
 import { setDisplayUnits } from './core/format.js';
 import { makeMText } from './core/mtext.js';
 import { latin1ToBytes } from './io/pdffont.js';
+import { mergeMeshes } from './core/mesh.js';
+import { extrudeDrawing, meshesToFaces } from './core/solid.js';
 
 const $ = id => document.getElementById(id);
 
@@ -691,6 +693,37 @@ function wireUi(){
     const f = ev.target.files && ev.target.files[0];
     if (f) readDrawingFile(f, true);
     ev.target.value = '';
+  });
+  function solidsOrDrawing(){
+    /* Built solids if there are any, otherwise the whole plan extruded, so
+     * the export is never silently empty. */
+    if (state.solids && state.solids.length) return mergeMeshes(state.solids);
+    const meshes = extrudeDrawing(state.entities, solidOpts());
+    const faces = meshesToFaces(meshes);
+    const verts = [], tris = [];
+    faces.forEach(f => {
+      const base = verts.length;
+      (f.pts || []).forEach(p => verts.push(p));
+      for (let i = 2; i < (f.pts || []).length; i++) tris.push([base, base + i - 1, base + i]);
+    });
+    return { verts, faces: tris };
+  }
+  $('mSTL') && $('mSTL').addEventListener('click', async () => {
+    closeSheets();
+    const { meshToSTL, meshVolume, isWatertight } = await import('./core/mesh.js');
+    const m = solidsOrDrawing();
+    if (!m.faces.length){ toast('Nothing to export in 3D yet'); return; }
+    download(fileSlug() + '.stl', meshToSTL(m, state.projectName || 'sovereign'), 'model/stl');
+    toast('STL: ' + m.faces.length + ' triangles, ' + Math.abs(meshVolume(m)).toFixed(1) + ' CF'
+      + (isWatertight(m) ? '' : ', not closed'), 4000);
+  });
+  $('mOBJ') && $('mOBJ').addEventListener('click', async () => {
+    closeSheets();
+    const { meshToOBJ } = await import('./core/mesh.js');
+    const m = solidsOrDrawing();
+    if (!m.faces.length){ toast('Nothing to export in 3D yet'); return; }
+    download(fileSlug() + '.obj', meshToOBJ(m, state.projectName || 'sovereign'), 'model/obj');
+    toast('OBJ: ' + m.verts.length + ' vertices, ' + m.faces.length + ' faces');
   });
   $('mFont') && $('mFont').addEventListener('click', () => $('fileFont').click());
   $('fileFont') && $('fileFont').addEventListener('change', async ev => {

@@ -22,6 +22,7 @@ import { polyBoolean, ringsArea } from './core/boolean.js';
 import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, removeLayerState, layerStateByName } from './core/layerstate.js';
 import { plotStyleByName } from './io/plotstyle.js';
 import { modelToPaper, viewportRot } from './core/layout.js';
+import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight } from './core/mesh.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
 import { makeIndexCache, queryPoint, queryBox, worthIndexing } from './core/spatial.js';
 import { alignedDim, continueDim, baselineDim, applyStyleToDim, angularDim, radiusDim, diameterDim, makeLeader } from './core/dimStyle.js';
@@ -144,6 +145,68 @@ export function closePoly(){
     ix.polyPts = []; ix.hoverPt = null;
     afterChange();
   }
+}
+
+/* ---------- 3D from the drawing ----------
+ * These take the closed regions already on screen and make a closed mesh
+ * from them. The mesh is kept on the document so the 3D view and the STL and
+ * OBJ writers all see the same solid, and its volume is reported because
+ * that is usually the reason someone asked for it.
+ */
+function reportSolid(mesh, what){
+  if (!mesh || !mesh.faces.length){ toast('Nothing to build a solid from'); return false; }
+  const v = meshVolume(mesh);
+  const tight = isWatertight(mesh);
+  state.solids = (state.solids || []).concat([mesh]);
+  afterChange();
+  toast(what + ': ' + Math.abs(v).toFixed(2) + ' CF, ' + mesh.faces.length + ' faces'
+    + (tight ? '' : ', NOT closed'), 4000);
+  return true;
+}
+
+export function extrudeSelection(rest){
+  const loops = closedLoops(selMembers());
+  if (!loops.length){ toast('Select closed regions to extrude'); return; }
+  const h = parseLength(String(rest || '').trim());
+  const height = Number.isFinite(h) && h !== 0 ? h : (state.storyHeight > 0 ? state.storyHeight : 8);
+  pushUndo();
+  reportSolid(extrudeRings(loops, height), 'Extruded ' + fmtFtIn(height));
+}
+
+export function revolveSelection(rest){
+  const loops = closedLoops(selMembers());
+  if (!loops.length){ toast('Select a closed profile to revolve'); return; }
+  const a = Number(String(rest || '').trim());
+  const angle = Number.isFinite(a) && a !== 0 ? a : 360;
+  /* The profile is a plan region; revolving it treats x as radius and y as
+   * height, which is the lathe convention and the only reading that makes a
+   * plan profile mean anything on an axis. */
+  const prof = loops[0].map(p => [p[0], p[1]]);
+  pushUndo();
+  reportSolid(revolveProfile(prof, { angle, segments: 96 }), 'Revolved ' + angle + ' degrees');
+}
+
+export function loftSelection(){
+  const ms = selMembers();
+  const loops = closedLoops(ms);
+  if (loops.length < 2){ toast('Select two or more closed sections to loft'); return; }
+  if (!loops.every(l => l.length === loops[0].length)){
+    toast('Loft sections need the same number of points (' + loops.map(l => l.length).join(', ') + ')', 4000);
+    return;
+  }
+  const step = state.storyHeight > 0 ? state.storyHeight : 8;
+  const sections = loops.map((ring, i) => ({ ring, z: i * step }));
+  pushUndo();
+  reportSolid(loftRings(sections), 'Lofted ' + loops.length + ' sections');
+}
+
+export function clearSolids(){
+  if (!state.solids || !state.solids.length){ toast('No solids built yet'); return; }
+  pushUndo();
+  const n = state.solids.length;
+  state.solids = [];
+  afterChange();
+  toast(n + ' solid' + (n === 1 ? '' : 's') + ' cleared');
 }
 
 /* ---------- viewport twist and clipping ----------

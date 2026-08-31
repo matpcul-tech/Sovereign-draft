@@ -20,7 +20,8 @@ import {
   addConstraint, solveConstraintsNow, deleteConstraintsOnSelection, solveAfterEdit,
   hatchIslandsFromSelection, arcSegTap, booleanOnSelection,
   saveLayerState, restoreLayerState, deleteLayerState, setPlotStyle,
-  twistViewport, clipViewport
+  twistViewport, clipViewport,
+  extrudeSelection, revolveSelection, loftSelection, clearSolids
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
 import { setTool } from './ui/tools.js';
@@ -472,6 +473,10 @@ export function handleCommand(text){
   if (res.action === 'plotstyle'){ setPlotStyle(res.rest); return; }
   if (res.action === 'vptwist'){ twistViewport(res.rest); return; }
   if (res.action === 'vpclip'){ clipViewport(res.rest); return; }
+  if (res.action === 'extrude3d'){ extrudeSelection(res.rest); return; }
+  if (res.action === 'revolve3d'){ revolveSelection(res.rest); return; }
+  if (res.action === 'loft3d'){ loftSelection(); return; }
+  if (res.action === 'clearsolids'){ clearSolids(); return; }
   if (res.action === 'zoomfit'){ zoomFit(); draw(); return; }
   if (res.action === 'explode'){ explodeSelection(); return; }
   if (res.action === 'flip'){ flipSelection(); return; }

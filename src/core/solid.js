@@ -79,11 +79,26 @@ function isEar(a, b, c, ccw){
   return ccw ? cross > 1e-12 : cross < -1e-12;
 }
 
+/* Convex means every turn goes the same way round. */
+function convexQuad(p){
+  let neg = false, pos = false;
+  for (let i = 0; i < 4; i++){
+    const a = p[i], b = p[(i + 1) % 4], c = p[(i + 2) % 4];
+    const cr = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+    if (cr < -1e-12) neg = true;
+    if (cr > 1e-12) pos = true;
+  }
+  return !(neg && pos);
+}
+
 export function triangulate(pts){
   const n0 = (pts || []).length;
   if (n0 < 3) return [];
   if (n0 === 3) return [0, 1, 2];
-  if (n0 === 4) return [0, 1, 2, 0, 2, 3];
+  /* A quad can only be split on the 0-2 diagonal when that diagonal stays
+   * inside it. On a concave quad it does not, and the two triangles cover
+   * area the polygon never had: a dart of area 6 came out as 10. */
+  if (n0 === 4 && convexQuad(pts)) return [0, 1, 2, 0, 2, 3];
   const ccw = signedArea(pts) > 0;
   const idx = pts.map((_, i) => i);
   const tris = [];

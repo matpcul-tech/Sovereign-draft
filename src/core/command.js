@@ -97,7 +97,11 @@ export const COMMANDS = {
   LAYDEL:  { aliases: ['LAYDEL'],                       tool: null,     action: 'laydel' },
   PLOTSTYLE:{ aliases: ['PLOTSTYLE', 'CTB'],            tool: null,     action: 'plotstyle' },
   VPTWIST: { aliases: ['VPTWIST', 'TWIST', 'VPROTATE'],  tool: null,     action: 'vptwist' },
-  VPCLIP:  { aliases: ['VPCLIP', 'CLIPVIEW'],           tool: null,     action: 'vpclip' }
+  VPCLIP:  { aliases: ['VPCLIP', 'CLIPVIEW'],           tool: null,     action: 'vpclip' },
+  EXTRUDE: { aliases: ['EXTRUDE', 'EXT'],               tool: null,     action: 'extrude3d' },
+  REVOLVE: { aliases: ['REVOLVE', 'REV'],               tool: null,     action: 'revolve3d' },
+  LOFT:    { aliases: ['LOFT'],                         tool: null,     action: 'loft3d' },
+  SOLIDCLR:{ aliases: ['SOLIDCLR', 'CLEARSOLIDS'],      tool: null,     action: 'clearsolids' }
 };
 
 const ALIAS = {};

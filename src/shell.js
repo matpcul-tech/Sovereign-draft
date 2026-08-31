@@ -258,6 +258,8 @@ export function shellHTML(){
   <div class="subtle" style="margin-top:0;margin-bottom:10px">Stamped on every printed sheet — company, copyright, drawing title, sheet number.</div>
   <button class="mrow" id="mOpenDrawing"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Open drawing<small>DXF · DWG · JSON · drop a file</small></button>
   <button class="mrow" id="mImportDXF"><svg viewBox="0 0 24 24"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 3v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3"/></svg>Insert DXF<small>merge into this sheet</small></button>
+  <button class="mrow" id="mSTL"><svg viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M12 12l9-5M12 12v10M12 12L3 7"/></svg>Export STL<small>3D print · mesh solids</small></button>
+  <button class="mrow" id="mOBJ"><svg viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5"/></svg>Export OBJ<small>3D model exchange</small></button>
   <button class="mrow" id="mFont"><svg viewBox="0 0 24 24"><path d="M5 20V5h9a4 4 0 0 1 0 8H5"/><path d="M12 13l5 7"/></svg>Embed a font<small>TrueType · plots any script</small></button>
   <button class="mrow" id="mXref"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="9" height="9" rx="1"/><rect x="12" y="12" width="9" height="9" rx="1"/><path d="M8 12v4h4"/></svg>Attach xref<small>JSON · DXF as underlay</small></button>
   <button class="mrow" id="mSaveJSON"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg>Save project<small>.json</small></button>
