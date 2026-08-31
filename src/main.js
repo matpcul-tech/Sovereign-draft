@@ -24,7 +24,7 @@ import { shellHTML } from './shell.js';
 import { makeLayout, makeViewport, fitViewport, SHEETS, TITLE_BLOCK_H } from './core/layout.js';
 import { membersBBox } from './core/entities.js';
 import { addSheet, addViewToSheet, normalizeSheets, findSheet } from './core/document.js';
-import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys, markScheduleCSV, paperKeynoteColW, paperScheduleColW } from './core/keynote.js';
+import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, scheduleColumns, markScheduleCSV, paperKeynoteColW, paperScheduleColW } from './core/keynote.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation, makeDetailCallout, danglingDetails, detailBubbleText } from './core/sheetspace.js';
 import { cabin24x36, partPlate, gaDiagram } from './core/demo.js';
 import { loadFirm, saveFirm, defaultFirm } from './core/titleblock.js';
@@ -929,7 +929,7 @@ function wireUi(){
     const sheet = state.space !== 'model' ? activeLayout() : null;
     const groups = collectMarks(state.entities);
     if (!groups.length){ toast('Nothing is marked yet'); return; }
-    const cols = attributeKeys(state.entities).slice(0, 3);
+    const cols = scheduleColumns(state.entities);
     pushUndo();
     if (sheet){
       const t = buildMarkSchedule(state.entities, sheet, [0, 0], {

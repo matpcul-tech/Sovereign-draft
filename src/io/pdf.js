@@ -12,12 +12,13 @@ import { styleFor, metricsOpts } from '../core/textstyle.js';
 import { helveticaWidth } from '../core/textmetrics.js';
 import { sheetLabel } from '../core/document.js';
 import { tableFrags } from '../core/schedule.js';
-import { detailBubbleText } from '../core/sheetspace.js';
+import { detailBubbleText, viewportClearOfAnnotations, annotationRect } from '../core/sheetspace.js';
 import { sheetOf, clipPoly, viewportRot } from '../core/layout.js';
 import { fontObjects, hexString, collectGlyphs } from './pdffont.js';
 import { missingGlyphs } from './ttf.js';
 import { titleBlockModel, drawingTitleOf, fitPaperText, viewportClearOfTitle } from '../core/titleblock.js';
 import { entsInBBox } from '../core/legend.js';
+import { refreshDerivedTables } from '../core/keynote.js';
 import { plotLwPt, styledLwPt, styledGray, stylePlots, plotStyleByName, defaultPlotStyles, SOLID_GRAY, DIM_GRAY } from './plotstyle.js';
 
 export const SCALE_LADDER = [
@@ -333,6 +334,7 @@ export function buildPDF(entities, opts){
  * sheet set can be assembled from many of them. */
 function layoutPage(entities, opts){
   const layout = opts.layout;
+  refreshDerivedTables(layout, entities);
   const sh = sheetOf(layout.sheet);
   const pageW = Math.round(sh.w * 72), pageH = Math.round(sh.h * 72);
   const layerVisible = opts.layerVisible || (() => true);
@@ -357,7 +359,7 @@ function layoutPage(entities, opts){
   }
   const ppf = layout.ppf || 18;
   for (const vpRaw of layout.viewports){
-    const vp0 = viewportClearOfTitle(vpRaw);
+    const vp0 = viewportClearOfAnnotations(viewportClearOfTitle(vpRaw), layout.annotations);
     const VX = vp0.px * 72, VY = vp0.py * 72, VW = vp0.pw * 72, VH = vp0.ph * 72;
     const vppf = vp0.ppf || ppf;
     const TX = x => VX + VW / 2 + (x - vp0.mx) * vppf;
@@ -426,6 +428,11 @@ function layoutPage(entities, opts){
       const t = Object.assign({}, a.table, { x: a.x, y: a.y, fromTop: true });
       const paper = (t.rowH || 0.85) < 0.4;
       const ts = paper ? 1 : ((t.rowH || 0.22) / 0.85);
+      const box = annotationRect(a);
+      if (box){
+        P('q 0.96 0.94 0.89 rg ' + f2(IX(box[0])) + ' ' + f2(IY(box[1])) + ' ' +
+          f2(IX(box[2]) - IX(box[0])) + ' ' + f2(IY(box[3]) - IY(box[1])) + ' re f Q');
+      }
       tableFrags(t).forEach(f => {
         if (f.type === 'line'){
           P(f2(IX(f.x1)) + ' ' + f2(IY(f.y1)) + ' m ' + f2(IX(f.x2)) + ' ' + f2(IY(f.y2)) + ' l S');

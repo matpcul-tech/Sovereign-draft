@@ -3,7 +3,7 @@
  */
 import { tableFrags } from '../core/schedule.js';
 import { scaleLabel } from '../io/pdf.js';
-import { detailBubbleText } from '../core/sheetspace.js';
+import { detailBubbleText, viewportClearOfAnnotations, annotationRect } from '../core/sheetspace.js';
 import { state, layerByName, selMembers, activeLayout } from '../core/state.js';
 import { vp, W2S, S2W } from '../core/viewport.js';
 import { membersBBox, gripPts } from '../core/entities.js';
@@ -18,6 +18,7 @@ import { hatchLines } from '../core/hatch.js';
 import { splinePoints, makeSpline } from '../core/spline.js';
 import { makeIndexCache, queryIndices, worthIndexing } from '../core/spatial.js';
 import { entsInBBox } from '../core/legend.js';
+import { refreshDerivedTables } from '../core/keynote.js';
 import { arcFrom3 } from '../core/modify.js';
 import { wallFrags } from '../core/walls.js';
 
@@ -157,6 +158,7 @@ function paperMap(){
 function drawPaper(){
   const m = paperMap(); if (!m) return;
   const { L, sh, scl, ox, oy, p2s } = m;
+  refreshDerivedTables(L, state.entities);
   ctx.fillStyle = '#050a14';
   ctx.fillRect(0, 0, vp.CW, vp.CH);
   /* Sheet */
@@ -167,7 +169,7 @@ function drawPaper(){
   ctx.strokeRect(a[0], a[1], sh.w * scl, sh.h * scl);
   /* Viewports — lifted above the issued title block so geometry never sits on the stamp. */
   for (const vpRaw of L.viewports){
-    const vp0 = viewportClearOfTitle(vpRaw);
+    const vp0 = viewportClearOfAnnotations(viewportClearOfTitle(vpRaw), L.annotations);
     /* The boundary is the clip polygon when the viewport has one and the
      * frame otherwise, so a keyed enlarged plan clips to its real shape
      * rather than to the rectangle around it. */
@@ -213,6 +215,12 @@ function drawPaper(){
       const t = Object.assign({}, a.table, { x: a.x, y: a.y, fromTop: true });
       const paper = (t.rowH || 0.85) < 0.4;
       const ts = paper ? 1 : ((t.rowH || 0.22) / 0.85);
+      const r = annotationRect(a);
+      if (r){
+        const tl = p2s(r[0], r[3]), br = p2s(r[2], r[1]);
+        ctx.fillStyle = '#f4efe4';
+        ctx.fillRect(tl[0], tl[1], br[0] - tl[0], br[1] - tl[1]);
+      }
       tableFrags(t).forEach(f => {
         if (f.type === 'line'){
           const p0 = p2s(f.x1, f.y1), p1 = p2s(f.x2, f.y2);

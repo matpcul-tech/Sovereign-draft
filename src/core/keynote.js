@@ -19,6 +19,7 @@ import { entBBox, membersBBox } from './entities.js';
 import { makeTable } from './schedule.js';
 import { fmtFtIn } from './format.js';
 import { ptInBox } from './geometry.js';
+import { bodyBBox, measureInBox, collectParts, partsToTable } from './spec.js';
 
 const SKIP_MEASURE = { text: 1, leader: 1, callout: 1, table: 1, dim: 1, room: 1, grid: 1 };
 const SKIP_LAYER = { NOTES: 1, TEXT: 1, SCHEDULES: 1, DIMS: 1, UNDERLAY: 1, DEFPOINTS: 1 };
@@ -60,19 +61,70 @@ function geomOf(ents){
 
 /* One instance of a mark, not the envelope of every copy. When qty is 9 and
  * nine engines sit on the page, size is one engine. An assembly (several
- * nearby pieces, qty 1) still unions. */
-export function measureMark(g){
+ * nearby pieces, qty 1) still unions. A mark that lives only on a callout
+ * measures the body in that station — not the envelope, not the label. */
+export function measureMark(g, universe){
   const geom = geomOf(g && g.entities);
-  if (!geom.length) return '';
-  if ((g.qty || 1) > 1 && geom.length > 1){
-    const n = Math.max(1, Math.round(geom.length / g.qty));
-    const sorted = geom.slice().sort((a, b) => {
-      const A = bboxOf(a), B = bboxOf(b);
-      return (A[0] - B[0]) || (A[1] - B[1]);
-    });
-    return fmtSize(membersBBox(sorted.slice(0, n)));
+  if (geom.length){
+    if ((g.qty || 1) > 1 && geom.length > 1){
+      const n = Math.max(1, Math.round(geom.length / g.qty));
+      const sorted = geom.slice().sort((a, b) => {
+        const A = bboxOf(a), B = bboxOf(b);
+        return (A[0] - B[0]) || (A[1] - B[1]);
+      });
+      return fmtSize(membersBBox(sorted.slice(0, n)));
+    }
+    return fmtSize(membersBBox(geom));
   }
-  return fmtSize(membersBBox(geom));
+  if (universe && universe.length) return measureStation(g, universe);
+  return '';
+}
+
+function anchorOf(g){
+  const ents = (g && g.entities) || [];
+  for (let i = 0; i < ents.length; i++){
+    const e = ents[i];
+    if (!e) continue;
+    if (e.anchor && e.anchor.length >= 2) return [Number(e.anchor[0]), Number(e.anchor[1])];
+    if (e.type === 'callout' && e.pts && e.pts[0]) return [e.pts[0][0], e.pts[0][1]];
+    if (e.type === 'text' && e.x != null) return [e.x, e.y];
+  }
+  if (ents[0]){
+    const bb = bboxOf(ents[0]);
+    if (bb[0] < 1e8) return [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2];
+  }
+  return null;
+}
+
+function stationBox(sorted, i, body, vertical){
+  const c = sorted[i];
+  const prev = sorted[i - 1];
+  const next = sorted[i + 1];
+  if (vertical){
+    const yTop = prev ? (prev.y + c.y) / 2 : body[3];
+    const yBot = next ? (c.y + next.y) / 2 : body[1];
+    return [body[0], Math.min(yBot, yTop), body[2], Math.max(yBot, yTop)];
+  }
+  const x0 = prev ? (prev.x + c.x) / 2 : body[0];
+  const x1 = next ? (c.x + next.x) / 2 : body[2];
+  return [Math.min(x0, x1), body[1], Math.max(x0, x1), body[3]];
+}
+
+function measureStation(g, universe){
+  const pos = anchorOf(g);
+  if (!pos) return '';
+  const body = bodyBBox(universe);
+  if (!body || body[0] > 1e8) return '';
+  const vertical = (body[3] - body[1]) >= (body[2] - body[0]) * 0.7;
+  const others = collectMarks(universe).map(m => {
+    const p = anchorOf(m);
+    return p ? { mark: m.mark, x: p[0], y: p[1] } : null;
+  }).filter(Boolean);
+  if (!others.length) return '';
+  const sorted = others.slice().sort((a, b) => vertical ? b.y - a.y : a.x - b.x);
+  const i = sorted.findIndex(o => o.mark === g.mark);
+  if (i < 0) return '';
+  return fmtSize(measureInBox(universe, stationBox(sorted, i, body, vertical))) || '';
 }
 
 /* A size string written onto every different part is a stamp, not a spec. */
@@ -91,10 +143,10 @@ function looksStamped(s){
   return /^x\s*[x×]/i.test(t);
 }
 
-function sizeCell(g, stamp){
+function sizeCell(g, stamp, universe){
   const authored = g.attributes && g.attributes.size != null ? String(g.attributes.size).trim() : '';
   if (authored && authored !== stamp && !looksStamped(authored)) return authored;
-  return measureMark(g) || (authored && authored !== stamp ? authored : '') || '';
+  return measureMark(g, universe) || '';
 }
 
 /* Entities at least partly inside a view. A dim belongs only when both
@@ -201,7 +253,7 @@ export function markScheduleRows(entities, sheet, columns){
     const row = [g.mark, String(g.qty)];
     cols.forEach(c => {
       if (String(c).toLowerCase() === 'size'){
-        row.push(sizeCell(g, stamp));
+        row.push(sizeCell(g, stamp, scoped));
         return;
       }
       row.push(g.attributes[c] == null ? '' : String(g.attributes[c]));
@@ -232,6 +284,47 @@ export function attributeKeys(entities){
     Object.keys(g.attributes || {}).forEach(k => { if (k !== 'qty') keys.add(k); });
   });
   return [...keys].sort();
+}
+
+/* Always include size so a schedule measures even when the AI omitted attrs.size. */
+export function scheduleColumns(entities){
+  const keys = attributeKeys(entities).filter(k => k !== 'qty' && k !== 'size');
+  const prefer = ['type', 'label', 'material'];
+  const ordered = [];
+  prefer.forEach(k => { if (keys.indexOf(k) >= 0) ordered.push(k); });
+  keys.forEach(k => { if (ordered.indexOf(k) < 0) ordered.push(k); });
+  ordered.push('size');
+  return ordered.slice(0, 4);
+}
+
+/* Rewrite derived keynote / mark / parts tables in place so a sheet that was
+ * stamped with envelope sizes updates on the next draw. */
+export function refreshDerivedTables(sheet, entities){
+  if (!sheet || !sheet.annotations) return sheet;
+  const scope = (sheet.viewports && sheet.viewports.length) ? sheet : null;
+  sheet.annotations.forEach(a => {
+    if (!a || a.kind !== 'table' || !a.table) return;
+    const title = String(a.table.title || '').toUpperCase();
+    if (title === 'KEYNOTE LEGEND'){
+      a.table.cells = [['MARK', 'DESCRIPTION']].concat(keynoteRows(entities, scope));
+      return;
+    }
+    if (title === 'PARTS SCHEDULE'){
+      const t = partsToTable(collectParts(entities));
+      if (t && t.cells) a.table.cells = t.cells;
+      return;
+    }
+    if (title === 'SCHEDULE' || title === 'MARK SCHEDULE'){
+      const head = (a.table.cells && a.table.cells[0] && a.table.cells[0].length > 1)
+        ? a.table.cells[0]
+        : ['MARK', 'QTY', 'TYPE', 'MATERIAL', 'SIZE'];
+      let cols = head.slice(2).map(h => String(h).toLowerCase());
+      if (cols.indexOf('size') < 0) cols = cols.concat(['size']);
+      const rows = markScheduleRows(entities, scope, cols);
+      a.table.cells = [['MARK', 'QTY'].concat(cols.map(c => String(c).toUpperCase()))].concat(rows);
+    }
+  });
+  return sheet;
 }
 
 /* CSV of a mark schedule, for the same reason the door schedule has one. */
