@@ -741,7 +741,10 @@ export function applyChamfer(e1, e2, p1, p2){
 }
 
 export function applyJoin(){
-  const ms = selMembers().filter(e => e.type === 'line' || e.type === 'poly');
+  /* Arcs join now: they become bulged segments, so a filleted outline comes
+   * back as one polyline with its curves intact. This filter predates that
+   * and was quietly dropping them from the selection. */
+  const ms = selMembers().filter(e => e.type === 'line' || e.type === 'poly' || e.type === 'arc');
   const res = joinEntities(ms);
   if (!res.ok){ toast(res.msg); return; }
   pushUndo();
