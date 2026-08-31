@@ -1,12 +1,40 @@
 # Sovereign Draft
 
-Issued 2D, free, DXF/DWG out.
+**Issued 2D, free, DXF/DWG out.**
 
-The CAD program you open when you don’t have a license — and shouldn’t need one.
+[![CI](https://github.com/matpcul-tech/Sovereign-draft/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/matpcul-tech/Sovereign-draft/actions/workflows/ci.yml) · v1.7.0 · MIT · no account · no seat
 
-Browser 2D CAD. No account, no install, no seat. Decimal feet, Y-up, dimensions to the nearest ½″. The drawing stays on the device until you export. A sentence can become a sheet set; a JSON file can live in git next to the code.
+The CAD you open without a license — and shouldn’t need one.
 
-This is how we democratize CAD: the 80% of drawings that are plans, elevations, and diagrams, at zero cost, with an AutoCAD-shaped command line so it still feels like CAD.
+Browser 2D CAD for the 80% of drawings that are plans, elevations, and diagrams. Decimal feet, Y-up, dimensions to the nearest ½″. JSON lives in git next to the code. A sentence can become a sheet set. The drawing stays on the device until you export.
+
+This is how we democratize CAD: the cheapest go-to for a developer who needs a real issued sheet, not a $2,000 seat.
+
+## Open it
+
+```
+npx --yes github:matpcul-tech/Sovereign-draft --sample --pdf cabin.pdf
+```
+
+```js
+import { open, sheetset, toPDF, toDXF, toDWG, toJSON } from 'sovereign-draft'
+
+const doc = open(dxfText, 'plan.dxf')
+const set = sheetset(doc)
+writeFileSync('plan.pdf', toPDF(set), 'latin1')
+writeFileSync('plan.dxf', toDXF(set))           // R2000 — AutoCAD Open path
+writeFileSync('plan.dwg', Buffer.from(toDWG(set)))
+```
+
+The editor is a PWA. The kernel is the product (`src/api.js`). No DOM.
+
+Starters in `examples/`:
+
+| File | What it is | What it is not |
+|------|------------|----------------|
+| `cabin.json` | 24×36 plan, walls, rooms, G-001 / A-101 set | |
+| `part.json` | 12″×8″ plate with GD&T | |
+| `ga.json` | General arrangement + parts table | A build spec |
 
 ## What it is
 
@@ -14,16 +42,20 @@ This is how we democratize CAD: the 80% of drawings that are plans, elevations, 
 |---|---|
 | 2D drafting in the browser (PWA) | CATIA, Fusion, or CAM |
 | Command line (`L`, `TR`, `@8<45`, F8) | Invented materials or tolerances |
-| Issued sheets: title block, copyright, multi-page PDF | A substitute for a professional of record |
+| Issued sheets: title block, copyright, ISO lineweights, 24×36 PDF | A substitute for a professional of record |
+| Associative dims that follow stretch / move | |
+| R2000 DXF AutoCAD Open path + DWG this app reopens | ODA-grade DWG every AutoCAD opens without Recover |
 | Cutting planes (`SE`) that hatch a true section + a sheet | Pretending 8'-0" is a known story height |
-| 3D orbit (`3D`) of the extruded plan — walls, doors, floors | B-rep solids, NURBS, or a second 3D model |
+| 3D orbit (`3D`) of the extruded plan | B-rep solids, NURBS, or a second 3D model |
 | Feature control frames, datums, ± tolerances (`FCF` / `DATUM`) | A frame without a number |
 | Isolated detail sheets (`DET`) — a tighter viewport, not a copy | |
 | Grok drafts for free (optional Anthropic fallback) | |
-| `XREF` / `BIND`, DWG open **and write**, JSON in git | A server that holds your drawings |
-| Share link in the URL hash, millimetres or metres on the glass | A CAD license |
+| `XREF` / `BIND`, JSON in git, share link in the URL hash | A server that holds your drawings |
+| Millimetres or metres on the glass | A CAD license |
 
 A cabin floor plan with walls, doors, rooms, dims, and a G-001/A-101 set is the job. A rocket silhouette with a parts table is a general arrangement, not a build spec — we will not pretend otherwise.
+
+You can sell prints you drew. You cannot stamp them as a PE unless you are one. The software does not become the stamp.
 
 ## Cost
 
@@ -47,7 +79,7 @@ Copy share link (Sheet menu) puts a gzipped drawing in the URL hash. No server. 
 | `/` | Focus command line | `EL` | Ellipse |
 | `RC` | Revision cloud | `LE` | Leader |
 | `IMG` | Image underlay | `XL` | Construction line |
-| `GRID` | Column grid | `OPEN` | Open DXF / JSON |
+| `GRID` | Column grid | `OPEN` | Open DXF / JSON / DWG |
 | `DXFIN` | Insert DXF (merge) | `XREF` | Attach xref |
 | `BIND` | Bind xref | `SHEETSET` | Generate sheet set |
 | `SE` | Section cut | `DET` | Isolated detail |
@@ -96,7 +128,11 @@ While a command is live:
 
 ## Dim styles
 
-Named styles (`ARCH` tick / `ARROW` / `DECIMAL`) with text height, offset, tick vs arrow, precision (½″ / ¼″ / decimal) and layer. Tools: aligned, continue, baseline, **angular** (`DAN`), **radius** (`DRA`), **diameter** (`DDI`). Linear dims **bind to wall ends** and follow when the wall moves. DXF export still explodes dimensions to R12 LINE+TEXT.
+Named styles (`ARCH` tick / `ARROW` / `DECIMAL`) with text height, offset, tick vs arrow, precision (½″ / ¼″ / decimal) and layer. Tools: aligned, continue, baseline, **angular** (`DAN`), **radius** (`DRA`), **diameter** (`DDI`).
+
+Linear dims **bind to wall ends** (and to circle radius / diameter) and **follow stretch and move**. Stretch skips associative dim endpoints so the witness stays on the geometry.
+
+Default DXF is **R2000**: native `DIMENSION` objects, not exploded. R12 still explodes to LINE+TEXT (byte-stable for old pipelines).
 
 ## Construction documents
 
@@ -104,7 +140,7 @@ Door / window / room **schedules** (`SCH` or Sheet → Place schedules) auto-tag
 
 **Image underlay** (`IMG` / Trace image): pick a photo, tap two corners. `CAL` then two taps + a typed length scales the raster to a known dimension. Underlays live on the `UNDERLAY` layer (`plot` off so they don't print).
 
-**Stretch** (`ST`): crossing-window the vertices to move, then pick a displacement. Walls, polylines, hatches, ellipses and inserts all stretch.
+**Stretch** (`ST`): crossing-window the vertices to move, then pick a displacement. Walls, polylines, hatches, ellipses and inserts all stretch. Associative dims stay tied.
 
 **Match properties** (`MA`): tap a source, then tap destinations to copy layer / linetype / lineweight.
 
@@ -128,7 +164,7 @@ Layers lock (click the padlock — locked objects can't be selected) and a **P**
 
 ## Paper space
 
-One model space + N layouts. Each layout has a sheet (Letter / Tabloid / Arch D / Arch D portrait), plot scale, and viewports that clip + scale model geometry. PDF export plots an **issued sheet**: double border, a title block (ISSUED BY / PROJECT / DRAWING TITLE / SCALE / SHEET), and your company copyright. Set the firm name, copyright line and “drawn by” in the Sheet menu — they stamp every page and stay on this device.
+One model space + N layouts. Each layout has a sheet (Letter / Tabloid / Arch D / Arch D portrait), plot scale, and viewports that clip + scale model geometry. PDF export plots an **issued sheet**: double border, ISO 128 lineweights (WALLS 0.50 mm, DIMS 0.18 mm), a scale bar, a title block (ISSUED BY / PROJECT / DRAWING TITLE / SCALE / SHEET), and your company copyright. Set the firm name, copyright line and “drawn by” in the Sheet menu — they stamp every page and stay on this device.
 
 **Sheet set** (`SHEETSET` / `SS`, or Sheet → Generate sheets) splits the model into pages:
 
@@ -150,23 +186,17 @@ A sheet set is a general arrangement plus a schedule. It is not a manufacturing 
 
 The editor is the app. The kernel is the product.
 
-```js
-import { open, draw, sheetset, toPDF, toDXF, toJSON } from 'sovereign-draft'
-
-const doc = open(dxfText, 'plan.dxf')
-const set = sheetset(doc)
-writeFileSync('plan.pdf', toPDF(set), 'latin1')
-```
-
 ```
 npx --yes github:matpcul-tech/Sovereign-draft --sample --pdf cabin.pdf
 npx sovereign-draft plan.json --pdf plan.pdf
+npx sovereign-draft plan.json --dxf plan.dxf --dwg plan.dwg
 npx sovereign-draft plan.dxf --sheets --pdf set.pdf --svg set.svg --html set.html
 npx sovereign-draft plan.json --html plan.html
 npx sovereign-draft plan.json --share
 npx sovereign-draft site.json --xref cabin.json --pdf site.pdf
 npx sovereign-draft plan.json --units mm --pdf plan.pdf
 npx sovereign-draft drawing.dwg --json drawing.json
+npx sovereign-draft examples/part.json --dxf part.dxf
 ```
 
 `examples/cabin.json` is the sample, committed so it diffs in git. CI plots it to PDF on every push.
@@ -189,20 +219,21 @@ Embed a drawing in your page (chrome off), or email `--html` — a single file w
 <sovereign-draft src="plan.json"></sovereign-draft>
 ```
 
-`postMessage({ type: 'sovereign-draft', action: 'load', project })` into the iframe. `pdf` / `dxf` / `json` / `sheetset` come back the same way.
+`postMessage({ type: 'sovereign-draft', action: 'load', project })` into the iframe. `pdf` / `dxf` / `dwg` / `json` / `sheetset` come back the same way.
 
 ## Files
 
-The project JSON is the source of truth — plain objects, diffable in git, next to the repo. DXF and PDF are exports.
+The project JSON is the source of truth — plain objects, diffable in git, next to the repo. DXF, DWG and PDF are exports.
 
-**Open** (`OPEN`, Sheet → Open drawing, or drop a file) replaces the sheet. **Insert DXF** (`DXFIN`) merges into the current drawing. `.json` project files open the same way. **DWG** opens in the browser: misnamed DXF files are read directly; real DWG is parsed via LibreDWG wasm, loaded only when you open a `.dwg` (GPL parser, not bundled). If the wasm is blocked, Save As DXF in the other program and Open here.
+**Open** (`OPEN`, Sheet → Open drawing, or drop a file) replaces the sheet. **Insert DXF** (`DXFIN`) merges into the current drawing. `.json` project files open the same way. **DWG** opens in the browser: misnamed DXF files are read directly; real DWG is parsed via LibreDWG wasm, loaded only when you open a `.dwg` (GPL parser, not bundled). If the wasm is blocked, Save As DXF in the other program and Open here. Paperspace (VIEWPORT, LAYOUT, group 67=1) is kept — it is not dropped on open.
 
 **Units.** World units are decimal feet, Y-up. The writer stamps `$INSUNITS=2`. The reader honors `$INSUNITS` (inches, mm, cm, meters → feet). If the header is missing and coordinates look like millimetres (max > 2000), they are scaled to feet; otherwise feet are assumed. A 36 ft cabin is never auto-scaled.
 
-**In:** LINE, ARC, CIRCLE, ELLIPSE, TEXT, MTEXT (flattened), LWPOLYLINE, POLYLINE, SPLINE (as polyline), SOLID / 3DFACE, INSERT (block geometry), HATCH, XLINE, RAY, DIMENSION (aligned), LEADER.  
-**Out:** R12 or R2000 DXF. R2000 is the AutoCAD Open path: STYLE, DIMSTYLE, `*MODEL_SPACE` / `*PAPER_SPACE`, DIMENSION objects (not exploded), LAYOUT + VIEWPORT so paperspace survives. **DWG** (`DWGOUT`) writes AC1015 this app reopens, with the same R2000 DXF inside and 3DFACE from the extrusion. Autodesk's native DWG is still proprietary — if their Open refuses the binary, the DXF R2000 is the interchange they document. Inserts, rooms and dims explode to ordinary geometry on R12 only.
+**In:** LINE, ARC, CIRCLE, ELLIPSE, TEXT, MTEXT (flattened), LWPOLYLINE, POLYLINE, SPLINE (as polyline), SOLID / 3DFACE, INSERT (block geometry), HATCH, XLINE, RAY, DIMENSION (aligned), LEADER, VIEWPORT, LAYOUT.
 
-Three starter drawings live in `examples/`: `cabin.json` (24×36 plan), `part.json` (12"×8" plate with GD&T), `ga.json` (general arrangement — not a build spec).
+**Out:** Default **R2000 DXF** (`$ACADVER AC1015`): TABLES (VPORT, LTYPE, LAYER, STYLE, DIMSTYLE, BLOCK_RECORD), `*MODEL_SPACE` / `*PAPER_SPACE`, DIMENSION objects (codes 10/11/13/14/70), LAYOUT + VIEWPORT so paperspace survives. R12 is still available and still explodes inserts, rooms and dims to ordinary geometry.
+
+**DWG** (`DWGOUT`) writes AC1015 this app reopens, with the same R2000 DXF inside and 3DFACE from the extrusion. Autodesk’s native DWG is still proprietary — if their Open refuses the binary, the DXF R2000 is the interchange they document. We do not rename a DXF and call it a DWG.
 
 ## 3D
 
@@ -220,7 +251,7 @@ The app snaps to a 6″ grid, fillets wall corners, hatches rooms, and places ov
 
 ## Status & properties
 
-Status bar: X, Y, last length, last angle, SNAP / ORTHO / POLAR / WALL. Context chips **LT**, **LW**, and **DIM** cycle current linetype, millimetre lineweight, and dim style (`ARCH` ticks / `ARROW` / `DECIMAL`) — they also apply to the selection. Properties (the sheet button): edit layer, linetype, lineweight, dim style; length and area are read-only. Command history in the Sheet menu. Draw vs Modify are two independently swipeable rows so the toolstrip stays usable on a phone.
+Status bar: X, Y, last length, last angle, SNAP / ORTHO / POLAR / WALL. Context chips **LT**, **LW**, **DIM**, and **DXF** (R2000 / R12) cycle current linetype, millimetre lineweight, dim style, and DXF version — they also apply to the selection. Properties (the sheet button): edit layer, linetype, lineweight, dim style; length and area are read-only. Command history in the Sheet menu. Draw vs Modify are two independently swipeable rows so the toolstrip stays usable on a phone.
 
 **Hatch (`K`):** tap a closed polyline or tap *inside* a closed shape / circle. Tap an existing hatch to cycle ANSI31 → ANSI32 → NET → SOLID. Or draw a boundary and Close.
 
@@ -235,7 +266,7 @@ Doors, windows and symbols are live `insert` entities (no frozen `g` group). Gri
 | Flip | diamond | Door swing L↔R, or mirror a fixture |
 | Rotate | circle (red) | Fixture / user-block angle |
 
-Type a length (`3`, `2'6"`) with a door or window selected to set width. Properties sheet also edits width and swing. Copy of a hosted insert detaches it (does not punch a second opening). DXF and PDF expand inserts to ordinary geometry.
+Type a length (`3`, `2'6"`) with a door or window selected to set width. Properties sheet also edits width and swing. Copy of a hosted insert detaches it (does not punch a second opening). PDF and R12 DXF expand inserts to ordinary geometry. R2000 writes DIMENSION and paperspace; inserts still explode.
 
 ## Privacy
 
@@ -243,7 +274,9 @@ Autosave to `localStorage`. No account, no backend. Grok drafting uses the app o
 
 ## Status
 
-Shipped in this tree: library + CLI, honest AI, Grok drafting with no key, untruncated schedule cells, tighter room views with marks, DWG open **and write**, paperspace kept on open, associative dims that follow a stretch, issued 24×36 PDF with ISO lineweights, embed, cutting-plane sections, isolated details, feature control frames, ± tolerances, 3D orbit of the extruded plan. Starters: cabin, plate, GA.
+**v1.7.0** — Issued 2D, free, DXF/DWG out.
+
+Shipped: kernel + CLI + embed, honest AI, Grok drafting with no key, R2000 DXF AutoCAD Open path, DWG this app reopens, paperspace kept on open, associative dims that follow a stretch, issued 24×36 PDF with ISO lineweights, cutting-plane sections, isolated details, feature control frames, ± tolerances, 3D orbit of the extruded plan. Starters: cabin, plate, GA.
 
 Still ahead: ODA-grade DWG that every AutoCAD build opens without Recover, B-rep solids, a hosted share link (maybe). Floor-plan sheets will keep getting tighter. Collaboration only after the kernel is something you can import — it already is.
 
@@ -251,6 +284,7 @@ Still ahead: ODA-grade DWG that every AutoCAD build opens without Recover, B-rep
 npm test
 node bin/sovereign-draft.js --sample --pdf cabin.pdf
 node bin/sovereign-draft.js examples/part.json --dxf part.dxf
+node bin/sovereign-draft.js examples/ga.json --pdf ga.pdf
 ```
 
 ## Development
@@ -259,7 +293,12 @@ node bin/sovereign-draft.js examples/part.json --dxf part.dxf
 npm test          # vitest (geometry, modify, dxf, pdf, AI schema, sheet sets, kernel)
 npm run dev       # Vite, browser CAD
 npm run build     # static PWA + embed.html
-node bin/sovereign-draft.js --sample --pdf /tmp/cabin.pdf
+npm run examples  # rewrite examples/*.json from the kernel
+node bin/sovereign-draft.js --sample --pdf cabin.pdf
 ```
 
 `src/api.js` is the kernel. No DOM. `src/core` is plain JS. That is the split.
+
+## License
+
+MIT. Use it, sell prints you drew, ship it in your repo. Do not pretend it is a PE stamp.
