@@ -7,6 +7,7 @@
  */
 import { entBBox } from './entities.js';
 import { fmtFtIn } from './format.js';
+import { ptInBox } from './geometry.js';
 import { HATCH_PATTERNS } from './hatch.js';
 import { makeTable } from './schedule.js';
 
@@ -57,6 +58,12 @@ export function entsInBBox(entities, bbox, pad){
   const box = pad ? padBBox(bbox, pad) : bbox;
   return (entities || []).filter(e => {
     if (e.layer === 'DEFPOINTS') return false;
+    /* A dim belongs to a sheet only if both origins sit in the window.
+     * Bbox overlap lets a 230 ft envelope dim leak onto every station. */
+    if (e.type === 'dim'){
+      if (e.x1 == null || e.y1 == null || e.x2 == null || e.y2 == null) return false;
+      return ptInBox(e.x1, e.y1, box) && ptInBox(e.x2, e.y2, box);
+    }
     const eb = [1e9, 1e9, -1e9, -1e9];
     entBBox(e, eb);
     if (eb[0] > 1e8) return false;

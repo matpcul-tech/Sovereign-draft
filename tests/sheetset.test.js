@@ -3,6 +3,7 @@ import { cabin24x36 } from '../src/core/demo.js';
 import { defaultLayers } from '../src/core/state.js';
 import { detectSections, generateSheetSet, legendForLayout, sheetTitle } from '../src/core/sheetset.js';
 import { buildLegend, collectCallouts, entsInBBox, isCalloutText } from '../src/core/legend.js';
+import { envelopeDims } from '../src/core/spec.js';
 import { makeLayout, sheetOf, TITLE_BLOCK_H, SHEET_MARGIN, pickSheetForBBox } from '../src/core/layout.js';
 import { buildAllSheetsPDF } from '../src/io/pdf.js';
 import { membersBBox } from '../src/core/entities.js';
@@ -258,6 +259,27 @@ describe('AI callout elevation sheet set', () => {
     expect(pdf).toContain('SPECIFICATIONS');
     expect(pdf).toContain('Envelope');
     expect(pdf).toContain('P-01');
+  });
+
+  it('does not leak the envelope dim onto a section sheet', () => {
+    const withDims = ents.concat(envelopeDims(ents));
+    const layouts = generateSheetSet(withDims, layers);
+    const overall = layouts.find(L => L.kind === 'overall');
+    const section = layouts.find(L => L.kind === 'section');
+    expect(overall).toBeTruthy();
+    expect(section).toBeTruthy();
+    expect(entsInBBox(withDims, overall.section.bbox, 0.4).some(e => e.type === 'dim' && e.auto)).toBe(true);
+    expect(entsInBBox(withDims, section.section.bbox, 0.4).some(e => e.type === 'dim' && e.auto)).toBe(false);
+    const { pdf } = buildAllSheetsPDF(withDims, {
+      sheets: layouts.filter(L => L.kind === 'section'),
+      projectName: 'Falcon 9',
+      dateStr: '8/31/2026'
+    });
+    expect(pdf).not.toMatch(/230'-0"/);
+    const cover = layouts[0];
+    const sched = (cover.annotations || []).find(a => a.table && /PARTS SCHEDULE/i.test(a.table.title));
+    const blob = (sched.table.cells || []).map(r => r.join(' ')).join(' | ');
+    expect(blob).not.toMatch(/230'-0"/);
   });
 });
 

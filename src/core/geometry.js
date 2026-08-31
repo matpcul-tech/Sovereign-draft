@@ -83,6 +83,33 @@ export function segSegIntersect(ax, ay, bx, by, cx, cy, dx, dy, tol){
   return { x: ax + (bx - ax) * r.t, y: ay + (by - ay) * r.t, t: r.t, u: r.u };
 }
 
+/* Liang-Barsky clip of segment a-b to axis-aligned box [x0,y0,x1,y1]. */
+export function clipSegToBox(x1, y1, x2, y2, box){
+  let t0 = 0, t1 = 1;
+  const dx = x2 - x1, dy = y2 - y1;
+  function clip(p, q){
+    if (Math.abs(p) < 1e-12) return q >= -1e-12;
+    const r = q / p;
+    if (p < 0){ if (r > t1) return false; if (r > t0) t0 = r; }
+    else { if (r < t0) return false; if (r < t1) t1 = r; }
+    return true;
+  }
+  if (!clip(-dx, x1 - box[0])) return null;
+  if (!clip(dx, box[2] - x1)) return null;
+  if (!clip(-dy, y1 - box[1])) return null;
+  if (!clip(dy, box[3] - y1)) return null;
+  if (t1 < t0) return null;
+  return {
+    x1: x1 + t0 * dx, y1: y1 + t0 * dy,
+    x2: x1 + t1 * dx, y2: y1 + t1 * dy
+  };
+}
+
+export function ptInBox(x, y, box, pad){
+  const p = pad || 0;
+  return x >= box[0] - p && x <= box[2] + p && y >= box[1] - p && y <= box[3] + p;
+}
+
 /* Parameters t along a-b where the infinite line crosses circle (cx,cy,r). */
 export function lineCircleTs(ax, ay, bx, by, cx, cy, r){
   const dx = bx - ax, dy = by - ay, fx = ax - cx, fy = ay - cy;

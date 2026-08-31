@@ -293,16 +293,17 @@ export function generateSheetSet(entities, layers, opts){
         out = placeTable(out, partsToTable(scoped, { title: 'SPECIFICATIONS', colW: pColW }));
       }
     }
+    const scoped = partsInBBox(parts, out.section && out.section.bbox, 0.5);
     const legend = legendForLayout(out, entities, layers, {
       skipCallouts: parts.length && (out.kind === 'cover' || out.kind === 'section'),
-      notes: specNotes(body, out.kind === 'section' ? partsInBBox(parts, out.section && out.section.bbox, 0.5) : parts)
+      notes: specNotes(
+        out.kind === 'section' && out.section && out.section.bbox ? out.section.bbox : body,
+        out.kind === 'section' ? scoped : parts
+      )
     });
     out = placeTable(out, legendToTable(legend, { colW }));
     if (out.kind !== 'cover' && parts.length){
-      const scoped = out.kind === 'section'
-        ? partsInBBox(parts, out.section && out.section.bbox, 0.5)
-        : parts;
-      out = stampMarks(out, scoped);
+      out = stampMarks(out, out.kind === 'section' ? scoped : parts);
     }
     return out;
   });

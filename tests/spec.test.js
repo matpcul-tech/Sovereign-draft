@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { cabin24x36 } from '../src/core/demo.js';
 import {
-  bodyBBox, parseQty, cleanPartName, collectParts, envelopeDims, partsToTable, specNotes
+  bodyBBox, parseQty, cleanPartName, collectParts, envelopeDims, partsToTable, specNotes, measureInBox
 } from '../src/core/spec.js';
 import { dimLabel } from '../src/core/dimStyle.js';
 
@@ -20,11 +20,17 @@ function falcon(){
     { type: 'line', layer: 'PROFILE', x1: 0, y1: 230, x2: 12, y2: 230 }
   ];
   parts.forEach(([name, y]) => {
+    const mark = /MERLIN/i.test(name) ? 'M1D' : null;
     ents.push({
       type: 'callout', layer: 'NOTES',
       anchor: [12, y], pts: [[12, y], [22, y]],
-      content: name, textH: 0.8
+      content: name, textH: 0.8,
+      mark: mark || undefined
     });
+  });
+  ents.push({
+    type: 'poly', layer: 'PROFILE', closed: true, mark: 'M1D',
+    pts: [[4, 0], [8, 0], [8, 6], [4, 6]]
   });
   return ents;
 }
@@ -41,14 +47,18 @@ describe('parseQty / cleanPartName', () => {
 });
 
 describe('collectParts', () => {
-  it('schedules Falcon parts with qty and a size from the station', () => {
+  it('schedules Falcon parts with qty and a size measured from the part', () => {
     const parts = collectParts(falcon());
     expect(parts.length).toBe(5);
     const merlin = parts.find(p => /MERLIN/i.test(p.desc));
     expect(merlin.qty).toBe(9);
     expect(merlin.size).toMatch(/'/);
+    expect(merlin.size).toMatch(/×/);
+    expect(merlin.size).not.toMatch(/230/);
+    expect(merlin.size).toMatch(/4/);
     const fins = parts.find(p => /GRID FINS/i.test(p.desc));
     expect(fins.qty).toBe(4);
+    expect(fins.size).not.toMatch(/230/);
     const table = partsToTable(parts);
     expect(table.title).toBe('PARTS SCHEDULE');
     expect(table.cells[0]).toEqual(['MARK', 'QTY', 'DESCRIPTION', 'SIZE']);
@@ -57,6 +67,12 @@ describe('collectParts', () => {
 
   it('does not turn a floor plan into a parts list', () => {
     expect(collectParts(cabin24x36()).length).toBe(0);
+  });
+
+  it('measureInBox clips the silhouette to the station, not the envelope', () => {
+    const bb = measureInBox(falcon(), [0, 0, 12, 8]);
+    expect(bb[3] - bb[1]).toBeCloseTo(8);
+    expect(bb[3] - bb[1]).toBeLessThan(20);
   });
 });
 

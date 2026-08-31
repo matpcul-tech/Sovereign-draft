@@ -1,14 +1,17 @@
 /* Derived build specifications for a sheet set.
  *
- * Labels and marks become a parts schedule with quantity and size. Envelope
- * dimensions (overall height and width) are stamped when the model has none,
- * so a printed set can actually be built from — not just looked at.
+ * Labels and marks become a parts schedule with quantity and size. Size is
+ * measured from the part's geometry (the same bbox path stretch/AA use),
+ * clipped to that station — not station-height × envelope-width. Envelope
+ * dimensions stamp overall height and width when the model has none, and
+ * they stay on the overall sheet.
  */
-import { membersBBox } from './entities.js';
+import { membersBBox, entBBox } from './entities.js';
 import { alignedDim, defaultDimStyle, applyStyleToDim } from './dimStyle.js';
 import { fmtFtIn } from './format.js';
 import { makeTable, roomRows, doorRows } from './schedule.js';
 import { collectCallouts, isCalloutText, padBBox } from './legend.js';
+import { clipSegToBox } from './geometry.js';
 
 const SKIP_TYPES = { text: 1, leader: 1, callout: 1, table: 1, dim: 1, room: 1, grid: 1 };
 const SKIP_LAYERS = { NOTES: 1, TEXT: 1, SCHEDULES: 1, DIMS: 1, UNDERLAY: 1, DEFPOINTS: 1 };
@@ -41,18 +44,88 @@ function calloutEntity(entities, name){
   return (entities || []).find(e => isCalloutText(e) && String(e.content || '').trim().toUpperCase() === u) || null;
 }
 
-function spanFor(sorted, i, body, vertical){
+function stationBox(sorted, i, body, vertical){
   const c = sorted[i];
   const prev = sorted[i - 1];
   const next = sorted[i + 1];
   if (vertical){
     const yTop = prev ? (prev.y + c.y) / 2 : body[3];
     const yBot = next ? (c.y + next.y) / 2 : body[1];
-    return Math.abs(yTop - yBot);
+    return [body[0], Math.min(yBot, yTop), body[2], Math.max(yBot, yTop)];
   }
   const x0 = prev ? (prev.x + c.x) / 2 : body[0];
   const x1 = next ? (c.x + next.x) / 2 : body[2];
-  return Math.abs(x1 - x0);
+  return [Math.min(x0, x1), body[1], Math.max(x0, x1), body[3]];
+}
+
+function addPt(pts, x, y){ pts.push([x, y]); }
+
+/* Clip body geometry to `box` and return its bbox. Same measurement
+ * stretch and AA already make — just scoped to one part. */
+export function measureInBox(entities, box){
+  if (!box || box[0] > 1e8) return null;
+  const pts = [];
+  (entities || []).forEach(e => {
+    if (!e || SKIP_TYPES[e.type] || SKIP_LAYERS[e.layer]) return;
+    if (e.type === 'line' || e.type === 'xline'){
+      const c = clipSegToBox(e.x1, e.y1, e.x2, e.y2, box);
+      if (c){ addPt(pts, c.x1, c.y1); addPt(pts, c.x2, c.y2); }
+      return;
+    }
+    if (e.type === 'poly' || e.type === 'profile' || e.type === 'hatch' || e.type === 'hatchRegion' || e.type === 'centerline'){
+      const arr = e.pts || [];
+      const closed = e.closed || e.type === 'hatch' || e.type === 'hatchRegion' || e.type === 'profile';
+      const n = arr.length;
+      for (let i = 0; i < n - (closed ? 0 : 1); i++){
+        const a = arr[i], b = arr[(i + 1) % n];
+        if (!a || !b) continue;
+        const c = clipSegToBox(a[0], a[1], b[0], b[1], box);
+        if (c){ addPt(pts, c.x1, c.y1); addPt(pts, c.x2, c.y2); }
+      }
+      return;
+    }
+    const eb = [1e9, 1e9, -1e9, -1e9];
+    entBBox(e, eb);
+    if (eb[0] > 1e8) return;
+    const x0 = Math.max(eb[0], box[0]), y0 = Math.max(eb[1], box[1]);
+    const x1 = Math.min(eb[2], box[2]), y1 = Math.min(eb[3], box[3]);
+    if (x0 <= x1 && y0 <= y1){ addPt(pts, x0, y0); addPt(pts, x1, y1); }
+  });
+  if (pts.length < 2) return null;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  pts.forEach(p => {
+    if (p[0] < x0) x0 = p[0];
+    if (p[1] < y0) y0 = p[1];
+    if (p[0] > x1) x1 = p[0];
+    if (p[1] > y1) y1 = p[1];
+  });
+  return [x0, y0, x1, y1];
+}
+
+function fmtSize(bb){
+  if (!bb || bb[0] > 1e8) return '';
+  const w = Math.max(bb[2] - bb[0], 0);
+  const h = Math.max(bb[3] - bb[1], 0);
+  if (w < 0.05 && h < 0.05) return '';
+  if (w < 0.05) return fmtFtIn(h);
+  if (h < 0.05) return fmtFtIn(w);
+  return fmtFtIn(w) + ' × ' + fmtFtIn(h);
+}
+
+function sizeOfPart(ents, src, sorted, i, body, vertical){
+  const attrs = (src && src.attributes) || {};
+  if (attrs.size) return String(attrs.size);
+  const mark = src && src.mark ? String(src.mark) : '';
+  if (mark){
+    const group = ents.filter(e => e && e.mark && String(e.mark) === mark && !SKIP_TYPES[e.type] && !SKIP_LAYERS[e.layer]);
+    if (group.length){
+      const bb = membersBBox(group);
+      const s = fmtSize(bb);
+      if (s) return s;
+    }
+  }
+  const box = stationBox(sorted, i, body, vertical);
+  return fmtSize(measureInBox(ents, box)) || '';
 }
 
 /* One scheduled row per unique callout. Building plans with rooms skip this
@@ -67,22 +140,17 @@ export function collectParts(entities){
   const h = Math.max(body[3] - body[1], 0.5);
   const vertical = h >= w * 0.7;
   const sorted = callouts.slice().sort((a, b) => vertical ? b.y - a.y : a.x - b.x);
-  const across = vertical ? w : h;
   return sorted.map((c, i) => {
     const src = calloutEntity(ents, c.name);
     const attrs = (src && src.attributes) || {};
     const qty = parseQty(c.name, attrs);
     const desc = cleanPartName(attrs.label || attrs.type || c.name);
-    const span = spanFor(sorted, i, body, vertical);
-    const size = attrs.size
-      ? String(attrs.size)
-      : (fmtFtIn(span) + ' × ' + fmtFtIn(across));
     const mark = (src && src.mark) || ('P-' + String(i + 1).padStart(2, '0'));
     return {
       mark: String(mark),
       qty,
       desc: desc || c.name,
-      size,
+      size: sizeOfPart(ents, src, sorted, i, body, vertical),
       material: (attrs.material && !attrs.materialInvented) ? String(attrs.material) : '',
       x: c.x,
       y: c.y
@@ -160,7 +228,7 @@ export function specNotes(body, parts){
   }
   const n = (parts || []).reduce((s, p) => s + (Number(p.qty) || 0), 0);
   if (n){
-    notes.push(n + ' part' + (n === 1 ? '' : 's') + '. Station x outline width.');
+    notes.push(n + ' part' + (n === 1 ? '' : 's') + '. Sizes from the geometry of each part.');
   } else {
     notes.push('See the legend for rooms, symbols, finishes.');
   }

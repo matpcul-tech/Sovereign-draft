@@ -166,13 +166,17 @@ Layers lock (click the padlock — locked objects can't be selected) and a **P**
 
 One model space + N layouts. Each layout has a sheet (Letter / Tabloid / Arch D / Arch D portrait), plot scale, and viewports that clip + scale model geometry. PDF export plots an **issued sheet**: double border, ISO 128 lineweights (WALLS 0.50 mm, DIMS 0.18 mm), a scale bar, a title block (ISSUED BY / PROJECT / DRAWING TITLE / SCALE / SHEET), and your company copyright. Set the firm name, copyright line and “drawn by” in the Sheet menu — they stamp every page and stay on this device.
 
-**Sheet set** (`SHEETSET` / `SS`, or Sheet → Generate sheets) splits the model into pages:
+**Sheet set** (`SHEETSET` / `SS`, or Sheet → Generate sheets) is the generator that turns one model into a print set:
 
-- **G-001** cover — drawing index plus a parts schedule (mark, qty, description, size) or a room schedule on floor plans
-- **A-101** overall
-- **A-102…** one sheet per room or labeled section, with that sheet’s specifications
+- **G-001** cover — drawing index plus a **parts schedule** (`MARK` / `QTY` / `DESCRIPTION` / `SIZE` / `MATL` when a material was named) or a room schedule on floor plans. Marks (`P-01`, or the mark on the callout) are assigned here.
+- **A-101** overall — the full model, with envelope height and width stamped only if the drawing had no dims of its own
+- **A-102…** one sheet per room or labeled station. That sheet’s spec table lists only the parts in that window. Mark bubbles sit on the view.
 
-Envelope dimensions (overall height and width) are stamped when the model has none. Each page carries a legend of the layers, symbols and callouts in that view. Quantities come from marks and `x9`-style labels; sizes come from the station or from attributes you (or the AI) actually set. Materials stay blank unless named. Export all sheets as one PDF from the Sheet menu. PageUp / PageDown walks the set.
+`SIZE` is measured from the part: the same bbox path as stretch / `AA` / `LI`, clipped to that station. It is not station-height × envelope-width. Envelope dims stay on the overall sheet — a 230 ft overall does not leak onto A-105.
+
+Viewports clip and scale model geometry. A dim belongs to a sheet only when both origins sit in that window.
+
+Quantities come from marks and `x9`-style labels; sizes come from the geometry (or from `attrs.size` you actually set). Materials stay blank unless named. Export all sheets as one PDF from the Sheet menu. PageUp / PageDown walks the set.
 
 A sheet set is a general arrangement plus a schedule. It is not a manufacturing package.
 
