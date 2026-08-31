@@ -2,7 +2,7 @@
  * chip/button UI. Everything that mutates the drawing goes through here so
  * undo, autosave and redraw stay consistent.
  */
-import { state, layerByName, layerVisible, layerLocked, pushUndo, afterChange, selMembers, addEntity, deleteEntities, replaceEntity, replaceMany, GRID_SNAP, OFFSETS, POLAR_STEP, rememberVec, pushCmd, currentDimStyleObj } from './core/state.js';
+import { state, layerByName, layerVisible, layerLocked, pushUndo, afterChange, selMembers, addEntity, deleteEntities, replaceEntity, replaceMany, GRID_SNAP, OFFSETS, POLAR_STEP, rememberVec, pushCmd, currentDimStyleObj, activeLayout } from './core/state.js';
 import { deep, dist, polarSnap, distToSeg, closestOnSeg } from './core/geometry.js';
 import { entPoints, entHit, translateEnt, membersBBox, entBBox, rotateMembers, explodeForIO } from './core/entities.js';
 import { offsetEntity } from './core/offset.js';
@@ -21,6 +21,7 @@ import { styleByName } from './core/textstyle.js';
 import { polyBoolean, ringsArea } from './core/boolean.js';
 import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, removeLayerState, layerStateByName } from './core/layerstate.js';
 import { plotStyleByName } from './io/plotstyle.js';
+import { modelToPaper, viewportRot } from './core/layout.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
 import { makeIndexCache, queryPoint, queryBox, worthIndexing } from './core/spatial.js';
 import { alignedDim, continueDim, baselineDim, applyStyleToDim, angularDim, radiusDim, diameterDim, makeLeader } from './core/dimStyle.js';
@@ -143,6 +144,61 @@ export function closePoly(){
     ix.polyPts = []; ix.hoverPt = null;
     afterChange();
   }
+}
+
+/* ---------- viewport twist and clipping ----------
+ * Both act on the active layout's first viewport, which is the one a sheet
+ * has unless someone has added more by hand.
+ */
+function activeViewport(){
+  const L = activeLayout();
+  const vp0 = L && L.viewports && L.viewports[0];
+  if (!vp0) toast('No sheet viewport to act on');
+  return vp0 || null;
+}
+
+export function twistViewport(arg){
+  const vp0 = activeViewport();
+  if (!vp0) return;
+  const txt = String(arg == null ? '' : arg).trim();
+  if (!txt){ toast('Current twist ' + (viewportRot(vp0) || 0) + ' degrees. Give an angle, or 0 to straighten'); return; }
+  const deg = Number(txt);
+  if (!Number.isFinite(deg)){ toast('Twist wants an angle in degrees'); return; }
+  pushUndo();
+  /* Keep it in one turn so the stored value reads the way a drafter wrote it. */
+  const norm = ((deg % 360) + 360) % 360;
+  if (norm) vp0.rot = norm; else delete vp0.rot;
+  afterChange();
+  toast(norm ? 'Viewport twisted ' + norm + ' degrees' : 'Viewport straightened');
+}
+
+/* Clip the sheet view to a closed region picked in the model. The region is
+ * converted through the viewport, so you circle the part of the model you
+ * want on the sheet and the view is cut to that shape. */
+export function clipViewport(arg){
+  const vp0 = activeViewport();
+  if (!vp0) return;
+  if (/^(off|none|clear)$/i.test(String(arg || '').trim())){
+    if (!vp0.clip){ toast('Viewport is not clipped'); return; }
+    pushUndo();
+    delete vp0.clip;
+    afterChange();
+    toast('Viewport clip removed');
+    return;
+  }
+  const loops = closedLoops(selMembers());
+  if (!loops.length){ toast('Select a closed region to clip to, or say CLIP OFF'); return; }
+  /* The largest selected loop is the boundary; smaller ones are almost
+   * always something inside it that happened to be in the selection. */
+  let best = loops[0], bestA = 0;
+  loops.forEach(l => {
+    const a = Math.abs(ringsArea([l]));
+    if (a > bestA){ bestA = a; best = l; }
+  });
+  pushUndo();
+  vp0.clip = best.map(pt => modelToPaper(vp0, pt[0], pt[1]));
+  afterChange();
+  toast('Viewport clipped to ' + best.length + ' point boundary');
 }
 
 /* Layer states: save what is showing now, bring it back later.

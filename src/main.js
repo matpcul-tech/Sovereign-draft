@@ -1062,12 +1062,12 @@ if (typeof document !== 'undefined'){
   } catch (e){ embedMode = false; }
   if (staticRoot && !booted && !embedMode){
     boot(staticRoot);
-    if ('serviceWorker' in navigator){
-      const spec = 'virtual:pwa-register';
-      import(/* @vite-ignore */ spec).then(({ registerSW }) => {
-        registerSW({ immediate: true });
-      }).catch(() => { /* PWA plugin not in this build */ });
-    }
+    /* The service worker registers itself. vite-plugin-pwa injects its own
+     * registerSW script into the page, so there is nothing to do here. The
+     * dynamic import that used to sit here was marked vite-ignore, which
+     * left a bare specifier the browser cannot resolve: it failed on every
+     * single page load and logged an error for a registration that had
+     * already happened. */
   }
 }
 

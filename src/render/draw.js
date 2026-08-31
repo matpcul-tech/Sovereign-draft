@@ -11,7 +11,7 @@ import { dist, polarSnap, ellipsePoints, cloudPoints } from '../core/geometry.js
 import { fmtFtIn } from '../core/format.js';
 import { drawEnt, strokePathOn } from './ent.js';
 import { ix } from '../interaction.js';
-import { sheetOf, modelToPaper } from '../core/layout.js';
+import { sheetOf, modelToPaper, viewportBoundary } from '../core/layout.js';
 import { titleBlockModel, drawingTitleOf, viewportClearOfTitle } from '../core/titleblock.js';
 import { SNAP_KIND } from '../core/osnap.js';
 import { hatchLines } from '../core/hatch.js';
@@ -168,13 +168,23 @@ function drawPaper(){
   /* Viewports — lifted above the issued title block so geometry never sits on the stamp. */
   for (const vpRaw of L.viewports){
     const vp0 = viewportClearOfTitle(vpRaw);
-    const tl = p2s(vp0.px, vp0.py + vp0.ph), br = p2s(vp0.px + vp0.pw, vp0.py);
+    /* The boundary is the clip polygon when the viewport has one and the
+     * frame otherwise, so a keyed enlarged plan clips to its real shape
+     * rather than to the rectangle around it. */
+    const bound = viewportBoundary(vp0);
+    const tracePath = () => {
+      ctx.beginPath();
+      bound.forEach((pt, i) => {
+        const q = p2s(pt[0], pt[1]);
+        if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]);
+      });
+      ctx.closePath();
+    };
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(tl[0], tl[1], vp0.pw * scl, vp0.ph * scl);
+    tracePath();
     ctx.clip();
     ctx.fillStyle = '#07101f';
-    ctx.fillRect(tl[0], tl[1], vp0.pw * scl, vp0.ph * scl);
+    ctx.fill();
     const ppf = vp0.ppf || L.ppf || 18;
     const pxPerFt = (ppf / 72) * scl; /* paper inches per foot * screen px per paper inch */
     const toS = (x, y) => {
@@ -191,7 +201,8 @@ function drawPaper(){
     drawModel(toS, pxPerFt, secBox ? entsInBBox(scopedEnts, secBox, 0.4) : scopedEnts);
     ctx.restore();
     ctx.strokeStyle = '#8fa3c0'; ctx.lineWidth = 1;
-    ctx.strokeRect(tl[0], tl[1], vp0.pw * scl, vp0.ph * scl);
+    tracePath();
+    ctx.stroke();
   }
   /* Sheet space annotations, drawn in paper inches through p2s. */
   (L.annotations || []).forEach(a => {

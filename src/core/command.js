@@ -95,7 +95,9 @@ export const COMMANDS = {
   LAYSAVE: { aliases: ['LAYSAVE', 'LSAVE'],             tool: null,     action: 'laysave' },
   LAYREST: { aliases: ['LAYREST', 'LRESTORE'],          tool: null,     action: 'layrest' },
   LAYDEL:  { aliases: ['LAYDEL'],                       tool: null,     action: 'laydel' },
-  PLOTSTYLE:{ aliases: ['PLOTSTYLE', 'CTB'],            tool: null,     action: 'plotstyle' }
+  PLOTSTYLE:{ aliases: ['PLOTSTYLE', 'CTB'],            tool: null,     action: 'plotstyle' },
+  VPTWIST: { aliases: ['VPTWIST', 'TWIST', 'VPROTATE'],  tool: null,     action: 'vptwist' },
+  VPCLIP:  { aliases: ['VPCLIP', 'CLIPVIEW'],           tool: null,     action: 'vpclip' }
 };
 
 const ALIAS = {};

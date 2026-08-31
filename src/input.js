@@ -19,7 +19,8 @@ import {
   placeDatumAt, placeFinishAt, applyStoryHeight, beginHeightPrompt,
   addConstraint, solveConstraintsNow, deleteConstraintsOnSelection, solveAfterEdit,
   hatchIslandsFromSelection, arcSegTap, booleanOnSelection,
-  saveLayerState, restoreLayerState, deleteLayerState, setPlotStyle
+  saveLayerState, restoreLayerState, deleteLayerState, setPlotStyle,
+  twistViewport, clipViewport
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
 import { setTool } from './ui/tools.js';
@@ -469,6 +470,8 @@ export function handleCommand(text){
   if (res.action === 'layrest'){ restoreLayerState(res.rest); return; }
   if (res.action === 'laydel'){ deleteLayerState(res.rest); return; }
   if (res.action === 'plotstyle'){ setPlotStyle(res.rest); return; }
+  if (res.action === 'vptwist'){ twistViewport(res.rest); return; }
+  if (res.action === 'vpclip'){ clipViewport(res.rest); return; }
   if (res.action === 'zoomfit'){ zoomFit(); draw(); return; }
   if (res.action === 'explode'){ explodeSelection(); return; }
   if (res.action === 'flip'){ flipSelection(); return; }

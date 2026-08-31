@@ -13,7 +13,7 @@ import { helveticaWidth } from '../core/textmetrics.js';
 import { sheetLabel } from '../core/document.js';
 import { tableFrags } from '../core/schedule.js';
 import { detailBubbleText } from '../core/sheetspace.js';
-import { sheetOf } from '../core/layout.js';
+import { sheetOf, clipPoly, viewportRot } from '../core/layout.js';
 import { titleBlockModel, drawingTitleOf, fitPaperText, viewportClearOfTitle } from '../core/titleblock.js';
 import { entsInBBox } from '../core/legend.js';
 import { plotLwPt, styledLwPt, styledGray, stylePlots, plotStyleByName, defaultPlotStyles, SOLID_GRAY, DIM_GRAY } from './plotstyle.js';
@@ -309,7 +309,29 @@ function layoutPage(entities, opts){
       return pts;
     }
     P('q');
-    P(f2(VX) + ' ' + f2(VY) + ' ' + f2(VW) + ' ' + f2(VH) + ' re W n');
+    /* The clip is a paper space polygon when the viewport has one, and the
+     * frame otherwise. An arbitrary path clips exactly the same way a
+     * rectangle does, so an L shaped enlarged plan or a round detail bubble
+     * costs nothing extra here. */
+    const clip = clipPoly(vp0);
+    if (clip){
+      let cp = f2(clip[0][0] * 72) + ' ' + f2(clip[0][1] * 72) + ' m';
+      for (let i = 1; i < clip.length; i++) cp += ' ' + f2(clip[i][0] * 72) + ' ' + f2(clip[i][1] * 72) + ' l';
+      P(cp + ' h W n');
+    } else {
+      P(f2(VX) + ' ' + f2(VY) + ' ' + f2(VW) + ' ' + f2(VH) + ' re W n');
+    }
+    /* Twist is a rotation of the view about the frame centre. PDF applies it
+     * itself, which keeps the model to paper mapping below a plain scale and
+     * offset rather than something every drawing call has to know about. */
+    const rot = viewportRot(vp0);
+    if (rot){
+      const r = rot * Math.PI / 180, co = Math.cos(r), si = Math.sin(r);
+      const ox = VX + VW / 2, oy = VY + VH / 2;
+      P('1 0 0 1 ' + f2(ox) + ' ' + f2(oy) + ' cm');
+      P(f2(co) + ' ' + f2(si) + ' ' + f2(-si) + ' ' + f2(co) + ' 0 0 cm');
+      P('1 0 0 1 ' + f2(-ox) + ' ' + f2(-oy) + ' cm');
+    }
     drawEntities(P, f2, TX, TY, visible, vppf, textAt, seg, path, circlePts, true, opts.textStyles, table, !!opts.plotStyle);
     P('Q');
     drawScaleBar(P, f2, textAt, vp0, vppf);

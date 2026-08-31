@@ -37,13 +37,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "draft": "node bin/sovereign-draft.js",
-    "examples": "node scripts/write-examples.mjs"
+    "examples": "node scripts/write-examples.mjs",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",
     "three": "^0.185.1"
   },
   "devDependencies": {
+    "playwright-core": "^1.62.1",
     "vite": "^7.3.0",
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.0.18"

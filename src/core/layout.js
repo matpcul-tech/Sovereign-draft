@@ -89,22 +89,90 @@ export function fitViewport(vp, bbox, pad){
   return vp;
 }
 
+/* ---------- viewport twist ----------
+ * A viewport can be turned within its frame, which is what puts a wing that
+ * runs at an angle to the site grid square on the sheet. The frame and the
+ * title block stay where they are; only the view inside rotates, so the
+ * drawing reads upright while the model keeps its true north.
+ *
+ * The angle is degrees counterclockwise, about the view centre.
+ */
+export function viewportRot(vp){ return Number(vp && vp.rot) || 0; }
+
+function spin(dx, dy, deg){
+  if (!deg) return [dx, dy];
+  const r = deg * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+  return [dx * c - dy * s, dx * s + dy * c];
+}
+
 export function paperToModel(vp, paperX, paperY){
   /* paper inches → model feet. Viewport origin is lower-left. */
-  const dx = paperX - (vp.px + vp.pw / 2);
-  const dy = paperY - (vp.py + vp.ph / 2);
+  let dx = paperX - (vp.px + vp.pw / 2);
+  let dy = paperY - (vp.py + vp.ph / 2);
+  /* Undo the twist to get back to model axes. */
+  const u = spin(dx, dy, -viewportRot(vp));
   const ftPerIn = 72 / vp.ppf;
-  return [vp.mx + dx * ftPerIn, vp.my + dy * ftPerIn];
+  return [vp.mx + u[0] * ftPerIn, vp.my + u[1] * ftPerIn];
 }
 
 export function modelToPaper(vp, x, y){
   const ftPerIn = 72 / vp.ppf;
-  return [
-    vp.px + vp.pw / 2 + (x - vp.mx) / ftPerIn,
-    vp.py + vp.ph / 2 + (y - vp.my) / ftPerIn
+  const d = spin((x - vp.mx) / ftPerIn, (y - vp.my) / ftPerIn, viewportRot(vp));
+  return [vp.px + vp.pw / 2 + d[0], vp.py + vp.ph / 2 + d[1]];
+}
+
+/* ---------- viewport clipping ----------
+ * A clip is a polygon in paper inches. It is what lets a keyed enlarged plan
+ * show an L shaped area, or a detail show a round bubble, instead of every
+ * view being the same rectangle. With no clip the frame itself is the
+ * boundary, which is the behaviour every existing layout already has.
+ */
+export function clipPoly(vp){
+  const c = vp && vp.clip;
+  if (!c || !c.length || c.length < 3) return null;
+  return c.map(p => [Number(p[0]) || 0, Number(p[1]) || 0]);
+}
+
+/* The frame as a polygon, so callers have one shape to work with whether or
+ * not a clip is set. */
+export function viewportBoundary(vp){
+  return clipPoly(vp) || [
+    [vp.px, vp.py], [vp.px + vp.pw, vp.py],
+    [vp.px + vp.pw, vp.py + vp.ph], [vp.px, vp.py + vp.ph]
   ];
 }
 
+function inPoly(x, y, pts){
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++){
+    const xi = pts[i][0], yi = pts[i][1], xj = pts[j][0], yj = pts[j][1];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi) inside = !inside;
+  }
+  return inside;
+}
+
 export function inViewport(vp, paperX, paperY){
-  return paperX >= vp.px && paperX <= vp.px + vp.pw && paperY >= vp.py && paperY <= vp.py + vp.ph;
+  /* A clip can only ever take area away: a point outside the frame is
+   * outside the viewport whatever the clip says. */
+  const inFrame = paperX >= vp.px && paperX <= vp.px + vp.pw && paperY >= vp.py && paperY <= vp.py + vp.ph;
+  if (!inFrame) return false;
+  const c = clipPoly(vp);
+  return c ? inPoly(paperX, paperY, c) : true;
+}
+
+/* The model space box a viewport can show, twist included. A rotated view
+ * covers a larger model rectangle than its frame suggests, so culling that
+ * used the unrotated box would drop geometry that belongs on the sheet. */
+export function viewportModelBBox(vp, pad){
+  const b = viewportBoundary(vp);
+  const bb = [Infinity, Infinity, -Infinity, -Infinity];
+  b.forEach(p => {
+    const m = paperToModel(vp, p[0], p[1]);
+    if (m[0] < bb[0]) bb[0] = m[0];
+    if (m[1] < bb[1]) bb[1] = m[1];
+    if (m[0] > bb[2]) bb[2] = m[0];
+    if (m[1] > bb[3]) bb[3] = m[1];
+  });
+  const k = pad || 0;
+  return [bb[0] - k, bb[1] - k, bb[2] + k, bb[3] + k];
 }
