@@ -57,6 +57,7 @@ function drawModel(clipToS, clipScl, only){
     drawEnt(ctx, e, L ? L.color : '#e8e4dd', !clipToS && !!selSet[e.id], toS, scl);
   }
   if (clipToS) return;
+  drawConstraintGlyphs();
   if (ms.length > 1){
     const bb = membersBBox(ms);
     const a = W2S(bb[0], bb[3]), b = W2S(bb[2], bb[1]);
@@ -404,3 +405,45 @@ function requireArc(){
 }
 
 export { paperMap };
+
+/* Small gold markers so a constrained line says so at a glance: H, V, PAR,
+ * PERP, EQ, a ring for coincident, a pin for fix, the driven length. */
+function drawConstraintGlyphs(){
+  const ks = state.constraints || [];
+  if (!ks.length) return;
+  const byId = {};
+  state.entities.forEach(e => { if (e.id != null) byId[e.id] = e; });
+  ctx.font = '600 9px Outfit, system-ui';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const at = (e, dyRow) => {
+    if (!e) return null;
+    const mx = e.type === 'circle' ? e.cx : (e.x1 + e.x2) / 2;
+    const my = e.type === 'circle' ? e.cy + e.r : (e.y1 + e.y2) / 2;
+    const p = W2S(mx, my);
+    return [p[0], p[1] - 10 - dyRow * 11];
+  };
+  const rows = {};
+  ks.forEach(k => {
+    const e = byId[k.a]; if (!e) return;
+    const row = rows[k.a] = (rows[k.a] || 0) + 1;
+    const p = at(e, row - 1); if (!p) return;
+    let label = null;
+    if (k.type === 'horizontal') label = 'H';
+    else if (k.type === 'vertical') label = 'V';
+    else if (k.type === 'parallel') label = '//';
+    else if (k.type === 'perpendicular') label = '\u22A5';
+    else if (k.type === 'equal') label = '=';
+    else if (k.type === 'tangent') label = 'T';
+    else if (k.type === 'distance' || k.type === 'radius') label = fmtFtIn(k.value || 0);
+    else if (k.type === 'fix') label = '\u2693';
+    else if (k.type === 'coincident') label = '\u25CB';
+    if (!label) return;
+    const w = ctx.measureText(label).width + 8;
+    ctx.fillStyle = 'rgba(7,16,31,.85)';
+    ctx.fillRect(p[0] - w / 2, p[1] - 7, w, 14);
+    ctx.strokeStyle = '#d4a843'; ctx.lineWidth = 1;
+    ctx.strokeRect(p[0] - w / 2, p[1] - 7, w, 14);
+    ctx.fillStyle = '#d4a843';
+    ctx.fillText(label, p[0], p[1]);
+  });
+}

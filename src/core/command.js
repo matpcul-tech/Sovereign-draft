@@ -71,7 +71,19 @@ export const COMMANDS = {
   V3D:     { aliases: ['3D', 'V3D', 'VIEW3D', 'ORBIT'], tool: null,     action: 'view3d' },
   PLAN:    { aliases: ['PLAN', 'V2D', '2D'],            tool: null,     action: 'view2d' },
   HEIGHT:  { aliases: ['HEIGHT', 'HT', 'STORY'],        tool: null,     action: 'height' },
-  DWGOUT:  { aliases: ['DWGOUT', 'SAVEASDWG'],          tool: null,     action: 'dwgout' }
+  DWGOUT:  { aliases: ['DWGOUT', 'SAVEASDWG'],          tool: null,     action: 'dwgout' },
+  CHOR:    { aliases: ['HOR', 'CHOR'],                  tool: null,     action: 'con:horizontal' },
+  CVERT:   { aliases: ['VERT', 'CVERT'],                tool: null,     action: 'con:vertical' },
+  CPAR:    { aliases: ['PAR', 'CPAR'],                  tool: null,     action: 'con:parallel' },
+  CPERP:   { aliases: ['PERP', 'CPERP'],                tool: null,     action: 'con:perpendicular' },
+  CEQ:     { aliases: ['CEQ', 'EQUAL'],                 tool: null,     action: 'con:equal' },
+  COIN:    { aliases: ['COIN', 'COINCIDENT'],           tool: null,     action: 'con:coincident' },
+  CDIST:   { aliases: ['CDIST', 'CLEN'],                tool: null,     action: 'con:distance' },
+  CRAD:    { aliases: ['CRAD'],                         tool: null,     action: 'con:radius' },
+  CTAN:    { aliases: ['CTAN'],                         tool: null,     action: 'con:tangent' },
+  CFIX:    { aliases: ['CFIX', 'ANCHOR'],               tool: null,     action: 'con:fix' },
+  CSOLVE:  { aliases: ['CSOLVE', 'SOLVE'],              tool: null,     action: 'csolve' },
+  CDEL:    { aliases: ['CDEL', 'UNCONSTRAIN'],          tool: null,     action: 'cdel' }
 };
 
 const ALIAS = {};

@@ -34,6 +34,7 @@ import { buildTakeoffTable, takeoffSummary } from './core/takeoff.js';
 import { syncAutoRooms } from './core/rooms.js';
 import { generateSheetSet } from './core/sheetset.js';
 import { envelopeDims, sectionDims } from './core/spec.js';
+import { makeConstraint, solveConstraints, constraintsOn, describeConstraint } from './core/constrain.js';
 import { buildSection, buildDetail } from './core/section.js';
 import { makeFcf, makeDatum, makeFinish, nextDatumLetter } from './core/gdt.js';
 import { addSheet } from './core/document.js';
@@ -1036,3 +1037,137 @@ export function applyCalibrate(trueLen){
 
 void SNAP_KIND; void entPoints;
 
+
+/* ---------- parametric constraints ----------
+ * Commands act on the current selection: one line for HOR / VERT / CDIST /
+ * CFIX, two lines for PAR / PERP / CEQ / COIN, a line and a circle for CTAN,
+ * a circle for CRAD. Adding a constraint solves immediately; edits re-solve
+ * through solveAfterEdit so the geometry keeps its rules while you drag.
+ */
+function selectedOfType(types, count){
+  const ms = selMembers().filter(e => types.indexOf(e.type) >= 0);
+  return ms.length === count ? ms : null;
+}
+
+function nearestEndPair(a, b){
+  const ends = [
+    [1, 1, dist(a.x1, a.y1, b.x1, b.y1)],
+    [1, 2, dist(a.x1, a.y1, b.x2, b.y2)],
+    [2, 1, dist(a.x2, a.y2, b.x1, b.y1)],
+    [2, 2, dist(a.x2, a.y2, b.x2, b.y2)]
+  ];
+  ends.sort((p, q) => p[2] - q[2]);
+  return ends[0];
+}
+
+function runSolve(label){
+  const res = solveConstraints(state.entities, state.constraints);
+  afterChange();
+  if (!res.ok){
+    toast(label + ': constraints conflict (residual ' + res.residual.toExponential(1) + '). Undo or CDEL.');
+  } else if (label){
+    toast(label + ' · ' + state.constraints.length + ' constraint' + (state.constraints.length === 1 ? '' : 's'));
+  }
+  return res;
+}
+
+export function addConstraint(type, rest){
+  const one = selectedOfType(['line'], 1);
+  const two = selectedOfType(['line'], 2);
+  const circleOnly = selectedOfType(['circle'], 1);
+  const mixed = (function(){
+    const ms = selMembers();
+    if (ms.length !== 2) return null;
+    const l = ms.find(e => e.type === 'line'), c = ms.find(e => e.type === 'circle');
+    return l && c ? { l, c } : null;
+  })();
+  pushUndo();
+  if (type === 'horizontal' || type === 'vertical'){
+    if (!one){ toast('Select one line first'); return; }
+    state.constraints.push(makeConstraint(type, { a: one[0].id }));
+    runSolve(type === 'horizontal' ? 'Horizontal' : 'Vertical');
+    return;
+  }
+  if (type === 'parallel' || type === 'perpendicular' || type === 'equal'){
+    if (!two){ toast('Select two lines first'); return; }
+    state.constraints.push(makeConstraint(type, { a: two[0].id, b: two[1].id }));
+    runSolve(type.charAt(0).toUpperCase() + type.slice(1));
+    return;
+  }
+  if (type === 'coincident'){
+    if (!two){ toast('Select two lines first'); return; }
+    const [ea, eb] = nearestEndPair(two[0], two[1]);
+    state.constraints.push(makeConstraint('coincident', { a: two[0].id, ea, b: two[1].id, eb }));
+    runSolve('Coincident');
+    return;
+  }
+  if (type === 'distance'){
+    if (!one){ toast('Select one line first'); return; }
+    const cur = dist(one[0].x1, one[0].y1, one[0].x2, one[0].y2);
+    const v = rest ? parseLength(rest) : null;
+    state.constraints.push(makeConstraint('distance', { a: one[0].id, value: v != null && v > 0 ? v : cur }));
+    runSolve('Length ' + fmtFtIn(v != null && v > 0 ? v : cur));
+    return;
+  }
+  if (type === 'radius'){
+    if (!circleOnly){ toast('Select one circle first'); return; }
+    const v = rest ? parseLength(rest) : null;
+    const val = v != null && v > 0 ? v : circleOnly[0].r;
+    state.constraints.push(makeConstraint('radius', { a: circleOnly[0].id, value: val }));
+    runSolve('Radius ' + fmtFtIn(val));
+    return;
+  }
+  if (type === 'tangent'){
+    if (!mixed){ toast('Select a line and a circle first'); return; }
+    state.constraints.push(makeConstraint('tangent', { a: mixed.l.id, b: mixed.c.id }));
+    runSolve('Tangent');
+    return;
+  }
+  if (type === 'fix'){
+    if (!one){ toast('Select one line first'); return; }
+    state.constraints.push(makeConstraint('fix', { a: one[0].id, ea: 1, value: [one[0].x1, one[0].y1] }));
+    runSolve('Fixed');
+    return;
+  }
+  toast('Unknown constraint ' + type);
+}
+
+export function solveConstraintsNow(){
+  if (!state.constraints || !state.constraints.length){ toast('No constraints yet'); return; }
+  pushUndo();
+  const res = runSolve('Solved');
+  toast('Solved ' + res.equations + ' equations over ' + res.vars + ' variables in ' + res.iterations + ' steps');
+}
+
+export function deleteConstraintsOnSelection(){
+  const ms = selMembers();
+  if (!ms.length){
+    if (!state.constraints.length){ toast('No constraints'); return; }
+    pushUndo();
+    const n = state.constraints.length;
+    state.constraints = [];
+    afterChange();
+    toast(n + ' constraint' + (n === 1 ? '' : 's') + ' removed');
+    return;
+  }
+  const ids = new Set(ms.map(e => e.id));
+  const drop = state.constraints.filter(k => ids.has(k.a) || ids.has(k.b));
+  if (!drop.length){ toast('No constraints on the selection'); return; }
+  pushUndo();
+  const gone = new Set(drop.map(k => k.id));
+  state.constraints = state.constraints.filter(k => !gone.has(k.id));
+  afterChange();
+  toast(drop.map(describeConstraint).join(', ') + ' removed');
+}
+
+/* Called after a grip or move edit lands. Only re-solves when the edit
+ * touched constrained geometry, so unconstrained drawings pay nothing. */
+export function solveAfterEdit(touchedIds){
+  if (!state.constraints || !state.constraints.length) return;
+  const touched = touchedIds && touchedIds.length
+    ? touchedIds.some(id => constraintsOn(state.constraints, id).length)
+    : true;
+  if (!touched) return;
+  const res = solveConstraints(state.entities, state.constraints);
+  if (!res.ok) toast('Constraints conflict (residual ' + res.residual.toExponential(1) + ')');
+}

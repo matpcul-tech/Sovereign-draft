@@ -300,9 +300,12 @@ function endPointer(ev){
   }
   else if (drag.kind === 'grip' && drag.moved){
     if (drag.ent && drag.ent.host) syncHostWall(state, drag.ent.host);
+    /* Constrained geometry keeps its rules through a grip edit. */
+    solveAfterEdit(drag.ent ? [drag.ent.id] : null);
     afterChange();
   }
   else if (drag.kind === 'move' && drag.moved){
+    solveAfterEdit(selMembers().map(e => e.id));
     afterChange();
   }
   ix.drag = null; ix.snapMark = null; draw();
@@ -445,6 +448,9 @@ export function handleCommand(text){
     if (res.rest) handleCommand(res.rest);
     return;
   }
+  if (res.action && res.action.indexOf('con:') === 0){ addConstraint(res.action.slice(4), res.rest); return; }
+  if (res.action === 'csolve'){ solveConstraintsNow(); return; }
+  if (res.action === 'cdel'){ deleteConstraintsOnSelection(); return; }
   if (res.action === 'zoomfit'){ zoomFit(); draw(); return; }
   if (res.action === 'explode'){ explodeSelection(); return; }
   if (res.action === 'flip'){ flipSelection(); return; }

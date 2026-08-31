@@ -8,6 +8,7 @@ import { defaultDimStyles } from './dimStyle.js';
 import { defaultLayouts } from './layout.js';
 import { refreshAssocDims, bindAllDims } from './assoc.js';
 import { syncAutoRooms } from './rooms.js';
+import { dropDanglingConstraints } from './constrain.js';
 import { setDisplayUnits } from './format.js';
 
 export const LAYER_COLORS = ['#00d4b8', '#c45a3c', '#d4af37', '#8fa3c0', '#4ade80', '#e8e4dd'];
@@ -74,6 +75,7 @@ export const state = {
   units: 'ft',
   dimStyles: defaultDimStyles(),
   currentDimStyle: 'ARCH',
+  constraints: [],
   layouts: normalizeSheets(defaultLayouts()),
   currentLayout: 'A1',
   space: 'model',          /* 'model' or a layout id */
@@ -136,6 +138,7 @@ function snapshot(){
   return {
     entities: deep(state.entities),
     layers: deep(state.layers),
+    constraints: deep(state.constraints || []),
     dimStyles: deep(state.dimStyles),
     layouts: deep(state.layouts),
     currentDimStyle: state.currentDimStyle,
@@ -146,6 +149,7 @@ function snapshot(){
 function restore(s){
   state.entities = s.entities;
   state.layers = s.layers;
+  state.constraints = s.constraints || [];
   if (s.dimStyles) state.dimStyles = s.dimStyles;
   if (s.layouts) state.layouts = s.layouts;
   if (s.currentDimStyle) state.currentDimStyle = s.currentDimStyle;
@@ -210,6 +214,10 @@ export function deleteEntities(ids){
   const kill = {}; ids.forEach(id => { kill[id] = 1; });
   state.entities = state.entities.filter(e => !kill[e.id]);
   state.selIds = state.selIds.filter(id => !kill[id]);
+  /* A constraint on a deleted entity is meaningless; drop it with the entity. */
+  if (state.constraints && state.constraints.length){
+    state.constraints = dropDanglingConstraints(state.entities, state.constraints);
+  }
 }
 
 /* Swap one entity for a set of replacements (trim/extend results). */

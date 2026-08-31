@@ -34,6 +34,7 @@ export function serializeProject(state, pretty){
     layouts: state.layouts,
     currentLayout: state.currentLayout,
     space: state.space,
+    constraints: state.constraints || [],
     dxfVer: state.dxfVer,
     units: state.units === 'mm' || state.units === 'm' ? state.units : 'ft',
     storyHeight: state.storyHeight > 0 ? state.storyHeight : 8,
@@ -59,6 +60,7 @@ export function validateProject(o){
     layouts: normalizeSheets(Array.isArray(o.layouts) && o.layouts.length ? o.layouts : defaultLayouts()),
     currentLayout: o.currentLayout || 'A1',
     space: o.space === 'model' || o.space ? o.space : 'model',
+    constraints: Array.isArray(o.constraints) ? o.constraints : [],
     dxfVer: o.dxfVer === 'R2000' ? 'R2000' : 'R12',
     units: o.units === 'mm' || o.units === 'm' ? o.units : 'ft',
     storyHeight: Number(o.storyHeight) > 0 ? Number(o.storyHeight) : 8,
@@ -72,6 +74,7 @@ export function validateProject(o){
 }
 
 export function applyProject(state, p){
+  state.constraints = p.constraints || [];
   state.projectName = p.name;
   state.layers = p.layers;
   state.entities = p.entities;
