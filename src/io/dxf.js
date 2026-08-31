@@ -7,6 +7,7 @@ import { fmtN, dimGeom, arcPoints } from '../core/geometry.js';
 import { LTYPE_NAMES, LINETYPES } from '../core/style.js';
 import { hatchLines } from '../core/hatch.js';
 import { explodeForIO, membersBBox } from '../core/entities.js';
+import { knotsOf, splineToPoly, makeSpline } from '../core/spline.js';
 import { dimLabel } from '../core/dimStyle.js';
 import { sheetOf, makeLayout, TITLE_BLOCK_H, SHEET_MARGIN } from '../core/layout.js';
 import { bindAllDims } from '../core/assoc.js';
@@ -223,6 +224,20 @@ function writeEnt(w, e, r2000, inBlock, paper){
   } else if (e.type === 'arc'){
     w(0, 'ARC'); common();
     w(10, fmtN(e.cx), 20, fmtN(e.cy), 30, 0, 40, fmtN(e.r), 50, fmtN(e.a1), 51, fmtN(e.a2));
+  } else if (e.type === 'spline'){
+    if (r2000){
+      /* A real SPLINE keeps the definition, so the curve reopens editable
+       * rather than as a frozen polyline. R12 has no SPLINE, so it gets the
+       * tessellation instead. */
+      const U = knotsOf(e);
+      const p = Math.min(e.degree || 3, Math.max(1, e.ctrl.length - 1));
+      w(0, 'SPLINE'); common();
+      w(70, (e.closed ? 1 : 0) | 8, 71, p, 72, U.length, 73, e.ctrl.length, 74, 0);
+      U.forEach(k => w(40, fmtN(k)));
+      e.ctrl.forEach(c => w(10, fmtN(c[0]), 20, fmtN(c[1]), 30, 0));
+    } else {
+      writeEnt(w, splineToPoly(e), r2000, inBlock, paper);
+    }
   } else if (e.type === 'poly'){
     if (r2000){
       w(0, 'LWPOLYLINE'); common();
@@ -394,7 +409,13 @@ export function parseDXF(txt, ensureLayer, sink){
       emit(style({ type: 'ellipse', layer: ly, cx: num(cur[10]), cy: num(cur[20]), rx, ry: rx * Math.abs(ratio || 1), rot: Math.atan2(my, mx) * 180 / Math.PI }));
     }
     else if (t === 'SPLINE' && cur._pts && cur._pts.length >= 2){
-      emit(style({ type: 'poly', layer: ly, closed: !!(num(cur[70]) & 1), pts: cur._pts }));
+      /* Keep it a spline: degree from 71, knots from the 40 list when the
+       * count matches, so a round trip is lossless rather than degrading to
+       * line work on every open. */
+      const deg = Math.max(1, Math.min(num(cur[71]) || 3, cur._pts.length - 1));
+      const closed = !!(num(cur[70]) & 1);
+      const knots = (cur._knots && cur._knots.length === cur._pts.length + deg + 1) ? cur._knots : null;
+      emit(style(makeSpline(cur._pts, { layer: ly, degree: deg, closed, knots })));
     }
     else if (t === 'SOLID' || t === '3DFACE'){
       const pts = [[num(cur[10]), num(cur[20])], [num(cur[11]), num(cur[21])], [num(cur[12]), num(cur[22])]];
@@ -458,9 +479,11 @@ export function parseDXF(txt, ensureLayer, sink){
       flush();
       cur = { _t: v };
       if (v === 'LWPOLYLINE' || v === 'HATCH' || v === 'SPLINE' || v === 'LEADER') cur._pts = [];
+      if (v === 'SPLINE') cur._knots = [];
       continue;
     }
     if (!cur) continue;
+    if (cur._t === 'SPLINE' && c === 40){ cur._knots.push(num(v)); continue; }
     if ((cur._t === 'LWPOLYLINE' || cur._t === 'HATCH' || cur._t === 'SPLINE' || cur._t === 'LEADER') && (c === 10 || c === 20 || c === 11 || c === 21)){
       const xcode = (c === 10 || c === 11);
       const ycode = (c === 20 || c === 21);

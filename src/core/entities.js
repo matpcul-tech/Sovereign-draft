@@ -15,6 +15,7 @@
  *   {type:'room',   layer, name, pts, cx,cy, area, auto}
  *   {type:'grid',   layer, x,y, cols,rows, cx,ry, rot, bubble}
  *   {type:'xline',  layer, x1,y1,x2,y2}  infinite construction line
+ *   {type:'spline', layer, ctrl, degree, knots?, closed?, weights?}
  *   {type:'profile',   layer, pts, fill}      closed outline, no wall semantics
  *   {type:'centerline',layer, pts}            construction geometry, non-printing
  *   {type:'callout',   layer, anchor,pts,content,textH}  leader + boxed label
@@ -38,6 +39,7 @@ import { tableFrags, tableCorners } from './schedule.js';
 import { dimLabel } from './dimStyle.js';
 import { expandGrid } from './grid.js';
 import { boxWidth, textWidth } from './textmetrics.js';
+import { splinePoints, splineToPoly, translateSpline } from './spline.js';
 
 /* Composite drafting entities used by non-building drawings. Each reduces to
  * primitives, so hit testing, bounds and every exporter run on the expansion
@@ -104,6 +106,7 @@ export function spanXline(e, reach){
 export function flattenEnt(e){
   if (!e) return [];
   if (isComposite(e)) return expandComposite(e);
+  if (e.type === 'spline') return [splineToPoly(e)];
   if (e.type === 'insert') return expandInsert(e);
   if (e.type === 'xref') return expandXref(e);
   if (e.type === 'grid') return expandGrid(e);
@@ -114,6 +117,7 @@ export function flattenEnt(e){
 export function explodeForIO(e){
   if (!e) return [];
   if (isComposite(e)) return expandComposite(e);
+  if (e.type === 'spline') return [splineToPoly(e)];
   if (e.type === 'insert') return expandInsert(e);
   if (e.type === 'xref') return expandXref(e);
   if (e.type === 'table') return tableFrags(e);
@@ -170,6 +174,13 @@ function hitPath(pts, w, tol, closed){
 
 /* Snap candidates: [x, y, kind] where kind 0=end, 1=mid, 2=center. */
 export function entPoints(e){
+  if (e.type === 'spline'){
+    /* Control points snap, plus the curve ends. */
+    const pts = (e.ctrl || []).map(p => [p[0], p[1], 0]);
+    const t = splinePoints(e);
+    if (t.length) pts.push([t[0][0], t[0][1], 0], [t[t.length - 1][0], t[t.length - 1][1], 0]);
+    return pts;
+  }
   if (isComposite(e)){
     const out = [];
     expandComposite(e).forEach(f => { entPoints(f).forEach(p => out.push(p)); });
@@ -213,6 +224,7 @@ export function entPoints(e){
 
 /* Hit test one entity against world point w with world-space tolerance. */
 export function entHit(e, w, tol){
+  if (e.type === 'spline') return entHit(splineToPoly(e), w, tol);
   if (isComposite(e)) return expandComposite(e).some(f => entHit(f, w, tol));
   if (e.type === 'insert') return flattenEnt(e).some(f => entHit(f, w, tol));
   if (e.type === 'grid') return flattenEnt(e).some(f => entHit(f, w, tol));
@@ -258,6 +270,7 @@ export function entHit(e, w, tol){
 }
 
 export function translateEnt(e, dx, dy){
+  if (e.type === 'spline'){ translateSpline(e, dx, dy); return; }
   if (isComposite(e)){
     if (e.pts) e.pts = e.pts.map(p => [p[0] + dx, p[1] + dy]);
     if (e.anchor) e.anchor = [e.anchor[0] + dx, e.anchor[1] + dy];
@@ -282,6 +295,7 @@ export function translateEnt(e, dx, dy){
 }
 
 export function entBBox(e, bb){
+  if (e.type === 'spline'){ entBBox(splineToPoly(e), bb); return; }
   if (isComposite(e)){ expandComposite(e).forEach(f => entBBox(f, bb)); return; }
   function add(x, y){ if (x < bb[0]) bb[0] = x; if (y < bb[1]) bb[1] = y; if (x > bb[2]) bb[2] = x; if (y > bb[3]) bb[3] = y; }
   if (e.type === 'insert' || e.type === 'xref'){ flattenEnt(e).forEach(f => entBBox(f, bb)); add(e.x, e.y); return; }

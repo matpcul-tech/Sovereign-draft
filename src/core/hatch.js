@@ -3,6 +3,7 @@
  * Pattern lines are generated at draw time so the entity stays compact.
  */
 import { dist, pointInPoly, polyArea } from './geometry.js';
+import { splineToPoly } from './spline.js';
 
 /* `paper` is the spacing as it prints, in inches, and is the real definition.
  * `spacing` is the model-space value it works out to at the reference scale
@@ -65,29 +66,41 @@ function bbox(pts){
 }
 
 /* Clip an infinite hatch line (point + dir) against a polygon; return segs inside. */
-function clipLineToPoly(pts, ox, oy, ux, uy, span){
+/* Even-odd containment across the outer boundary and every island. A point
+ * inside an odd number of loops is solid; inside two (outer plus a hole) it
+ * is a hole and must stay unhatched. */
+export function insideWithHoles(x, y, pts, holes){
+  if (!pointInPoly(x, y, pts)) return false;
+  const hs = holes || [];
+  for (let i = 0; i < hs.length; i++){
+    if (hs[i] && hs[i].length > 2 && pointInPoly(x, y, hs[i])) return false;
+  }
+  return true;
+}
+
+function clipLineToPoly(pts, ox, oy, ux, uy, span, holes){
   const nx = -uy, ny = ux;
   const ts = [];
-  const n = pts.length;
-  for (let i = 0; i < n; i++){
-    const a = pts[i], b = pts[(i + 1) % n];
-    const dx = b[0] - a[0], dy = b[1] - a[1];
-    const den = ux * dy - uy * dx;
-    if (Math.abs(den) < 1e-12) continue;
-    const t = ((a[0] - ox) * dy - (a[1] - oy) * dx) / den;
-    const u = ((a[0] - ox) * uy - (a[1] - oy) * ux) / den;
-    if (u >= -1e-9 && u <= 1 + 1e-9) ts.push(t);
-  }
+  const loops = [pts].concat((holes || []).filter(h => h && h.length > 2));
+  loops.forEach(loop => {
+    const n = loop.length;
+    for (let i = 0; i < n; i++){
+      const a = loop[i], b = loop[(i + 1) % n];
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const den = ux * dy - uy * dx;
+      if (Math.abs(den) < 1e-12) continue;
+      const t = ((a[0] - ox) * dy - (a[1] - oy) * dx) / den;
+      const u = ((a[0] - ox) * uy - (a[1] - oy) * ux) / den;
+      if (u >= -1e-9 && u <= 1 + 1e-9) ts.push(t);
+    }
+  });
   ts.sort((a, b) => a - b);
   const segs = [];
   for (let i = 0; i + 1 < ts.length; i += 2){
     const t0 = ts[i], t1 = ts[i + 1];
     if (t1 - t0 < 1e-6) continue;
     const mx = ox + ux * (t0 + t1) / 2, my = oy + uy * (t0 + t1) / 2;
-    if (!pointInPoly(mx + nx * 1e-4, my + ny * 1e-4, pts) && !pointInPoly(mx, my, pts)){
-      /* Midpoint test; skip if clearly outside. */
-      if (!pointInPoly(mx, my, pts)) continue;
-    }
+    if (!insideWithHoles(mx, my, pts, holes) && !insideWithHoles(mx + nx * 1e-4, my + ny * 1e-4, pts, holes)) continue;
     segs.push([[ox + ux * t0, oy + uy * t0], [ox + ux * t1, oy + uy * t1]]);
   }
   void span;
@@ -113,14 +126,14 @@ export function hatchLines(e, scaleFactor){
   for (let i = -nLines; i <= nLines; i++){
     const ox = cx + nx * i * spacing;
     const oy = cy + ny * i * spacing;
-    out.push(...clipLineToPoly(pts, ox, oy, ux, uy, span));
+    out.push(...clipLineToPoly(pts, ox, oy, ux, uy, span, e.holes));
   }
   if (pat.cross){
     const ux2 = nx, uy2 = ny, nx2 = -uy2, ny2 = ux2;
     for (let i = -nLines; i <= nLines; i++){
       const ox = cx + nx2 * i * spacing;
       const oy = cy + ny2 * i * spacing;
-      out.push(...clipLineToPoly(pts, ox, oy, ux2, uy2, span));
+      out.push(...clipLineToPoly(pts, ox, oy, ux2, uy2, span, e.holes));
     }
   }
   return out;
@@ -154,6 +167,67 @@ function circlePoly(e, n){
 
 /* Smallest closed boundary that contains (x, y). Skips hatch entities so a
  * tap inside an existing hatch can cycle its pattern instead of stacking. */
+/* ---------- island detection ----------
+ * Given closed boundaries, work out which sit inside which. A loop nested
+ * an odd number of levels deep is a hole; even depth is solid, so a courtyard
+ * inside a building inside a site plan comes out right rather than filling
+ * the courtyard.
+ */
+function loopContains(outer, inner){
+  if (!outer || !inner || outer.length < 3 || inner.length < 3) return false;
+  /* Every vertex inside is a safe test for the non-self-intersecting loops
+   * a boundary search produces. */
+  return inner.every(p => pointInPoly(p[0], p[1], outer));
+}
+
+export function nestLoops(loops){
+  const src = (loops || []).filter(l => l && l.length > 2);
+  const depth = src.map((l, i) =>
+    src.reduce((d, other, j) => (i !== j && loopContains(other, l) ? d + 1 : d), 0));
+  return src.map((pts, i) => ({ pts, depth: depth[i], hole: depth[i] % 2 === 1 }));
+}
+
+/* Build hatch entities from a pile of closed loops: each even-depth loop
+ * becomes a region, and the odd-depth loops directly inside it become its
+ * holes. */
+export function hatchWithIslands(loops, opts){
+  const nested = nestLoops(loops);
+  const out = [];
+  nested.forEach(n => {
+    if (n.hole) return;
+    const holes = nested
+      .filter(m => m.hole && m.depth === n.depth + 1 && loopContains(n.pts, m.pts))
+      .map(m => m.pts);
+    const h = makeHatch(n.pts, opts);
+    if (!h) return;
+    if (holes.length) h.holes = holes;
+    out.push(h);
+  });
+  return out;
+}
+
+/* Net area: the region minus whatever its islands take out. */
+export function hatchArea(e){
+  if (!e || !e.pts || e.pts.length < 3) return 0;
+  const outer = Math.abs(polyArea(e.pts));
+  const holes = (e.holes || []).reduce((s, h) => s + (h && h.length > 2 ? Math.abs(polyArea(h)) : 0), 0);
+  return Math.max(0, outer - holes);
+}
+
+/* Closed loops from a pile of entities, in the form the island nesting wants.
+ * Anything that is not a closed area contributes nothing. */
+export function closedLoops(entities){
+  const out = [];
+  for (const e of entities || []){
+    if (!e) continue;
+    if (e.type === 'poly' && e.closed && e.pts && e.pts.length >= 3) out.push(e.pts.map(p => [p[0], p[1]]));
+    else if (e.type === 'circle' && e.r > 0) out.push(circlePoly(e));
+    else if (e.type === 'spline' && e.closed && e.ctrl && e.ctrl.length >= 3) out.push(splineToPoly(e).pts.map(p => [p[0], p[1]]));
+    else if (e.type === 'hatch' && e.pts && e.pts.length >= 3) out.push(e.pts.map(p => [p[0], p[1]]));
+  }
+  return out;
+}
+
 export function boundaryContaining(entities, x, y){
   let best = null, bestArea = Infinity;
   for (const e of entities || []){

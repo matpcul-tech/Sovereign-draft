@@ -6,6 +6,7 @@ export const COMMANDS = {
   PAN:     { aliases: ['PAN', 'H'],                     tool: 'pan',     prompt: 'Pan' },
   LINE:    { aliases: ['LINE', 'L'],                    tool: 'line',    prompt: 'Specify first point' },
   PLINE:   { aliases: ['PLINE', 'POLY', 'P'],           tool: 'poly',    prompt: 'Specify start point' },
+  SPLINE:  { aliases: ['SPLINE', 'SPL'],                tool: 'spline',  prompt: 'Specify first control point' },
   RECT:    { aliases: ['RECT', 'RECTANGLE', 'REC'],     tool: 'rect',    prompt: 'Specify first corner' },
   CIRCLE:  { aliases: ['CIRCLE', 'C'],                  tool: 'circle',  prompt: 'Specify center point' },
   ARC:     { aliases: ['ARC', 'A'],                     tool: 'arc',     prompt: 'Specify start point of arc' },
@@ -83,7 +84,8 @@ export const COMMANDS = {
   CTAN:    { aliases: ['CTAN'],                         tool: null,     action: 'con:tangent' },
   CFIX:    { aliases: ['CFIX', 'ANCHOR'],               tool: null,     action: 'con:fix' },
   CSOLVE:  { aliases: ['CSOLVE', 'SOLVE'],              tool: null,     action: 'csolve' },
-  CDEL:    { aliases: ['CDEL', 'UNCONSTRAIN'],          tool: null,     action: 'cdel' }
+  CDEL:    { aliases: ['CDEL', 'UNCONSTRAIN'],          tool: null,     action: 'cdel' },
+  BHATCH:  { aliases: ['BHATCH', 'HATCHI'],             tool: null,     action: 'bhatch' }
 };
 
 const ALIAS = {};
@@ -111,6 +113,7 @@ export function defaultPrompt(tool, state){
     rotate:  'ROTATE Specify rotation angle <90>:',
     line:    'LINE Specify next point:',
     poly:    'PLINE Specify next point:',
+    spline:  'SPLINE Specify next control point:',
     rect:    'RECT Specify opposite corner:',
     circle:  'CIRCLE Specify radius:',
     arc:     'ARC Specify next point:',

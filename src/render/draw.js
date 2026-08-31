@@ -15,6 +15,7 @@ import { sheetOf, modelToPaper } from '../core/layout.js';
 import { titleBlockModel, drawingTitleOf, viewportClearOfTitle } from '../core/titleblock.js';
 import { SNAP_KIND } from '../core/osnap.js';
 import { hatchLines } from '../core/hatch.js';
+import { splinePoints, makeSpline } from '../core/spline.js';
 import { entsInBBox } from '../core/legend.js';
 import { arcFrom3 } from '../core/modify.js';
 import { wallFrags } from '../core/walls.js';
@@ -368,10 +369,15 @@ function drawPreview(){
     ctx.setLineDash([]);
     for (const p of ix.arcPts){ const s = W2S(p[0], p[1]); ctx.fillStyle = col; ctx.fillRect(s[0] - 3, s[1] - 3, 6, 6); }
   }
-  if ((tool === 'poly' || tool === 'hatch' || tool === 'cloud' || tool === 'leader') && ix.polyPts.length){
+  if ((tool === 'poly' || tool === 'hatch' || tool === 'cloud' || tool === 'leader' || tool === 'spline') && ix.polyPts.length){
+    /* A spline previews as the curve those control points actually make, so
+     * you are placing the shape you can see rather than a guide polygon. */
+    const live = ix.hoverPt ? ix.polyPts.concat([ix.hoverPt]) : ix.polyPts;
     const pts = tool === 'cloud' && ix.polyPts.length > 2
-      ? cloudPoints(ix.hoverPt ? ix.polyPts.concat([ix.hoverPt]) : ix.polyPts)
-      : ix.polyPts;
+      ? cloudPoints(live)
+      : tool === 'spline' && live.length > 2
+        ? splinePoints(makeSpline(live, {}))
+        : ix.polyPts;
     if (pts.length > 1) strokePath(pts, tool === 'cloud');
     if (ix.hoverPt && tool !== 'cloud'){
       strokePath([ix.polyPts[ix.polyPts.length - 1], ix.hoverPt]);

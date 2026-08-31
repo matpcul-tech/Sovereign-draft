@@ -15,7 +15,8 @@ import { fmtFtIn, parseLength, parsePoint } from './core/format.js';
 import { allSnapCandidates, SNAP_KIND } from './core/osnap.js';
 import { filletLines, chamferLines, arcFrom3, moveEntities, rotateEntities, scaleEntities, mirrorEntities, rectangularArray, polarArray, joinEntities } from './core/modify.js';
 import { wallFrags, WALL_THICKNESS } from './core/walls.js';
-import { makeHatch, boundaryContaining, HATCH_PATTERNS } from './core/hatch.js';
+import { makeHatch, boundaryContaining, HATCH_PATTERNS, closedLoops, hatchWithIslands, hatchArea } from './core/hatch.js';
+import { makeSpline } from './core/spline.js';
 import { alignedDim, continueDim, baselineDim, applyStyleToDim, angularDim, radiusDim, diameterDim, makeLeader } from './core/dimStyle.js';
 import { lookupCommand } from './core/command.js';
 import {
@@ -94,6 +95,8 @@ export function cancelPoly(commit){
       const e = makeLeader(ix.polyPts, '', currentDimStyleObj());
       addEntity(e);
       ix.pendingLeader = e;
+    } else if (state.tool === 'spline'){
+      addEntity(makeSpline(deep(ix.polyPts), { layer: state.currentLayer }));
     } else {
       addEntity({ type: 'poly', layer: state.currentLayer, closed: false, pts: deep(ix.polyPts) });
     }
@@ -114,12 +117,31 @@ export function closePoly(){
       const e = makeLeader(ix.polyPts, '', currentDimStyleObj());
       addEntity(e);
       ix.pendingLeader = e;
+    } else if (state.tool === 'spline'){
+      addEntity(makeSpline(deep(ix.polyPts), { layer: state.currentLayer, closed: true }));
     } else {
       addEntity({ type: 'poly', layer: state.currentLayer, closed: true, pts: deep(ix.polyPts) });
     }
     ix.polyPts = []; ix.hoverPt = null;
     afterChange();
   }
+}
+
+/* Hatch a selection of closed boundaries with island detection: a loop nested
+ * inside another is punched out as a hole rather than painted over, so a
+ * courtyard inside a slab reads as a void the way it does on paper. */
+export function hatchIslandsFromSelection(){
+  const ms = selMembers();
+  const loops = closedLoops(ms);
+  if (loops.length < 1){ toast('Select closed boundaries first'); return; }
+  const hs = hatchWithIslands(loops, { layer: 'HATCH', pattern: state.hatchPattern || 'ANSI31' });
+  if (!hs.length){ toast('Nothing to hatch'); return; }
+  pushUndo();
+  hs.forEach(h => addEntity(h));
+  afterChange();
+  const holes = hs.reduce((n, h) => n + (h.holes ? h.holes.length : 0), 0);
+  const area = hs.reduce((a, h) => a + hatchArea(h), 0);
+  toast(hs.length + ' region' + (hs.length === 1 ? '' : 's') + ', ' + holes + ' island' + (holes === 1 ? '' : 's') + ', ' + area.toFixed(1) + ' SF net');
 }
 
 export function deleteSelection(){

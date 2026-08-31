@@ -5,6 +5,7 @@ import { arcPoints, dimGeom, ellipsePoints, cloudPoints, angularGeom } from '../
 import { fmtFtIn } from '../core/format.js';
 import { dashFor, lwToPx } from '../core/style.js';
 import { hatchLines, hatchPlan, pxPerFootToScaleFactor } from '../core/hatch.js';
+import { splinePoints, SPLINE_TOL } from '../core/spline.js';
 import { flattenEnt, spanXline, isComposite, expandComposite} from '../core/entities.js';
 import { tableFrags } from '../core/schedule.js';
 import { dimLabel } from '../core/dimStyle.js';
@@ -43,19 +44,41 @@ export function drawEnt(c, e, color, sel, toS, scl, bg){
     c.beginPath(); c.arc(p[0], p[1], e.r * scl, 0, Math.PI * 2); c.stroke();
   }
   else if (e.type === 'arc') strokePathOn(c, toS, arcPoints(e));
-  else if (e.type === 'hatch'){
-    const solid = e.pattern === 'SOLID';
-    if (solid){
+  else if (e.type === 'spline'){
+    /* Tessellation tolerance follows zoom, so a curve stays smooth when you
+     * are close in without paying for the points when you are far out. */
+    strokePathOn(c, toS, splinePoints(e, scl > 0 ? 0.6 / scl : SPLINE_TOL), false);
+    if (sel){
       c.save();
-      c.beginPath();
-      let s = toS(e.pts[0][0], e.pts[0][1]); c.moveTo(s[0], s[1]);
-      for (let i = 1; i < e.pts.length; i++){ s = toS(e.pts[i][0], e.pts[i][1]); c.lineTo(s[0], s[1]); }
-      c.closePath();
-      c.globalAlpha = 0.22;
-      c.fillStyle = sel ? '#d4a843' : color;
-      c.fill();
+      c.setLineDash([3, 3]);
+      c.globalAlpha = 0.5;
+      strokePathOn(c, toS, e.ctrl, !!e.closed);
       c.globalAlpha = 1;
       c.restore();
+    }
+  }
+  else if (e.type === 'hatch'){
+    const solid = e.pattern === 'SOLID';
+    /* Holes are extra subpaths under the even-odd rule, so an island reads as
+     * a void rather than being painted over. */
+    const fillRegion = (alpha) => {
+      const ring = pts => {
+        let s = toS(pts[0][0], pts[0][1]); c.moveTo(s[0], s[1]);
+        for (let i = 1; i < pts.length; i++){ s = toS(pts[i][0], pts[i][1]); c.lineTo(s[0], s[1]); }
+        c.closePath();
+      };
+      c.save();
+      c.beginPath();
+      ring(e.pts);
+      (e.holes || []).forEach(h => { if (h && h.length > 2) ring(h); });
+      c.globalAlpha = alpha;
+      c.fillStyle = sel ? '#d4a843' : color;
+      c.fill('evenodd');
+      c.globalAlpha = 1;
+      c.restore();
+    };
+    if (solid){
+      fillRegion(0.22);
     } else {
       const sf = pxPerFootToScaleFactor(scl);
       const plan = hatchPlan(e, sf);
@@ -64,21 +87,13 @@ export function drawEnt(c, e, color, sel, toS, scl, bg){
         for (const seg of hatchLines(e, sf)) strokePathOn(c, toS, seg);
       } else if (plan.mode === 'tone'){
         /* Too fine to read as lines at this zoom. Light tone, never a smear. */
-        c.save();
-        c.beginPath();
-        let t = toS(e.pts[0][0], e.pts[0][1]); c.moveTo(t[0], t[1]);
-        for (let i = 1; i < e.pts.length; i++){ t = toS(e.pts[i][0], e.pts[i][1]); c.lineTo(t[0], t[1]); }
-        c.closePath();
-        c.globalAlpha = 0.12;
-        c.fillStyle = sel ? '#d4a843' : color;
-        c.fill();
-        c.globalAlpha = 1;
-        c.restore();
+        fillRegion(0.12);
       }
     }
     if (sel){
       c.setLineDash([4, 3]);
       strokePathOn(c, toS, e.pts, true);
+      (e.holes || []).forEach(h => { if (h && h.length > 2) strokePathOn(c, toS, h, true); });
     }
   }
   else if (e.type === 'text'){

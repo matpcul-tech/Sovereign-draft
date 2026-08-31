@@ -11,7 +11,7 @@ export function setTool(t){
     try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ }
     return;
   }
-  if ((state.tool === 'poly' || state.tool === 'hatch' || state.tool === 'cloud' || state.tool === 'leader') && t !== state.tool) cancelPoly(true);
+  if ((state.tool === 'poly' || state.tool === 'hatch' || state.tool === 'cloud' || state.tool === 'leader' || state.tool === 'spline') && t !== state.tool) cancelPoly(true);
   if (t && t !== 'select' && t !== 'pan') state.lastTool = t;
   state.tool = t;
   if (t !== 'select') state.boxMode = false;

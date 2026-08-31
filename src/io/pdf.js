@@ -122,7 +122,7 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts,
       } else if (plan.mode === 'tone'){
         /* Too fine to read as lines. A light tone instead of a smear. */
         P('q 0.88 g');
-        pathFill(e.pts);
+        pathFill(e.pts, e.holes);
         P('Q');
       }
     }
@@ -188,11 +188,19 @@ export function buildPDF(entities, opts){
     P(s + (close ? ' h S' : ' S'));
   }
   /* Filled version of path(), for the too-fine-to-draw hatch tone. */
-  function pathFill(pts){
+  function pathFill(pts, holes){
     if (!pts || !pts.length) return;
-    let s = f2(TX(pts[0][0])) + ' ' + f2(TY(pts[0][1])) + ' m';
-    for (let i = 1; i < pts.length; i++) s += ' ' + f2(TX(pts[i][0])) + ' ' + f2(TY(pts[i][1])) + ' l';
-    P(s + ' h f');
+    const sub = ring => {
+      let t = f2(TX(ring[0][0])) + ' ' + f2(TY(ring[0][1])) + ' m';
+      for (let i = 1; i < ring.length; i++) t += ' ' + f2(TX(ring[i][0])) + ' ' + f2(TY(ring[i][1])) + ' l';
+      return t + ' h';
+    };
+    const rings = (holes || []).filter(h => h && h.length > 2);
+    let s = sub(pts);
+    /* Each hole is another subpath and the fill switches to even-odd, which
+     * is what leaves a void instead of painting straight over it. */
+    rings.forEach(h => { s += ' ' + sub(h); });
+    P(s + (rings.length ? ' f*' : ' f'));
   }
   function circlePts(ccx, ccy, r){
     const pts = [];

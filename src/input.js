@@ -16,7 +16,9 @@ import {
   applyStretchBox, matchTap, areaTap, listTap, idTap, dimRadTap, finishDimAng,
   placeScheduleAt, applyCleanup, applyOverkill, applyRooms, applyTakeoff,
   applySheetSet, layerIsolate, layerUnisolate, bindSelection,
-  placeDatumAt, placeFinishAt, applyStoryHeight, beginHeightPrompt
+  placeDatumAt, placeFinishAt, applyStoryHeight, beginHeightPrompt,
+  addConstraint, solveConstraintsNow, deleteConstraintsOnSelection, solveAfterEdit,
+  hatchIslandsFromSelection
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
 import { setTool } from './ui/tools.js';
@@ -42,7 +44,7 @@ function findGrip(sx, sy){
 const DRAW_TOOLS = ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'wall', 'ellipse', 'image', 'calibrate', 'xline', 'grid', 'arraypolar', 'section', 'detail', 'fcf'];
 const TAP_TOOLS = ['erase', 'text', 'symbol', 'offset', 'trim', 'extend', 'match', 'area', 'list', 'id', 'dimrad', 'dimdia', 'schedule', 'datum', 'finish'];
 const TWO_PICK = ['fillet', 'chamfer', 'mirror', 'move', 'copy', 'rotate', 'scale'];
-const POLY_TOOLS = ['poly', 'hatch', 'cloud', 'leader'];
+const POLY_TOOLS = ['poly', 'hatch', 'cloud', 'leader', 'spline'];
 
 function onPointerDown(ev){
   const cv = ev.currentTarget;
@@ -136,7 +138,7 @@ function onPointerMove(ev){
       const p = applyConstraint(from || null, snapPt(sx, sy, from));
       ix.hoverPt = p;
       updateStatus(p);
-      if ((state.tool === 'poly' || state.tool === 'hatch' || state.tool === 'cloud' || state.tool === 'leader') && ix.polyPts.length) draw();
+      if (POLY_TOOLS.indexOf(state.tool) >= 0 && ix.polyPts.length) draw();
       else if (ev.pointerType === 'mouse' && ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'symbol', 'wall', 'arc', 'mirror', 'move', 'copy', 'ellipse', 'image', 'stretch', 'dimang', 'xline', 'grid', 'arraypolar', 'section', 'detail', 'fcf'].includes(state.tool)) draw();
     }
     return;
@@ -362,7 +364,7 @@ function onKeyDown(ev){
   }
   else if (ev.key === 'Enter'){
     if (state.tool === 'select' && state.lastTool){ setTool(state.lastTool); }
-    else if (state.tool === 'poly' && ix.polyPts.length > 1) cancelPoly(true);
+    else if ((state.tool === 'poly' || state.tool === 'spline') && ix.polyPts.length > 1) cancelPoly(true);
     else if ((state.tool === 'cloud' || state.tool === 'leader') && ix.polyPts.length > 1){
       if (state.tool === 'cloud') closePoly();
       else cancelPoly(true);
@@ -372,6 +374,7 @@ function onKeyDown(ev){
         setTimeout(() => { const t = document.getElementById('txtval'); if (t) t.focus(); }, 200);
       }
     }
+    else if ((state.tool === 'hatch' || state.tool === 'spline') && ix.polyPts.length > 2 && ev.shiftKey){ closePoly(); }
     else if (state.tool === 'hatch' && ix.polyPts.length > 2){ closePoly(); }
     else if (state.tool === 'join') applyJoin();
     else if (state.tool === 'array') applyArray();
@@ -451,6 +454,7 @@ export function handleCommand(text){
   if (res.action && res.action.indexOf('con:') === 0){ addConstraint(res.action.slice(4), res.rest); return; }
   if (res.action === 'csolve'){ solveConstraintsNow(); return; }
   if (res.action === 'cdel'){ deleteConstraintsOnSelection(); return; }
+  if (res.action === 'bhatch'){ hatchIslandsFromSelection(); return; }
   if (res.action === 'zoomfit'){ zoomFit(); draw(); return; }
   if (res.action === 'explode'){ explodeSelection(); return; }
   if (res.action === 'flip'){ flipSelection(); return; }
