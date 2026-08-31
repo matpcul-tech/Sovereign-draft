@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   marginSlots, placeInMargin, occupiedRects, viewportRect, annotationRect,
   makeNote, makeLabel, makeTableAnnotation, addAnnotation, placeLabelOnSheet,
+  viewportClearOfAnnotations,
   slotIsFree, slotIsPlaceable, SHEET_MARGIN, TITLE_BLOCK_H
 } from '../src/core/sheetspace.js';
 import { normalizeSheets } from '../src/core/document.js';
@@ -101,6 +102,18 @@ describe('annotations occupy space and push later ones aside', () => {
     const r = annotationRect(makeTableAnnotation(1, 2, t));
     expect(r[2] - r[0]).toBeCloseTo(2.5, 9);
     expect(r[3] - r[1]).toBeCloseTo(0.66, 9);
+  });
+
+  it('viewportClearOfAnnotations insets a view that a table covers', () => {
+    const s = sheet();
+    const vp = s.viewports[0];
+    const rows = Array.from({ length: 40 }, () => ['A', 'B']);
+    const table = makeTableAnnotation(vp.px, vp.py, {
+      colW: [3, 3], rowH: Math.max(0.2, vp.ph / 42), cells: [['MARK', 'DESC']].concat(rows), title: 'SCHEDULE'
+    });
+    const cleared = viewportClearOfAnnotations(vp, [table]);
+    expect(cleared.pw * cleared.ph).toBeLessThan(vp.pw * vp.ph);
+    expect(cleared.pw).toBeLessThanOrEqual(vp.pw);
   });
 
   it('placeInMargin never returns a slot on the title block', () => {

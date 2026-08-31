@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   collectMarks, keynoteRows, buildKeynoteLegend, markScheduleRows,
   buildMarkSchedule, attributeKeys, markScheduleCSV,
-  entitiesInView, entitiesOnSheet, viewModelWindow, measureMark
+  entitiesInView, entitiesOnSheet, viewModelWindow, measureMark,
+  refreshDerivedTables
 } from '../src/core/keynote.js';
 import { schemaToEntities } from '../src/ai/draft.js';
 import { normalizeSheets } from '../src/core/document.js';
@@ -214,6 +215,48 @@ describe('SIZE is measured from the mark, not the envelope', () => {
     const rows = markScheduleRows(copies, null, ['size']);
     expect(rows[0][1]).toBe('9');
     expect(rows[0][2]).toBe(size);
+  });
+
+  it('a mark on a callout measures that station, not a stamped envelope', () => {
+    const body = {
+      type: 'poly', layer: 'PROFILE', closed: true,
+      pts: [[0, 0], [12, 0], [12, 230], [0, 230]]
+    };
+    function callout(mark, type, y, size){
+      const e = {
+        type: 'callout', layer: 'NOTES',
+        anchor: [12, y], pts: [[12, y], [22, y]],
+        content: type, textH: 0.8
+      };
+      setMark(e, mark);
+      setAttributes(e, { type, size });
+      return e;
+    }
+    const ents = [
+      body,
+      callout('N-1', 'NOSE', 220, "12'-0\" × 14'-0\""),
+      callout('T-1', 'TANK', 120, "12'-0\" × 14'-0\""),
+      callout('E-1', 'ENGINE', 6, "12'-0\" × 14'-0\"")
+    ];
+    const rows = markScheduleRows(ents, null, ['type', 'size']);
+    const byMark = Object.fromEntries(rows.map(r => [r[0], r[3]]));
+    expect(byMark['N-1']).not.toBe("12'-0\" × 14'-0\"");
+    expect(byMark['E-1']).not.toBe("12'-0\" × 14'-0\"");
+    expect(byMark['N-1']).not.toMatch(/230/);
+    expect(byMark['E-1']).not.toMatch(/230/);
+    expect(byMark['N-1']).not.toBe(byMark['E-1']);
+    expect(byMark['T-1']).toMatch(/12/);
+  });
+
+  it('refreshDerivedTables rewrites a baked schedule SIZE column', () => {
+    const e = part('N-1', 'NOSE', 0, 0, 12, 8);
+    const t = buildMarkSchedule([e], null, [0, 0], { columns: ['type', 'size'] });
+    t.cells[1][3] = "12'-0\" × 14'-0\"";
+    const sheet = { annotations: [{ kind: 'table', x: 1, y: 1, table: t }] };
+    refreshDerivedTables(sheet, [e]);
+    expect(sheet.annotations[0].table.cells[1][3]).toMatch(/12/);
+    expect(sheet.annotations[0].table.cells[1][3]).toMatch(/8/);
+    expect(sheet.annotations[0].table.cells[1][3]).not.toBe("12'-0\" × 14'-0\"");
   });
 });
 

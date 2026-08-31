@@ -110,6 +110,42 @@ export function placeInMargin(sheet, size, extra){
   return free.length ? free[0] : null;
 }
 
+/* Inset a viewport so it no longer sits under a table. Paper coords stay
+ * true — the model is clipped, not rescaled — so a legend on the left of
+ * the rocket uncovers the view instead of painting over it. */
+export function viewportClearOfAnnotations(vp, annotations){
+  if (!vp) return vp;
+  let px = vp.px, py = vp.py, pw = vp.pw, ph = vp.ph;
+  const pad = 0.1;
+  (annotations || []).forEach(a => {
+    if (!a || a.kind !== 'table') return;
+    const r = annotationRect(a);
+    if (!r) return;
+    const vx0 = px, vy0 = py, vx1 = px + pw, vy1 = py + ph;
+    if (!rectsOverlap([vx0, vy0, vx1, vy1], r, 0)) return;
+    const left = Math.max(0, r[2] - vx0);
+    const right = Math.max(0, vx1 - r[0]);
+    const bot = Math.max(0, r[3] - vy0);
+    const top = Math.max(0, vy1 - r[1]);
+    const m = Math.min(left, right, bot, top);
+    if (m === right && r[0] > vx0 + 0.5){
+      pw = Math.max(2, r[0] - pad - px);
+    } else if (m === left && r[2] < vx1 - 0.5){
+      const nx = r[2] + pad;
+      pw = Math.max(2, vx1 - nx);
+      px = nx;
+    } else if (m === top && r[1] > vy0 + 0.5){
+      ph = Math.max(2, r[1] - pad - py);
+    } else if (m === bot && r[3] < vy1 - 0.5){
+      const ny = r[3] + pad;
+      ph = Math.max(2, vy1 - ny);
+      py = ny;
+    }
+  });
+  if (px === vp.px && py === vp.py && pw === vp.pw && ph === vp.ph) return vp;
+  return Object.assign({}, vp, { px, py, pw, ph });
+}
+
 /* ---------- sheet space annotations ---------- */
 
 export function makeNote(x, y, text, opts){

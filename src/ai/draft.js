@@ -15,7 +15,7 @@ import { rulesFor, closeDimChains, placeLabel, textBox, dimObstacles, polygonAre
 import { makeLayout, makeViewport, fitViewport, PLOT_SCALES, SHEETS } from '../core/layout.js';
 import { normalizeSheets, defaultSheetNumber } from '../core/document.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation, makeDetailCallout } from '../core/sheetspace.js';
-import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys, paperKeynoteColW, paperScheduleColW } from '../core/keynote.js';
+import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, scheduleColumns, paperKeynoteColW, paperScheduleColW } from '../core/keynote.js';
 import { membersBBox } from '../core/entities.js';
 import { makeFcf, makeDatum, makeFinish } from '../core/gdt.js';
 import { buildSection } from '../core/section.js';
@@ -50,9 +50,11 @@ export const AI_SCHEMA_SPEC =
   "room names. hatchRegions: only where a cut face is genuinely hatched.\n" +
   "Square-foot area tags are emitted for plan only.\n" +
   'Any profile, callout or fixture may carry "mark":"E-1" and\n' +
-  '"attrs":{"type":"MERLIN 1D","material":"...","size":"...","qty":1}.\n' +
+  '"attrs":{"type":"MERLIN 1D","material":"...","qty":1}.\n' +
   "Mark repeated parts so they can be scheduled. Nine identical engines are\n" +
   "either nine items marked E-1 through E-9, or one item marked E with qty 9.\n" +
+  "Do not put size on attrs — the app measures it from geometry. A size copied\n" +
+  "onto every part is a stamp, not a spec.\n" +
   "Units are decimal feet. Y axis points up. Origin near (0,0). All coordinates >= 0.\n" +
   "walls: centerlines. th is thickness in feet (0.333, 0.5 or 0.667). Close exterior loops.\n" +
   "openings: wall is the 0-based index into walls; t is 0..1 along the centerline; w is opening width in feet.\n" +
@@ -62,8 +64,8 @@ export const AI_SCHEMA_SPEC =
   "On elevation, section and part drawings dims are REQUIRED: overall height,\n" +
   "overall width (or diameter), and a station at each major labeled part.\n" +
   "A drawing with no dimensions cannot be built from.\n" +
-  'Every callout SHOULD include mark plus attrs qty and size. Parse "x9" as\n' +
-  "qty 9. Include material ONLY when the user named that material in the request.\n" +
+  'Every callout SHOULD include mark plus attrs qty. Parse "x9" as\n' +
+  "qty 9. Omit size. Include material ONLY when the user named that material in the request.\n" +
   "Never invent alloys, trade names, or certifications. If unknown, omit material.\n" +
   "gdt: feature control frames, datum letters, surface-finish marks. An fcf MUST\n" +
   "include tol. Never invent a tolerance — omit the frame if the user did not give one.\n" +
@@ -638,6 +640,14 @@ export function schemaToSheets(schema, entities){
       vp.drawingType = normalizeDrawingType(v && v.drawingType ? v.drawingType : schema.drawingType);
       return vp;
     });
+    const wantedAnn = (sp && sp.annotations) || [];
+    const needGutter = (Array.isArray(wantedAnn) ? wantedAnn : [wantedAnn]).some(w => {
+      const k = String(w || '').toLowerCase();
+      return k.indexOf('keynote') >= 0 || k.indexOf('legend') >= 0 || k.indexOf('sched') >= 0;
+    });
+    if (needGutter){
+      layout.viewports.forEach(vp => { vp.pw = Math.max(8, vp.pw - 4.2); });
+    }
     return layout;
   });
 
@@ -659,10 +669,10 @@ export function schemaToSheets(schema, entities){
         if (slot) out = addAnnotation(out, makeTableAnnotation(slot.x, slot.y, t));
       } else if (kind.indexOf('sched') >= 0){
         if (!collectMarks(entities).length) return;
-        const cols = attributeKeys(entities).slice(0, 3);
+        const cols = scheduleColumns(entities);
         const t = buildMarkSchedule(entities, out, [0, 0], {
-          columns: cols.length ? cols : undefined,
-          colW: paperScheduleColW(cols.length ? cols : undefined)
+          columns: cols,
+          colW: paperScheduleColW(cols)
         });
         t.rowH = 0.22;
         const size = [t.colW.reduce((a, b) => a + b, 0), (t.cells.length + 1) * t.rowH];

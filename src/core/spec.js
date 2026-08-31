@@ -152,9 +152,14 @@ function largestBox(boxes){
   return best;
 }
 
-function sizeOfPart(ents, src, sorted, i, body, vertical){
+function looksStamped(s){
+  return /^x\s*[x×]/i.test(String(s || '').trim());
+}
+
+function sizeOfPart(ents, src, sorted, i, body, vertical, stamp){
   const attrs = (src && src.attributes) || {};
-  if (attrs.size) return String(attrs.size);
+  const authored = attrs.size != null ? String(attrs.size).trim() : '';
+  if (authored && authored !== stamp && !looksStamped(authored)) return authored;
   const mark = src && src.mark ? String(src.mark) : '';
   if (mark){
     const group = ents.filter(e => e && e.mark && String(e.mark) === mark && !SKIP_TYPES[e.type] && !SKIP_LAYERS[e.layer]);
@@ -180,6 +185,11 @@ export function collectParts(entities){
   const h = Math.max(body[3] - body[1], 0.5);
   const vertical = h >= w * 0.7;
   const sorted = callouts.slice().sort((a, b) => vertical ? b.y - a.y : a.x - b.x);
+  const sizes = sorted.map(c => {
+    const src = calloutEntity(ents, c.name);
+    return src && src.attributes && src.attributes.size ? String(src.attributes.size).trim() : '';
+  }).filter(Boolean);
+  const stamp = (sizes.length >= 2 && sizes.every(s => s === sizes[0])) ? sizes[0] : '';
   return sorted.map((c, i) => {
     const src = calloutEntity(ents, c.name);
     const attrs = (src && src.attributes) || {};
@@ -190,7 +200,7 @@ export function collectParts(entities){
       mark: String(mark),
       qty,
       desc: desc || c.name,
-      size: sizeOfPart(ents, src, sorted, i, body, vertical),
+      size: sizeOfPart(ents, src, sorted, i, body, vertical, stamp),
       material: (attrs.material && !attrs.materialInvented) ? String(attrs.material) : '',
       x: c.x,
       y: c.y
