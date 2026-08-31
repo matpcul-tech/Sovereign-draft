@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   collectMarks, keynoteRows, buildKeynoteLegend, markScheduleRows,
   buildMarkSchedule, attributeKeys, markScheduleCSV,
-  entitiesInView, entitiesOnSheet, viewModelWindow
+  entitiesInView, entitiesOnSheet, viewModelWindow, measureMark
 } from '../src/core/keynote.js';
 import { schemaToEntities } from '../src/ai/draft.js';
 import { normalizeSheets } from '../src/core/document.js';
@@ -146,6 +146,95 @@ describe('a schedule tabulates mark, qty and attributes', () => {
     const e = { id: 1, type: 'circle', cx: 0, cy: 0, r: 1 };
     setMark(e, 'X-1'); setAttributes(e, { type: 'A, B' });
     expect(markScheduleCSV([e], null, ['type'])).toContain('"A, B"');
+  });
+});
+
+describe('SIZE is measured from the mark, not the envelope', () => {
+  function part(mark, type, x, y, w, h, size){
+    const e = {
+      id: mark, type: 'poly', layer: 'PROFILE', closed: true,
+      pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+    };
+    setMark(e, mark);
+    const attrs = { type };
+    if (size) attrs.size = size;
+    setAttributes(e, attrs);
+    return e;
+  }
+
+  it('fills SIZE from the entity bbox when attributes.size is empty', () => {
+    const e = part('N-1', 'NOSE', 0, 0, 12, 8);
+    const rows = markScheduleRows([e], null, ['type', 'size']);
+    expect(rows[0][0]).toBe('N-1');
+    expect(rows[0][3]).toMatch(/12/);
+    expect(rows[0][3]).toMatch(/8/);
+    expect(rows[0][3]).toMatch(/×/);
+  });
+
+  it('keeps an authored size', () => {
+    const e = part('E-1', 'MERLIN 1D', 0, 0, 4, 4, '4FT DIA');
+    const rows = markScheduleRows([e], null, ['size']);
+    expect(rows[0][2]).toBe('4FT DIA');
+  });
+
+  it('ignores a constant stamped onto every different part', () => {
+    const ents = [
+      part('N-1', 'NOSE', 0, 220, 12, 8, "X x 14'-0"),
+      part('T-1', 'TANK', 0, 80, 12, 40, "X x 14'-0"),
+      part('E-1', 'ENGINE', 4, 0, 4, 6, "X x 14'-0")
+    ];
+    const rows = markScheduleRows(ents, null, ['type', 'size']);
+    expect(rows.map(r => r[0])).toEqual(['E-1', 'N-1', 'T-1']);
+    const byMark = Object.fromEntries(rows.map(r => [r[0], r[3]]));
+    expect(byMark['N-1']).not.toBe("X x 14'-0");
+    expect(byMark['T-1']).not.toBe("X x 14'-0");
+    expect(byMark['E-1']).not.toBe("X x 14'-0");
+    expect(byMark['N-1']).toMatch(/12/);
+    expect(byMark['N-1']).toMatch(/8/);
+    expect(byMark['T-1']).toMatch(/40/);
+    expect(byMark['E-1']).toMatch(/4/);
+    expect(byMark['E-1']).not.toMatch(/40/);
+    expect(byMark['E-1']).not.toMatch(/220/);
+  });
+
+  it('nine copies of one mark measure one instance, not the envelope of all nine', () => {
+    const copies = Array.from({ length: 9 }, (_, i) => {
+      const e = { id: 300 + i, type: 'circle', layer: 'FIXTURES', cx: i * 30, cy: 0, r: 2 };
+      setMark(e, 'E');
+      setAttributes(e, { type: 'MERLIN 1D' });
+      return e;
+    });
+    const groups = collectMarks(copies);
+    expect(groups.length).toBe(1);
+    expect(groups[0].qty).toBe(9);
+    const size = measureMark(groups[0]);
+    expect(size).toMatch(/4/);
+    expect(size).not.toMatch(/240/);
+    expect(size).not.toMatch(/242/);
+    const rows = markScheduleRows(copies, null, ['size']);
+    expect(rows[0][1]).toBe('9');
+    expect(rows[0][2]).toBe(size);
+  });
+});
+
+describe('a dim belongs to a view only when both origins sit in it', () => {
+  function sheetOverOrigin(){
+    const sheet = normalizeSheets([makeLayout({ id: 'A1', sheet: 'archd', ppf: 18 })])[0];
+    fitViewport(sheet.viewports[0], [-10, -10, 10, 10]);
+    return sheet;
+  }
+
+  it('excludes a 230 ft envelope dim from a detail window it merely overlaps', () => {
+    const sheet = sheetOverOrigin();
+    const win = viewModelWindow(sheet.viewports[0]);
+    expect(win[3] - win[1]).toBeLessThan(100);
+    const envelope = { id: 'd1', type: 'dim', layer: 'DIMS', x1: 0, y1: 0, x2: 0, y2: 230 };
+    const local = { id: 'd2', type: 'dim', layer: 'DIMS', x1: -2, y1: -2, x2: 2, y2: 2 };
+    const body = { id: 1, type: 'circle', layer: 'FIXTURES', cx: 0, cy: 0, r: 1 };
+    const seen = entitiesInView([envelope, local, body], sheet.viewports[0]);
+    expect(seen.some(e => e.id === 'd1')).toBe(false);
+    expect(seen.some(e => e.id === 'd2')).toBe(true);
+    expect(seen.some(e => e.id === 1)).toBe(true);
   });
 });
 
