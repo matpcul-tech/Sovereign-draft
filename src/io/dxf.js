@@ -9,6 +9,7 @@ import { hatchLines } from '../core/hatch.js';
 import { explodeForIO, membersBBox } from '../core/entities.js';
 import { knotsOf, splineToPoly, makeSpline } from '../core/spline.js';
 import { hasBulge, bulgeAt } from '../core/bulge.js';
+import { makeMText, decodeMText, encodeMText, attachCode, justFromCode, mtextToTexts } from '../core/mtext.js';
 import { dimLabel } from '../core/dimStyle.js';
 import { sheetOf, makeLayout, TITLE_BLOCK_H, SHEET_MARGIN } from '../core/layout.js';
 import { bindAllDims } from '../core/assoc.js';
@@ -263,6 +264,20 @@ function writeEnt(w, e, r2000, inBlock, paper){
   } else if (e.type === 'text'){
     w(0, 'TEXT'); common();
     w(10, fmtN(e.x), 20, fmtN(e.y), 30, 0, 40, fmtN(e.size), 1, e.content || '');
+    if (e.rot) w(50, fmtN(e.rot));
+  } else if (e.type === 'mtext'){
+    if (r2000){
+      /* A real MTEXT reopens as an editable paragraph with its column width
+       * intact. R12 has no MTEXT, so it gets the laid out lines. */
+      w(0, 'MTEXT'); common();
+      w(10, fmtN(e.x), 20, fmtN(e.y), 30, 0, 40, fmtN(e.size));
+      if (e.width > 0) w(41, fmtN(e.width));
+      w(71, attachCode(e.just), 72, 1);
+      if (e.rot) w(50, fmtN(e.rot));
+      w(1, encodeMText(e.content || ''));
+    } else {
+      mtextToTexts(e).forEach(t => writeEnt(w, t, r2000, inBlock, paper));
+    }
   } else if (e.type === 'hatch'){
     hatchLines(e).forEach(seg => {
       w(0, 'LINE'); common();
@@ -318,13 +333,6 @@ function writeEnt(w, e, r2000, inBlock, paper){
 function num(v){ v = Number(v); return isFinite(v) ? v : 0; }
 function clampN(v, a, b){ return v < a ? a : (v > b ? b : v); }
 
-function flattenMtext(s){
-  s = String(s || '');
-  s = s.replace(/\\P/g, ' ').replace(/\\[~]/g, ' ');
-  s = s.replace(/\{[^;]*;/g, '').replace(/\}/g, '');
-  s = s.replace(/\\[A-Za-z][^;]*;/g, '');
-  return s.replace(/\s+/g, ' ').trim();
-}
 
 /* Parse DXF text into entity objects (no ids). ensureLayer(name) -> canonical
  * layer name, creating the layer as a side effect when needed.
@@ -400,9 +408,22 @@ export function parseDXF(txt, ensureLayer, sink){
     if (t === 'LINE' && cur[10] !== undefined) emit(style({ type: 'line', layer: ly, x1: num(cur[10]), y1: num(cur[20]), x2: num(cur[11]), y2: num(cur[21]) }));
     else if (t === 'CIRCLE' && cur[10] !== undefined) emit(style({ type: 'circle', layer: ly, cx: num(cur[10]), cy: num(cur[20]), r: num(cur[40]) || 0.1 }));
     else if (t === 'ARC' && cur[10] !== undefined) emit(style({ type: 'arc', layer: ly, cx: num(cur[10]), cy: num(cur[20]), r: num(cur[40]) || 0.1, a1: num(cur[50]), a2: num(cur[51]) }));
-    else if ((t === 'TEXT' || t === 'MTEXT') && cur[10] !== undefined){
-      const content = t === 'MTEXT' ? flattenMtext(cur[1] || '') : String(cur[1] || '');
-      emit(style({ type: 'text', layer: ly, x: num(cur[10]), y: num(cur[20]), size: num(cur[40]) || 1, content }));
+    else if (t === 'MTEXT' && cur[10] !== undefined){
+      /* Keep it a paragraph. Flattening the breaks to spaces turned every
+       * imported general note into one run-on line, which is the note's
+       * meaning gone, not just its look. */
+      emit(style(makeMText(decodeMText(cur[1] || ''), {
+        layer: ly,
+        x: num(cur[10]),
+        y: num(cur[20]),
+        size: num(cur[40]) || 1,
+        width: num(cur[41]) || 0,
+        just: justFromCode(num(cur[71])),
+        rot: num(cur[50]) || 0
+      })));
+    }
+    else if (t === 'TEXT' && cur[10] !== undefined){
+      emit(style({ type: 'text', layer: ly, x: num(cur[10]), y: num(cur[20]), size: num(cur[40]) || 1, content: String(cur[1] || ''), rot: num(cur[50]) || 0 }));
     }
     else if (t === 'LWPOLYLINE' && cur._pts && cur._pts.length >= 2) emit(style(withBulge({ type: 'poly', layer: ly, closed: !!(num(cur[70]) & 1), pts: cur._pts }, cur._bul)));
     else if (t === 'POLYLINE' && curVerts && curVerts.length >= 2) emit(style(withBulge({ type: 'poly', layer: ly, closed: !!(num(cur[70]) & 1), pts: curVerts }, curBul)));

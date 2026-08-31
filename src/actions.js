@@ -17,6 +17,7 @@ import { filletLines, chamferLines, arcFrom3, moveEntities, rotateEntities, scal
 import { wallFrags, WALL_THICKNESS } from './core/walls.js';
 import { makeHatch, boundaryContaining, HATCH_PATTERNS, closedLoops, hatchWithIslands, hatchArea } from './core/hatch.js';
 import { makeSpline } from './core/spline.js';
+import { styleByName } from './core/textstyle.js';
 import { polyBoolean, ringsArea } from './core/boolean.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
 import { makeIndexCache, queryPoint, queryBox, worthIndexing } from './core/spatial.js';
@@ -380,6 +381,20 @@ export function saveBlockFromSelection(name){
 }
 
 export function finishDraw(p1, p2, tool){
+  if (tool === 'mtext'){
+    /* The drag is the column, not the text. Wrapping needs a width before it
+     * has anything to wrap, so the width is picked first and the words go in
+     * after. */
+    const x0 = Math.min(p1[0], p2[0]), x1 = Math.max(p1[0], p2[0]);
+    const yTop = Math.max(p1[1], p2[1]);
+    const width = x1 - x0;
+    if (width < 0.05){ toast('Drag a wider column'); return; }
+    const st = styleByName(state.textStyles, state.currentTextStyle);
+    /* Only the pending column is recorded here. Opening the text sheet is the
+     * input layer's job, which is where every other prompt is raised from. */
+    ix.pendingMText = { x: x0, y: yTop, width, size: (st && st.height) || 0.5 };
+    return;
+  }
   if (!p1 || !p2) return;
   rememberVec(p1, p2);
   if (tool === 'measure'){

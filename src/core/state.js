@@ -10,6 +10,7 @@ import { refreshAssocDims, bindAllDims } from './assoc.js';
 import { syncAutoRooms } from './rooms.js';
 import { dropDanglingConstraints } from './constrain.js';
 import { setDisplayUnits } from './format.js';
+import { defaultTextStyles } from './textstyle.js';
 
 export const LAYER_COLORS = ['#00d4b8', '#c45a3c', '#d4af37', '#8fa3c0', '#4ade80', '#e8e4dd'];
 export const GRID_SNAP = 0.5;
@@ -45,6 +46,8 @@ export const state = {
   currentLayer: 'WALLS',
   entities: [],
   geomStamp: 0,
+  textStyles: defaultTextStyles(),
+  currentTextStyle: 'STANDARD',
   userBlocks: [],
   idSeq: 1,
   gSeq: 1,
@@ -144,6 +147,7 @@ function snapshot(){
     layers: deep(state.layers),
     constraints: deep(state.constraints || []),
     dimStyles: deep(state.dimStyles),
+    textStyles: deep(state.textStyles || []),
     layouts: deep(state.layouts),
     currentDimStyle: state.currentDimStyle,
     currentLayout: state.currentLayout,
@@ -155,6 +159,7 @@ function restore(s){
   state.layers = s.layers;
   state.constraints = s.constraints || [];
   if (s.dimStyles) state.dimStyles = s.dimStyles;
+  if (s.textStyles) state.textStyles = s.textStyles;
   if (s.layouts) state.layouts = s.layouts;
   if (s.currentDimStyle) state.currentDimStyle = s.currentDimStyle;
   if (s.currentLayout) state.currentLayout = s.currentLayout;

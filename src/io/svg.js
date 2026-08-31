@@ -4,6 +4,8 @@ import { fmtFtIn } from '../core/format.js';
 import { membersBBox, explodeForIO } from '../core/entities.js';
 import { hatchLines } from '../core/hatch.js';
 import { polyOutline } from '../core/bulge.js';
+import { mtextLayout } from '../core/mtext.js';
+import { styleFor, metricsOpts } from '../core/textstyle.js';
 import { expandInsert } from '../core/dynblock.js';
 import { tableFrags } from '../core/schedule.js';
 
@@ -39,6 +41,7 @@ function flatten(entities){
 }
 
 export function buildSVG(entities, layers, opts){
+  const styles = (opts && opts.textStyles) || null;
   opts = opts || {};
   const vis = flatten(entities || []).filter(e => {
     if (!layers) return true;
@@ -76,6 +79,11 @@ export function buildSVG(entities, layers, opts){
     } else if (e.type === 'hatch'){
       hatchLines(e).forEach(seg => {
         parts.push('<line x1="' + tx(seg[0][0]) + '" y1="' + ty(seg[0][1]) + '" x2="' + tx(seg[1][0]) + '" y2="' + ty(seg[1][1]) + '" stroke="' + c + '" fill="none" stroke-width="0.02"/>');
+      });
+    } else if (e.type === 'mtext'){
+      mtextLayout(e, metricsOpts(styleFor(e, styles))).forEach(l => {
+        const rot = e.rot ? ' transform="rotate(' + fmtN(-e.rot) + ' ' + tx(l.x) + ' ' + ty(l.y) + ')"' : '';
+        parts.push('<text x="' + tx(l.x) + '" y="' + ty(l.y) + '" font-size="' + fmtN(e.size || 1) + '" fill="' + c + '" font-family="sans-serif"' + rot + '>' + xml(l.text) + '</text>');
       });
     } else if (e.type === 'text'){
       parts.push('<text x="' + tx(e.x) + '" y="' + ty(e.y) + '" font-size="' + fmtN(e.size || 1) + '" fill="' + c + '" font-family="sans-serif">' + xml(e.content) + '</text>');

@@ -14,8 +14,8 @@ export const CANVAS_FONT_STACK = 'Outfit, system-ui';
 
 /* The exact string assigned to ctx.font at draw time. Measuring with anything
  * else is what produced the clipped labels. */
-export function composeFont(px, weight){
-  return (weight ? weight + ' ' : '') + px + 'px ' + CANVAS_FONT_STACK;
+export function composeFont(px, weight, family){
+  return (weight ? weight + ' ' : '') + px + 'px ' + (family || CANVAS_FONT_STACK);
 }
 
 /* Adobe AFM advance widths, 1/1000 em. */
@@ -67,10 +67,10 @@ export function helveticaWidth(str, size, bold){
 }
 
 /* Measure on a canvas with the exact draw-time font. Restores ctx.font. */
-export function canvasWidth(str, px, ctx, weight){
+export function canvasWidth(str, px, ctx, weight, family){
   if (!ctx || typeof ctx.measureText !== 'function') return null;
   const prev = ctx.font;
-  ctx.font = composeFont(px, weight);
+  ctx.font = composeFont(px, weight, family);
   const w = ctx.measureText(String(str == null ? '' : str)).width;
   ctx.font = prev;
   return w;
@@ -81,12 +81,16 @@ export function canvasWidth(str, px, ctx, weight){
  */
 export function textWidth(str, size, opts){
   const o = opts || {};
+  /* A style's width factor scales the advance of every glyph, so it has to
+   * be applied to whichever measurement path runs or the same text wraps in
+   * two different places. */
+  const k = o.widthFactor > 0 ? o.widthFactor : 1;
   if (o.ctx){
     const px = o.px == null ? size : o.px;
-    const w = canvasWidth(str, px, o.ctx, o.weight);
-    if (w != null && isFinite(w)) return o.px == null ? w : w * (size / px);
+    const w = canvasWidth(str, px, o.ctx, o.weight, o.family);
+    if (w != null && isFinite(w)) return (o.px == null ? w : w * (size / px)) * k;
   }
-  return helveticaWidth(str, size, !!o.bold);
+  return helveticaWidth(str, size, !!o.bold) * k;
 }
 
 /* Padding is added, never subtracted. A box is allowed to be roomy; it is

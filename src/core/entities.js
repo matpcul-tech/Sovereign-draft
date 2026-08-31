@@ -41,6 +41,7 @@ import { expandGrid } from './grid.js';
 import { boxWidth, textWidth } from './textmetrics.js';
 import { splinePoints, splineToPoly, translateSpline } from './spline.js';
 import { hasBulge, polyOutline } from './bulge.js';
+import { mtextToTexts, mtextCorners, translateMText } from './mtext.js';
 
 /* Composite drafting entities used by non-building drawings. Each reduces to
  * primitives, so hit testing, bounds and every exporter run on the expansion
@@ -107,6 +108,7 @@ export function spanXline(e, reach){
 export function flattenEnt(e){
   if (!e) return [];
   if (isComposite(e)) return expandComposite(e);
+  if (e.type === 'mtext') return mtextToTexts(e);
   if (e.type === 'spline') return [splineToPoly(e)];
   /* Arc segments become line work here, so exporters and hatching see the
    * real curve instead of a chord. The entity itself keeps its bulges. */
@@ -121,6 +123,7 @@ export function flattenEnt(e){
 export function explodeForIO(e){
   if (!e) return [];
   if (isComposite(e)) return expandComposite(e);
+  if (e.type === 'mtext') return mtextToTexts(e);
   if (e.type === 'spline') return [splineToPoly(e)];
   /* Line work for consumers that cannot express an arc segment. The DXF
    * writer never reaches here for a polyline, so group 42 still survives. */
@@ -221,6 +224,7 @@ export function entPoints(e){
     if (e.kind === 'angular' && e.x3 != null) p.push([e.x3, e.y3, 0]);
   }
   else if (e.type === 'text'){ p.push([e.x, e.y, 0]); }
+  else if (e.type === 'mtext'){ p.push([e.x, e.y, 0]); mtextCorners(e).forEach(c => p.push([c[0], c[1], 0])); }
   else if (e.type === 'table'){ tableCorners(e).forEach(pt => p.push([pt[0], pt[1], 0])); }
   else if (e.type === 'image'){ imageCorners(e).forEach(pt => p.push([pt[0], pt[1], 0])); }
   else if (e.type === 'xline'){ p.push([e.x1, e.y1, 0], [e.x2, e.y2, 0]); }
@@ -266,6 +270,7 @@ export function entHit(e, w, tol){
     const wd = boxWidth(e.content, e.size);
     return w[0] >= e.x - tol && w[0] <= e.x + wd + tol && w[1] >= e.y - tol && w[1] <= e.y + e.size + tol;
   }
+  if (e.type === 'mtext') return pointInPoly(w[0], w[1], mtextCorners(e));
   if (e.type === 'table') return pointInPoly(w[0], w[1], tableCorners(e));
   if (e.type === 'image') return pointInPoly(w[0], w[1], imageCorners(e));
   if (e.type === 'dim'){
@@ -291,6 +296,7 @@ export function translateEnt(e, dx, dy){
     for (let i = 0; i < (e.pts || []).length; i++){ e.pts[i][0] += dx; e.pts[i][1] += dy; }
   }
   else if (e.type === 'circle' || e.type === 'arc' || e.type === 'ellipse'){ e.cx += dx; e.cy += dy; }
+  else if (e.type === 'mtext'){ translateMText(e, dx, dy); }
   else if (e.type === 'text' || e.type === 'table' || e.type === 'image'){ e.x += dx; e.y += dy; }
   else if (e.type === 'insert' || e.type === 'xref'){ e.x += dx; e.y += dy; }
   else if (e.type === 'xline'){ e.x1 += dx; e.y1 += dy; e.x2 += dx; e.y2 += dy; }
@@ -317,6 +323,7 @@ export function entBBox(e, bb){
   else if (e.type === 'circle'){ add(e.cx - e.r, e.cy - e.r); add(e.cx + e.r, e.cy + e.r); }
   else if (e.type === 'arc'){ const ap = arcPoints(e); for (let j = 0; j < ap.length; j++) add(ap[j][0], ap[j][1]); }
   else if (e.type === 'text'){ add(e.x, e.y); add(e.x + boxWidth(e.content, e.size), e.y + e.size); }
+  else if (e.type === 'mtext'){ mtextCorners(e).forEach(p => add(p[0], p[1])); }
   else if (e.type === 'table'){ tableCorners(e).forEach(p => add(p[0], p[1])); }
   else if (e.type === 'image'){ imageCorners(e).forEach(p => add(p[0], p[1])); }
   else if (e.type === 'dim'){
@@ -348,6 +355,7 @@ export function rotateMembers(ms){
     else if (e.type === 'circle'){ p = rot(e.cx, e.cy); e.cx = p[0]; e.cy = p[1]; }
     else if (e.type === 'ellipse'){ p = rot(e.cx, e.cy); e.cx = p[0]; e.cy = p[1]; e.rot = (e.rot || 0) + 90; }
     else if (e.type === 'arc'){ p = rot(e.cx, e.cy); e.cx = p[0]; e.cy = p[1]; e.a1 += 90; e.a2 += 90; }
+    else if (e.type === 'mtext'){ p = rot(e.x, e.y); e.x = p[0]; e.y = p[1]; e.rot = (e.rot || 0) + 90; }
     else if (e.type === 'text' || e.type === 'table'){ p = rot(e.x, e.y); e.x = p[0]; e.y = p[1]; }
     else if (e.type === 'image'){ p = rot(e.x, e.y); e.x = p[0]; e.y = p[1]; e.rot = (e.rot || 0) + 90; }
     else if (e.type === 'insert' || e.type === 'xref'){

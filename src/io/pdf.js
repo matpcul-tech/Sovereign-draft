@@ -7,6 +7,8 @@ import { fmtFtIn } from '../core/format.js';
 import { membersBBox, explodeForIO } from '../core/entities.js';
 import { hatchLines, hatchPlan, ppfToScaleFactor } from '../core/hatch.js';
 import { polyOutline } from '../core/bulge.js';
+import { mtextLayout } from '../core/mtext.js';
+import { styleFor, metricsOpts } from '../core/textstyle.js';
 import { helveticaWidth } from '../core/textmetrics.js';
 import { sheetLabel } from '../core/document.js';
 import { tableFrags } from '../core/schedule.js';
@@ -92,7 +94,7 @@ function assemblePDF(objs){
   return pdf;
 }
 
-function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts, issued){
+function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts, issued, styles){
   const list = [];
   visible.forEach(e => {
     if (e.type === 'insert' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || e.type === 'profile' || e.type === 'centerline' || e.type === 'callout' || e.type === 'hatchRegion' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
@@ -135,6 +137,16 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts,
        * new text onto the paper value once views can differ in scale. */
       const th = e.paperTextH ? e.paperTextH : Math.max(e.size * ppf, 4);
       textAt(TX(e.x), TY(e.y), th, e.content || '', 0, false, 0.1);
+    }
+    else if (e.type === 'mtext'){
+      /* No ctx here, so the wrap uses the AFM metrics, which are the metrics
+       * of the font this writer embeds. That is the authority: the canvas
+       * measures against the same widths for exactly this reason. */
+      const th = e.paperTextH ? e.paperTextH : Math.max(e.size * ppf, 4);
+      /* textAt takes radians. */
+      const ang = (e.rot || 0) * Math.PI / 180;
+      const st = styleFor(e, styles);
+      for (const l of mtextLayout(e, metricsOpts(st))) textAt(TX(l.x), TY(l.y), th, l.text, ang, !!(st && st.bold), 0.1);
     }
     else if (e.type === 'dim'){
       const g = dimGeom(e);
@@ -214,7 +226,7 @@ export function buildPDF(entities, opts){
   }
   P('q');
   P(f2(VX) + ' ' + f2(VY) + ' ' + f2(VW) + ' ' + f2(VH) + ' re W n');
-  drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts);
+  drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts, false, opts.textStyles);
   P('Q');
   P('0.08 G 1.2 w');
   P('36 92 m 756 92 l S');
@@ -283,7 +295,7 @@ function layoutPage(entities, opts){
     }
     P('q');
     P(f2(VX) + ' ' + f2(VY) + ' ' + f2(VW) + ' ' + f2(VH) + ' re W n');
-    drawEntities(P, f2, TX, TY, visible, vppf, textAt, seg, path, circlePts, true);
+    drawEntities(P, f2, TX, TY, visible, vppf, textAt, seg, path, circlePts, true, opts.textStyles);
     P('Q');
     drawScaleBar(P, f2, textAt, vp0, vppf);
   }

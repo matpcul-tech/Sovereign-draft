@@ -41,7 +41,7 @@ function findGrip(sx, sy){
   return null;
 }
 
-const DRAW_TOOLS = ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'wall', 'ellipse', 'image', 'calibrate', 'xline', 'grid', 'arraypolar', 'section', 'detail', 'fcf'];
+const DRAW_TOOLS = ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'wall', 'ellipse', 'image', 'calibrate', 'xline', 'grid', 'arraypolar', 'section', 'detail', 'fcf', 'mtext'];
 const TAP_TOOLS = ['erase', 'text', 'symbol', 'offset', 'trim', 'extend', 'match', 'area', 'list', 'id', 'dimrad', 'dimdia', 'schedule', 'datum', 'finish', 'arcseg'];
 const TWO_PICK = ['fillet', 'chamfer', 'mirror', 'move', 'copy', 'rotate', 'scale'];
 const POLY_TOOLS = ['poly', 'hatch', 'cloud', 'leader', 'spline'];
@@ -299,6 +299,13 @@ function endPointer(ev){
     } else {
       const t = (tool === 'line' && state.wallMode) ? 'wall' : tool;
       finishDraw(drag.p1, drag.p2, t);
+      /* A paragraph column is picked before its words exist, so the text
+       * prompt comes up as soon as the drag lands. */
+      if (t === 'mtext' && ix.pendingMText){
+        const el = document.getElementById('txtval'); if (el) el.value = '';
+        openSheet('sheetText');
+        setTimeout(() => { const f = document.getElementById('txtval'); if (f) f.focus(); }, 200);
+      }
     }
   }
   else if (drag.kind === 'grip' && drag.moved){

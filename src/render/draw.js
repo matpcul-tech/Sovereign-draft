@@ -79,7 +79,7 @@ function drawModel(clipToS, clipScl, only){
   for (const e of list){
     const L = layerByName(e.layer);
     if (L && !L.visible) continue;
-    drawEnt(ctx, e, L ? L.color : '#e8e4dd', !clipToS && !!selSet[e.id], toS, scl);
+    drawEnt(ctx, e, L ? L.color : '#e8e4dd', !clipToS && !!selSet[e.id], toS, scl, undefined, state.textStyles);
   }
   if (clipToS) return;
   drawConstraintGlyphs();

@@ -4,6 +4,7 @@ import { normalizeSheets, DOC_VERSION } from '../core/document.js';
 import { defaultDimStyles } from '../core/dimStyle.js';
 import { defaultLayouts } from '../core/layout.js';
 import { setDisplayUnits } from '../core/format.js';
+import { defaultTextStyles, validateTextStyles } from '../core/textstyle.js';
 
 export const AUTOSAVE_KEY = 'sovereign-draft.autosave.v1';
 
@@ -31,6 +32,8 @@ export function serializeProject(state, pretty){
     userBlocks: state.userBlocks,
     dimStyles: state.dimStyles,
     currentDimStyle: state.currentDimStyle,
+    textStyles: state.textStyles || defaultTextStyles(),
+    currentTextStyle: state.currentTextStyle || 'STANDARD',
     layouts: state.layouts,
     currentLayout: state.currentLayout,
     space: state.space,
@@ -54,6 +57,9 @@ export function validateProject(o){
     userBlocks: Array.isArray(o.userBlocks) ? o.userBlocks : [],
     dimStyles: Array.isArray(o.dimStyles) && o.dimStyles.length ? o.dimStyles : defaultDimStyles(),
     currentDimStyle: o.currentDimStyle || 'ARCH',
+    /* A file written before styles existed loads with the defaults. */
+    textStyles: validateTextStyles(o.textStyles),
+    currentTextStyle: o.currentTextStyle || 'STANDARD',
     /* Structural migration only. Entities are already true size and are
      * passed through untouched. */
     schemaVersion: Number(o.v) || 1,
@@ -83,6 +89,8 @@ export function applyProject(state, p){
   state.userBlocks = p.userBlocks;
   if (p.dimStyles) state.dimStyles = p.dimStyles;
   if (p.currentDimStyle) state.currentDimStyle = p.currentDimStyle;
+  if (p.textStyles) state.textStyles = p.textStyles;
+  if (p.currentTextStyle) state.currentTextStyle = p.currentTextStyle;
   if (p.layouts) state.layouts = p.layouts;
   if (p.currentLayout) state.currentLayout = p.currentLayout;
   if (p.space) state.space = p.space;

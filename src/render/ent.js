@@ -7,6 +7,9 @@ import { dashFor, lwToPx } from '../core/style.js';
 import { hatchLines, hatchPlan, pxPerFootToScaleFactor } from '../core/hatch.js';
 import { splinePoints, SPLINE_TOL } from '../core/spline.js';
 import { polyOutline } from '../core/bulge.js';
+import { mtextLayout, mtextCorners } from '../core/mtext.js';
+import { styleFor, textOpts, fontStack } from '../core/textstyle.js';
+import { composeFont } from '../core/textmetrics.js';
 import { flattenEnt, spanXline, isComposite, expandComposite} from '../core/entities.js';
 import { tableFrags } from '../core/schedule.js';
 import { dimLabel } from '../core/dimStyle.js';
@@ -32,7 +35,7 @@ function applyStroke(c, e, color, sel, scl){
   c.setLineDash(dash);
 }
 
-export function drawEnt(c, e, color, sel, toS, scl, bg){
+export function drawEnt(c, e, color, sel, toS, scl, bg, styles){
   if (isComposite(e)){
     expandComposite(e).forEach(f => drawEnt(c, f, color, sel, toS, scl, bg));
     return;
@@ -100,9 +103,42 @@ export function drawEnt(c, e, color, sel, toS, scl, bg){
   else if (e.type === 'text'){
     const q = toS(e.x, e.y);
     c.setLineDash([]);
-    c.font = Math.max(e.size * scl, 6) + 'px Outfit, system-ui';
+    const ts = styleFor(e, styles);
+    c.font = composeFont(Math.max(e.size * scl, 6), ts && ts.bold ? 600 : null, fontStack(ts));
     c.textBaseline = 'alphabetic'; c.textAlign = 'left';
-    c.fillText(e.content || '', q[0], q[1]);
+    if (e.rot){
+      c.save();
+      c.translate(q[0], q[1]);
+      c.rotate(-e.rot * Math.PI / 180);
+      c.fillText(e.content || '', 0, 0);
+      c.restore();
+    } else {
+      c.fillText(e.content || '', q[0], q[1]);
+    }
+  }
+  else if (e.type === 'mtext'){
+    c.setLineDash([]);
+    const px = Math.max(e.size * scl, 6);
+    const st = styleFor(e, styles);
+    c.font = composeFont(px, st && st.bold ? 600 : null, fontStack(st));
+    c.textBaseline = 'alphabetic'; c.textAlign = 'left';
+    /* Wrap against the font the canvas will actually draw, so what is on
+     * screen breaks where the screen says it breaks. */
+    const mo = textOpts(e, styles, c, px);
+    for (const l of mtextLayout(e, mo)){
+      const q = toS(l.x, l.y);
+      if (e.rot){
+        c.save(); c.translate(q[0], q[1]); c.rotate(-e.rot * Math.PI / 180);
+        c.fillText(l.text, 0, 0); c.restore();
+      } else {
+        c.fillText(l.text, q[0], q[1]);
+      }
+    }
+    if (sel){
+      c.setLineDash([4, 3]);
+      strokePathOn(c, toS, mtextCorners(e, mo), true);
+      c.setLineDash([]);
+    }
   }
   else if (e.type === 'dim') drawDim(c, e, sel ? '#d4a843' : color, toS, bg);
   else if (e.type === 'insert'){

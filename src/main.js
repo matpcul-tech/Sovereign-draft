@@ -32,6 +32,7 @@ import { generateSheetSet } from './core/sheetset.js';
 import { toHTML } from './io/html.js';
 import { encodeShare, decodeShare, shareUrl, tokenFromHash } from './io/share.js';
 import { setDisplayUnits } from './core/format.js';
+import { makeMText } from './core/mtext.js';
 
 const $ = id => document.getElementById(id);
 
@@ -277,8 +278,8 @@ function wireUi(){
   $('chipExplode') && $('chipExplode').addEventListener('click', explodeSelection);
   $('chipEditTxt') && $('chipEditTxt').addEventListener('click', () => {
     const ms = selMembers();
-    if (ms.length === 1 && ms[0].type === 'text'){
-      ix.editTextId = ms[0].id; ix.pendingTextPt = null;
+    if (ms.length === 1 && (ms[0].type === 'text' || ms[0].type === 'mtext')){
+      ix.editTextId = ms[0].id; ix.pendingTextPt = null; ix.pendingMText = null;
       $('txtval').value = ms[0].content || '';
       openSheet('sheetText');
       setTimeout(() => $('txtval').focus(), 300);
@@ -309,13 +310,19 @@ function wireUi(){
     } else if (ix.pendingLeader){
       if (v){ ix.pendingLeader.content = v; afterChange(); }
       ix.pendingLeader = null;
+    } else if (v && ix.pendingMText){
+      /* The drag set the column; the text wraps into it. */
+      const m = ix.pendingMText;
+      pushUndo();
+      addEntity(makeMText(v, { layer: 'TEXT', x: m.x, y: m.y, width: m.width, size: m.size, just: 'TL', style: state.currentTextStyle }));
+      afterChange();
     } else if (v && ix.pendingTextPt){
       pushUndo();
       addEntity({ type: 'text', layer: 'TEXT', x: ix.pendingTextPt[0], y: ix.pendingTextPt[1], size: 1.2, content: v });
       afterChange();
     }
     $('txtval').value = '';
-    ix.pendingTextPt = null; closeSheets();
+    ix.pendingTextPt = null; ix.pendingMText = null; closeSheets();
   });
 
   $('chipCtx') && $('chipCtx').addEventListener('click', function(){
@@ -525,7 +532,7 @@ function wireUi(){
   $('mExportPNG') && $('mExportPNG').addEventListener('click', () => {
     closeSheets();
     if (!state.entities.length){ toast('Nothing to export yet'); return; }
-    const canvas = renderPNG(state.entities, layerByName, state.projectName);
+    const canvas = renderPNG(state.entities, layerByName, state.projectName, state.textStyles);
     canvas.toBlob(blob => {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = fileSlug() + '.png';

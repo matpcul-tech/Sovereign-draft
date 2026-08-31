@@ -10,6 +10,7 @@ export const ix = {
   hoverPt: null,
   snapMark: null,
   pendingTextPt: null,
+  pendingMText: null,
   editTextId: null,
   assignMode: false,
   cmdBuf: '',
