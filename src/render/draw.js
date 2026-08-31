@@ -16,6 +16,7 @@ import { titleBlockModel, drawingTitleOf, viewportClearOfTitle } from '../core/t
 import { SNAP_KIND } from '../core/osnap.js';
 import { hatchLines } from '../core/hatch.js';
 import { splinePoints, makeSpline } from '../core/spline.js';
+import { makeIndexCache, queryIndices, worthIndexing } from '../core/spatial.js';
 import { entsInBBox } from '../core/legend.js';
 import { arcFrom3 } from '../core/modify.js';
 import { wallFrags } from '../core/walls.js';

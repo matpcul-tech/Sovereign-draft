@@ -5,6 +5,8 @@ import { defaultDimStyles } from '../core/dimStyle.js';
 import { defaultLayouts } from '../core/layout.js';
 import { setDisplayUnits } from '../core/format.js';
 import { defaultTextStyles, validateTextStyles } from '../core/textstyle.js';
+import { defaultPlotStyles, validatePlotStyles } from './plotstyle.js';
+import { validateLayerStates } from '../core/layerstate.js';
 
 export const AUTOSAVE_KEY = 'sovereign-draft.autosave.v1';
 
@@ -34,6 +36,9 @@ export function serializeProject(state, pretty){
     currentDimStyle: state.currentDimStyle,
     textStyles: state.textStyles || defaultTextStyles(),
     currentTextStyle: state.currentTextStyle || 'STANDARD',
+    plotStyles: state.plotStyles || defaultPlotStyles(),
+    currentPlotStyle: state.currentPlotStyle || 'ISO',
+    layerStates: state.layerStates || [],
     layouts: state.layouts,
     currentLayout: state.currentLayout,
     space: state.space,
@@ -60,6 +65,9 @@ export function validateProject(o){
     /* A file written before styles existed loads with the defaults. */
     textStyles: validateTextStyles(o.textStyles),
     currentTextStyle: o.currentTextStyle || 'STANDARD',
+    plotStyles: validatePlotStyles(o.plotStyles),
+    currentPlotStyle: o.currentPlotStyle || 'ISO',
+    layerStates: validateLayerStates(o.layerStates),
     /* Structural migration only. Entities are already true size and are
      * passed through untouched. */
     schemaVersion: Number(o.v) || 1,
@@ -91,6 +99,9 @@ export function applyProject(state, p){
   if (p.currentDimStyle) state.currentDimStyle = p.currentDimStyle;
   if (p.textStyles) state.textStyles = p.textStyles;
   if (p.currentTextStyle) state.currentTextStyle = p.currentTextStyle;
+  if (p.plotStyles) state.plotStyles = p.plotStyles;
+  if (p.currentPlotStyle) state.currentPlotStyle = p.currentPlotStyle;
+  state.layerStates = p.layerStates || [];
   if (p.layouts) state.layouts = p.layouts;
   if (p.currentLayout) state.currentLayout = p.currentLayout;
   if (p.space) state.space = p.space;

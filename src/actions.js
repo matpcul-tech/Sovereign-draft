@@ -19,6 +19,8 @@ import { makeHatch, boundaryContaining, HATCH_PATTERNS, closedLoops, hatchWithIs
 import { makeSpline } from './core/spline.js';
 import { styleByName } from './core/textstyle.js';
 import { polyBoolean, ringsArea } from './core/boolean.js';
+import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, removeLayerState, layerStateByName } from './core/layerstate.js';
+import { plotStyleByName } from './io/plotstyle.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
 import { makeIndexCache, queryPoint, queryBox, worthIndexing } from './core/spatial.js';
 import { alignedDim, continueDim, baselineDim, applyStyleToDim, angularDim, radiusDim, diameterDim, makeLeader } from './core/dimStyle.js';
@@ -141,6 +143,56 @@ export function closePoly(){
     ix.polyPts = []; ix.hoverPt = null;
     afterChange();
   }
+}
+
+/* Layer states: save what is showing now, bring it back later.
+ *
+ * Restoring reports how many layers it actually changed and names the ones
+ * the state has nothing to say about, so a state saved before a layer existed
+ * cannot quietly leave that layer however it happened to be.
+ */
+export function saveLayerState(name){
+  const n = String(name || '').trim();
+  if (!n){ toast('Name the layer state'); return; }
+  pushUndo();
+  state.layerStates = upsertLayerState(state.layerStates || [], captureLayerState(n, state.layers));
+  afterChange();
+  toast('Layer state ' + n.toUpperCase() + ' saved over ' + state.layers.length + ' layers');
+}
+
+export function restoreLayerState(name){
+  const rec = layerStateByName(state.layerStates, name);
+  if (!rec){
+    const have = (state.layerStates || []).map(s2 => s2.name).join(', ');
+    toast(have ? 'No state ' + name + '. Have: ' + have : 'No layer states saved yet', 4000);
+    return;
+  }
+  pushUndo();
+  const changed = applyLayerState(rec, state.layers);
+  const missed = unmanagedLayers(rec, state.layers);
+  afterChange();
+  toast(rec.name + ': ' + changed + ' layer' + (changed === 1 ? '' : 's') + ' changed'
+    + (missed.length ? ', not covered: ' + missed.join(', ') : ''), 4000);
+}
+
+export function deleteLayerState(name){
+  const rec = layerStateByName(state.layerStates, name);
+  if (!rec){ toast('No state ' + name); return; }
+  pushUndo();
+  state.layerStates = removeLayerState(state.layerStates, rec.name);
+  afterChange();
+  toast('Layer state ' + rec.name + ' deleted');
+}
+
+/* Pick the table the next plot uses. */
+export function setPlotStyle(name){
+  const t = plotStyleByName(state.plotStyles, name);
+  if (!t || String(name || '').toUpperCase() !== t.name){
+    toast('Plot styles: ' + (state.plotStyles || []).map(x => x.name).join(', '), 4000);
+    return;
+  }
+  state.currentPlotStyle = t.name;
+  toast('Plots will use ' + t.name);
 }
 
 /* Boolean operations over the closed regions in the selection.

@@ -91,7 +91,11 @@ export const COMMANDS = {
   UNION:   { aliases: ['UNION', 'BUNION'],              tool: null,     action: 'bool:union' },
   SUBTRACT:{ aliases: ['SUBTRACT', 'BSUB'],             tool: null,     action: 'bool:difference' },
   INTERSECT:{ aliases: ['INTERSECT', 'BINT'],           tool: null,     action: 'bool:intersect' },
-  BXOR:    { aliases: ['BXOR', 'EXCLUSIVE'],            tool: null,     action: 'bool:xor' }
+  BXOR:    { aliases: ['BXOR', 'EXCLUSIVE'],            tool: null,     action: 'bool:xor' },
+  LAYSAVE: { aliases: ['LAYSAVE', 'LSAVE'],             tool: null,     action: 'laysave' },
+  LAYREST: { aliases: ['LAYREST', 'LRESTORE'],          tool: null,     action: 'layrest' },
+  LAYDEL:  { aliases: ['LAYDEL'],                       tool: null,     action: 'laydel' },
+  PLOTSTYLE:{ aliases: ['PLOTSTYLE', 'CTB'],            tool: null,     action: 'plotstyle' }
 };
 
 const ALIAS = {};

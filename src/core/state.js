@@ -11,6 +11,7 @@ import { syncAutoRooms } from './rooms.js';
 import { dropDanglingConstraints } from './constrain.js';
 import { setDisplayUnits } from './format.js';
 import { defaultTextStyles } from './textstyle.js';
+import { defaultPlotStyles } from '../io/plotstyle.js';
 
 export const LAYER_COLORS = ['#00d4b8', '#c45a3c', '#d4af37', '#8fa3c0', '#4ade80', '#e8e4dd'];
 export const GRID_SNAP = 0.5;
@@ -48,6 +49,9 @@ export const state = {
   geomStamp: 0,
   textStyles: defaultTextStyles(),
   currentTextStyle: 'STANDARD',
+  plotStyles: defaultPlotStyles(),
+  currentPlotStyle: 'ISO',
+  layerStates: [],
   userBlocks: [],
   idSeq: 1,
   gSeq: 1,
@@ -148,6 +152,9 @@ function snapshot(){
     constraints: deep(state.constraints || []),
     dimStyles: deep(state.dimStyles),
     textStyles: deep(state.textStyles || []),
+    plotStyles: deep(state.plotStyles || []),
+    layerStates: deep(state.layerStates || []),
+    currentPlotStyle: state.currentPlotStyle,
     layouts: deep(state.layouts),
     currentDimStyle: state.currentDimStyle,
     currentLayout: state.currentLayout,
@@ -160,6 +167,9 @@ function restore(s){
   state.constraints = s.constraints || [];
   if (s.dimStyles) state.dimStyles = s.dimStyles;
   if (s.textStyles) state.textStyles = s.textStyles;
+  if (s.plotStyles) state.plotStyles = s.plotStyles;
+  if (s.layerStates) state.layerStates = s.layerStates;
+  if (s.currentPlotStyle) state.currentPlotStyle = s.currentPlotStyle;
   if (s.layouts) state.layouts = s.layouts;
   if (s.currentDimStyle) state.currentDimStyle = s.currentDimStyle;
   if (s.currentLayout) state.currentLayout = s.currentLayout;

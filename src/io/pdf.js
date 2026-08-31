@@ -16,7 +16,7 @@ import { detailBubbleText } from '../core/sheetspace.js';
 import { sheetOf } from '../core/layout.js';
 import { titleBlockModel, drawingTitleOf, fitPaperText, viewportClearOfTitle } from '../core/titleblock.js';
 import { entsInBBox } from '../core/legend.js';
-import { plotLwPt } from './plotstyle.js';
+import { plotLwPt, styledLwPt, styledGray, stylePlots, plotStyleByName, defaultPlotStyles, SOLID_GRAY, DIM_GRAY } from './plotstyle.js';
 
 export const SCALE_LADDER = [
   { ppf: 864,  lbl: '1:1' },
@@ -94,7 +94,7 @@ function assemblePDF(objs){
   return pdf;
 }
 
-function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts, issued, styles){
+function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts, issued, styles, table, named){
   const list = [];
   visible.forEach(e => {
     if (e.type === 'insert' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || e.type === 'profile' || e.type === 'centerline' || e.type === 'callout' || e.type === 'hatchRegion' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
@@ -104,13 +104,19 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts,
   list.forEach(e => {
     const isDim = e.layer === 'DIMS';
     const isWall = e.layer === 'WALLS' || e.kind === 'wall';
-    if (issued){
-      const pt = plotLwPt(e);
+    /* An issued sheet always plots at real lineweights. The quick export
+     * uses screen weights unless a table was actually asked for, so naming
+     * one governs weight on both paths while naming none leaves the quick
+     * export exactly as it was. */
+    if (issued || named){
+      const pt = table ? styledLwPt(e, table) : plotLwPt(e);
       P(f2(isDim ? Math.min(pt, 0.55) : pt) + ' w');
     } else {
       P((isWall ? '1.4' : (isDim ? '0.4' : '0.7')) + ' w');
     }
-    P((isDim ? '0.35' : '0.08') + ' G');
+    /* Screening scales the ink toward paper white. With no table, or a table
+     * at full tone, this is the same value the writer has always used. */
+    P(f2(table ? styledGray(e, table, isDim) : (isDim ? DIM_GRAY : SOLID_GRAY)) + ' G');
     if (e.type === 'line') seg(e.x1, e.y1, e.x2, e.y2);
     else if (e.type === 'poly') path(polyOutline(e), e.closed);
     else if (e.type === 'circle') path(circlePts(e.cx, e.cy, e.r), false);
@@ -172,7 +178,14 @@ export function buildPDF(entities, opts){
   opts = opts || {};
   if (opts.layout) return buildLayoutPDF(entities, opts);
   const layerVisible = opts.layerVisible || (() => true);
-  const visible = entities.filter(e => layerVisible(e.layer));
+  /* A layer can be on screen and off paper. The app folds that flag into the
+   * layerVisible callback it passes in, but the default here is permissive,
+   * so any other caller silently printed layers marked not to plot. Reading
+   * it from the layer records makes the writer correct on its own, and it is
+   * also how a plot style table holds a layer back. */
+  const table = plotStyleByName(opts.plotStyles || defaultPlotStyles(), opts.plotStyle);
+  const layerRec = n => (opts.layers || []).find(L => L && L.name === n) || null;
+  const visible = entities.filter(e => layerVisible(e.layer) && stylePlots(e.layer, table, layerRec(e.layer)));
   const bb = membersBBox(visible.length ? visible : entities);
   const wft = Math.max(bb[2] - bb[0], 0.5), hft = Math.max(bb[3] - bb[1], 0.5);
   const VX = 36, VY = 100, VW = 720, VH = 476;
@@ -226,7 +239,7 @@ export function buildPDF(entities, opts){
   }
   P('q');
   P(f2(VX) + ' ' + f2(VY) + ' ' + f2(VW) + ' ' + f2(VH) + ' re W n');
-  drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts, false, opts.textStyles);
+  drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts, false, opts.textStyles, table, !!opts.plotStyle);
   P('Q');
   P('0.08 G 1.2 w');
   P('36 92 m 756 92 l S');
@@ -257,7 +270,9 @@ function layoutPage(entities, opts){
   const sh = sheetOf(layout.sheet);
   const pageW = Math.round(sh.w * 72), pageH = Math.round(sh.h * 72);
   const layerVisible = opts.layerVisible || (() => true);
-  let visible = entities.filter(e => layerVisible(e.layer))
+  const table = plotStyleByName(opts.plotStyles || defaultPlotStyles(), opts.plotStyle);
+  const layerRec = n => (opts.layers || []).find(L => L && L.name === n) || null;
+  let visible = entities.filter(e => layerVisible(e.layer) && stylePlots(e.layer, table, layerRec(e.layer)))
     /* An entity scoped to specific sheets appears only there. */
     .filter(e => !e.visibleIn || e.visibleIn.indexOf(layout.id) >= 0);
   if (layout.section && layout.section.bbox){
@@ -295,7 +310,7 @@ function layoutPage(entities, opts){
     }
     P('q');
     P(f2(VX) + ' ' + f2(VY) + ' ' + f2(VW) + ' ' + f2(VH) + ' re W n');
-    drawEntities(P, f2, TX, TY, visible, vppf, textAt, seg, path, circlePts, true, opts.textStyles);
+    drawEntities(P, f2, TX, TY, visible, vppf, textAt, seg, path, circlePts, true, opts.textStyles, table, !!opts.plotStyle);
     P('Q');
     drawScaleBar(P, f2, textAt, vp0, vppf);
   }

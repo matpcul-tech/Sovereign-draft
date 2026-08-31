@@ -18,7 +18,8 @@ import {
   applySheetSet, layerIsolate, layerUnisolate, bindSelection,
   placeDatumAt, placeFinishAt, applyStoryHeight, beginHeightPrompt,
   addConstraint, solveConstraintsNow, deleteConstraintsOnSelection, solveAfterEdit,
-  hatchIslandsFromSelection, arcSegTap, booleanOnSelection
+  hatchIslandsFromSelection, arcSegTap, booleanOnSelection,
+  saveLayerState, restoreLayerState, deleteLayerState, setPlotStyle
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
 import { setTool } from './ui/tools.js';
@@ -464,6 +465,10 @@ export function handleCommand(text){
   if (res.action === 'cdel'){ deleteConstraintsOnSelection(); return; }
   if (res.action === 'bhatch'){ hatchIslandsFromSelection(); return; }
   if (res.action && res.action.indexOf('bool:') === 0){ booleanOnSelection(res.action.slice(5)); return; }
+  if (res.action === 'laysave'){ saveLayerState(res.rest); return; }
+  if (res.action === 'layrest'){ restoreLayerState(res.rest); return; }
+  if (res.action === 'laydel'){ deleteLayerState(res.rest); return; }
+  if (res.action === 'plotstyle'){ setPlotStyle(res.rest); return; }
   if (res.action === 'zoomfit'){ zoomFit(); draw(); return; }
   if (res.action === 'explode'){ explodeSelection(); return; }
   if (res.action === 'flip'){ flipSelection(); return; }
