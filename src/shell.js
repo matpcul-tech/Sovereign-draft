@@ -258,6 +258,7 @@ export function shellHTML(){
   <div class="subtle" style="margin-top:0;margin-bottom:10px">Stamped on every printed sheet — company, copyright, drawing title, sheet number.</div>
   <button class="mrow" id="mOpenDrawing"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Open drawing<small>DXF · DWG · JSON · drop a file</small></button>
   <button class="mrow" id="mImportDXF"><svg viewBox="0 0 24 24"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 3v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3"/></svg>Insert DXF<small>merge into this sheet</small></button>
+  <button class="mrow" id="mFont"><svg viewBox="0 0 24 24"><path d="M5 20V5h9a4 4 0 0 1 0 8H5"/><path d="M12 13l5 7"/></svg>Embed a font<small>TrueType · plots any script</small></button>
   <button class="mrow" id="mXref"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="9" height="9" rx="1"/><rect x="12" y="12" width="9" height="9" rx="1"/><path d="M8 12v4h4"/></svg>Attach xref<small>JSON · DXF as underlay</small></button>
   <button class="mrow" id="mSaveJSON"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg>Save project<small>.json</small></button>
   <button class="mrow" id="mShare"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>Copy share link<small>no server · URL hash</small></button>
@@ -294,6 +295,7 @@ export function shellHTML(){
 <input type="file" id="fileOpen" accept=".dxf,.json,.dwg,application/json,application/dxf" style="display:none">
 <input type="file" id="fileDXF" accept=".dxf,application/dxf" style="display:none">
 <input type="file" id="fileXref" accept=".dxf,.json,.dwg,application/json,application/dxf" style="display:none">
+<input type="file" id="fileFont" accept=".ttf,.otf,font/ttf,font/sfnt" style="display:none">
 <input type="file" id="fileImage" accept="image/*" style="display:none">
 <div id="dropmask"><span>Drop a DXF, DWG or JSON to open it as the drawing</span></div>
 <div id="toast"></div>`;

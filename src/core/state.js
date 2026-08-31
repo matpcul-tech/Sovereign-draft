@@ -52,6 +52,7 @@ export const state = {
   plotStyles: defaultPlotStyles(),
   currentPlotStyle: 'ISO',
   layerStates: [],
+  plotFont: null,
   userBlocks: [],
   idSeq: 1,
   gSeq: 1,

@@ -33,6 +33,7 @@ import { toHTML } from './io/html.js';
 import { encodeShare, decodeShare, shareUrl, tokenFromHash } from './io/share.js';
 import { setDisplayUnits } from './core/format.js';
 import { makeMText } from './core/mtext.js';
+import { latin1ToBytes } from './io/pdffont.js';
 
 const $ = id => document.getElementById(id);
 
@@ -437,9 +438,14 @@ function wireUi(){
         sheets,
         layerVisible,
         projectName: state.projectName,
-        firm: state.firm
+        firm: state.firm,
+        font: state.plotFont,
+        layers: state.layers,
+        textStyles: state.textStyles,
+        plotStyles: state.plotStyles,
+        plotStyle: state.currentPlotStyle
       });
-      download(fileSlug() + '.pdf', pdf, 'application/pdf');
+      download(fileSlug() + '.pdf', latin1ToBytes(pdf), 'application/pdf');
       toast('PDF · ' + sheets.length + ' sheet' + (sheets.length === 1 ? '' : 's') + ' at ' + scaleLabel(ppf));
       return;
     }
@@ -447,9 +453,14 @@ function wireUi(){
       ppf: state.pdfPPF,
       layerVisible,
       projectName: state.projectName,
-      firm: state.firm
+      firm: state.firm,
+      font: state.plotFont,
+      layers: state.layers,
+      textStyles: state.textStyles,
+      plotStyles: state.plotStyles,
+      plotStyle: state.currentPlotStyle
     });
-    download(fileSlug() + '.pdf', pdf, 'application/pdf');
+    download(fileSlug() + '.pdf', latin1ToBytes(pdf), 'application/pdf');
     toast('PDF exported at ' + scaleLabel(ppf));
   });
   $('mExportDXF') && $('mExportDXF').addEventListener('click', () => {
@@ -680,6 +691,23 @@ function wireUi(){
     const f = ev.target.files && ev.target.files[0];
     if (f) readDrawingFile(f, true);
     ev.target.value = '';
+  });
+  $('mFont') && $('mFont').addEventListener('click', () => $('fileFont').click());
+  $('fileFont') && $('fileFont').addEventListener('change', async ev => {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!f) return;
+    try {
+      const { parseTTF, embeddingAllowed } = await import('./io/ttf.js');
+      const font = parseTTF(await f.arrayBuffer());
+      /* A font that forbids embedding must not end up inside someone's
+       * issued drawing set. */
+      if (!embeddingAllowed(font)){ toast(font.name + ' does not permit embedding', 4000); return; }
+      state.plotFont = font;
+      toast(font.name + ' will be embedded in plots (' + font.numGlyphs + ' glyphs available)', 4000);
+    } catch (e){
+      toast('Could not read that font: ' + (e && e.message ? e.message : 'unknown'), 4000);
+    }
   });
   $('mXref') && $('mXref').addEventListener('click', () => $('fileXref').click());
   $('fileXref') && $('fileXref').addEventListener('change', ev => {

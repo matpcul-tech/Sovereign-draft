@@ -106,6 +106,7 @@ export function drawEnt(c, e, color, sel, toS, scl, bg, styles){
     const ts = styleFor(e, styles);
     c.font = composeFont(Math.max(e.size * scl, 6), ts && ts.bold ? 600 : null, fontStack(ts));
     c.textBaseline = 'alphabetic'; c.textAlign = 'left';
+    if ('fontKerning' in c) c.fontKerning = 'none';
     if (e.rot){
       c.save();
       c.translate(q[0], q[1]);
@@ -122,6 +123,8 @@ export function drawEnt(c, e, color, sel, toS, scl, bg, styles){
     const st = styleFor(e, styles);
     c.font = composeFont(px, st && st.bold ? 600 : null, fontStack(st));
     c.textBaseline = 'alphabetic'; c.textAlign = 'left';
+    /* Drawn unkerned to match how it was measured and how it plots. */
+    if ('fontKerning' in c) c.fontKerning = 'none';
     /* Wrap against the font the canvas will actually draw, so what is on
      * screen breaks where the screen says it breaks. */
     const mo = textOpts(e, styles, c, px);

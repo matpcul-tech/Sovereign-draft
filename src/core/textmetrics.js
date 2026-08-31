@@ -70,9 +70,16 @@ export function helveticaWidth(str, size, bold){
 export function canvasWidth(str, px, ctx, weight, family){
   if (!ctx || typeof ctx.measureText !== 'function') return null;
   const prev = ctx.font;
+  const prevKern = ctx.fontKerning;
+  /* A canvas kerns; a PDF Tj does not. Left on, the same string measures up
+   * to seven percent narrower on screen than it plots, so a paragraph wraps
+   * in one place on the display and another on paper. Off, the two agree to
+   * a twentieth of a percent. */
+  if ('fontKerning' in ctx) ctx.fontKerning = 'none';
   ctx.font = composeFont(px, weight, family);
   const w = ctx.measureText(String(str == null ? '' : str)).width;
   ctx.font = prev;
+  if ('fontKerning' in ctx) ctx.fontKerning = prevKern;
   return w;
 }
 

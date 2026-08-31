@@ -14,6 +14,8 @@ import { sheetLabel } from '../core/document.js';
 import { tableFrags } from '../core/schedule.js';
 import { detailBubbleText } from '../core/sheetspace.js';
 import { sheetOf, clipPoly, viewportRot } from '../core/layout.js';
+import { fontObjects, hexString, collectGlyphs } from './pdffont.js';
+import { missingGlyphs } from './ttf.js';
 import { titleBlockModel, drawingTitleOf, fitPaperText, viewportClearOfTitle } from '../core/titleblock.js';
 import { entsInBBox } from '../core/legend.js';
 import { plotLwPt, styledLwPt, styledGray, stylePlots, plotStyleByName, defaultPlotStyles, SOLID_GRAY, DIM_GRAY } from './plotstyle.js';
@@ -37,8 +39,15 @@ export function scaleLabel(ppf){
   return ppf + ' pt/ft';
 }
 
+/* Typographic characters the base fonts cannot draw but that have an honest
+ * ASCII spelling. Folding these first means a degree sign does not drag a
+ * whole embedded font into the file just to print one glyph. */
+export function foldTypographic(s){
+  return String(s).replace(/½/g, ' 1/2').replace(/¼/g, ' 1/4').replace(/¾/g, ' 3/4').replace(/×/g, 'x').replace(/Δ/g, 'd').replace(/·/g, '-').replace(/°/g, ' deg').replace(/©/g, '(c)');
+}
+
 export function pdfSafe(s){
-  s = String(s).replace(/½/g, ' 1/2').replace(/¼/g, ' 1/4').replace(/¾/g, ' 3/4').replace(/×/g, 'x').replace(/Δ/g, 'd').replace(/·/g, '-').replace(/°/g, ' deg').replace(/©/g, '(c)');
+  s = foldTypographic(s);
   let out = '';
   for (let i = 0; i < s.length; i++){
     const ch = s[i], cd = s.charCodeAt(i);
@@ -54,7 +63,7 @@ export function pdfSafe(s){
  * then the two fonts. With a single page that is objects 3,4,5,6, which is
  * exactly the layout the single page writer used, so the bytes are unchanged.
  */
-export function wrapPDFPages(pages){
+export function wrapPDFPages(pages, embed){
   const n = pages.length;
   const fontR = 3 + n * 2, fontB = 4 + n * 2;
   const kids = pages.map((_, i) => (3 + i * 2) + ' 0 R').join(' ');
@@ -62,19 +71,75 @@ export function wrapPDFPages(pages){
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj',
     '2 0 obj\n<< /Type /Pages /Kids [' + kids + '] /Count ' + n + ' >>\nendobj'
   ];
+  /* An embedded font takes four objects after the base fonts, and is offered
+   * to every page as /F3 so text can name it without a per page table. */
+  const embedRef = embed ? fontB + 1 : 0;
+  const fontRes = '/F1 ' + fontR + ' 0 R /F2 ' + fontB + ' 0 R' +
+    (embed ? ' /F3 ' + embedRef + ' 0 R' : '');
   pages.forEach((pg, i) => {
     const pageNum = 3 + i * 2, contentNum = 4 + i * 2;
     objs.push(pageNum + ' 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pg.pageW + ' ' + pg.pageH +
-      '] /Contents ' + contentNum + ' 0 R /Resources << /Font << /F1 ' + fontR + ' 0 R /F2 ' + fontB + ' 0 R >> >> >>\nendobj');
+      '] /Contents ' + contentNum + ' 0 R /Resources << /Font << ' + fontRes + ' >> >> >>\nendobj');
     objs.push(contentNum + ' 0 obj\n<< /Length ' + pg.stream.length + ' >>\nstream\n' + pg.stream + '\nendstream\nendobj');
   });
   objs.push(fontR + ' 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj');
   objs.push(fontB + ' 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj');
+  if (embed) fontObjects(embed.font, embed.glyphs, embedRef).objs.forEach(o => objs.push(o));
   return assemblePDF(objs);
 }
 
 function wrapPDF(stream, pageW, pageH){
-  return wrapPDFPages([{ stream, pageW, pageH }]);
+  return wrapPDFPages([{ stream, pageW, pageH }], embedPayload());
+}
+
+/* ---------- text output, with or without an embedded font ----------
+ *
+ * With no font the writer emits a literal string in the base 14 Helvetica,
+ * exactly as it always has. With one, text becomes a run of two byte glyph
+ * ids under Identity-H, which is what carries a script Helvetica has no
+ * glyphs for.
+ *
+ * The embedded font is named per string rather than per document: a drawing
+ * is mostly Latin, and leaving that on Helvetica keeps the subset small and
+ * the plotted weight of ordinary notes unchanged.
+ */
+let EMBED = null;
+const EMBED_SEEN = new Set();
+
+export function setEmbeddedFont(font){
+  EMBED = font || null;
+  EMBED_SEEN.clear();
+}
+
+/* Text the base fonts cannot draw has to use the embedded one.
+ *
+ * This has to look at the original string. pdfSafe replaces everything
+ * outside printable ASCII with a space, so asking it what it produced would
+ * always answer "plain ASCII" and no text would ever reach the embedded
+ * font. The question is what pdfSafe would have destroyed. */
+function needsEmbed(str){
+  if (!EMBED) return false;
+  return /[^\x20-\x7e]/.test(foldTypographic(String(str == null ? '' : str)));
+}
+
+function fontOp(str, bold){
+  if (needsEmbed(str)) return '/F3';
+  return bold ? '/F2' : '/F1';
+}
+
+function showText(str){
+  const s = String(str == null ? '' : str);
+  if (needsEmbed(str)){
+    EMBED_SEEN.add(s);
+    return hexString(EMBED, s);
+  }
+  return '(' + pdfSafe(s) + ')';
+}
+
+/* What the document actually needs embedded, gathered while it was drawn. */
+function embedPayload(){
+  if (!EMBED || !EMBED_SEEN.size) return null;
+  return { font: EMBED, glyphs: collectGlyphs(EMBED, [...EMBED_SEEN]) };
 }
 
 function assemblePDF(objs){
@@ -175,6 +240,7 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts,
 
 /* opts: { ppf: number | 'fit', layerVisible(name)=>bool, projectName, dateStr, layout } */
 export function buildPDF(entities, opts){
+  setEmbeddedFont((opts && opts.font) || null);
   opts = opts || {};
   if (opts.layout) return buildLayoutPDF(entities, opts);
   const layerVisible = opts.layerVisible || (() => true);
@@ -235,7 +301,7 @@ export function buildPDF(entities, opts){
   }
   function textAt(px, py, size, str, ang, bold, gray){
     const co = Math.cos(ang || 0), si = Math.sin(ang || 0);
-    P('BT /' + (bold ? 'F2' : 'F1') + ' ' + f2(size) + ' Tf ' + f2(gray) + ' g ' + f2(co) + ' ' + f2(si) + ' ' + f2(-si) + ' ' + f2(co) + ' ' + f2(px) + ' ' + f2(py) + ' Tm (' + pdfSafe(str) + ') Tj ET');
+    P('BT ' + fontOp(str, bold) + ' ' + f2(size) + ' Tf ' + f2(gray) + ' g ' + f2(co) + ' ' + f2(si) + ' ' + f2(-si) + ' ' + f2(co) + ' ' + f2(px) + ' ' + f2(py) + ' Tm ' + showText(str) + ' Tj ET');
   }
   P('q');
   P(f2(VX) + ' ' + f2(VY) + ' ' + f2(VW) + ' ' + f2(VH) + ' re W n');
@@ -287,7 +353,7 @@ function layoutPage(entities, opts){
   const P = s => C.push(s);
   function textAt(px, py, size, str, ang, bold, gray){
     const co = Math.cos(ang || 0), si = Math.sin(ang || 0);
-    P('BT /' + (bold ? 'F2' : 'F1') + ' ' + f2(size) + ' Tf ' + f2(gray == null ? 0.08 : gray) + ' g ' + f2(co) + ' ' + f2(si) + ' ' + f2(-si) + ' ' + f2(co) + ' ' + f2(px) + ' ' + f2(py) + ' Tm (' + pdfSafe(str) + ') Tj ET');
+    P('BT ' + fontOp(str, bold) + ' ' + f2(size) + ' Tf ' + f2(gray == null ? 0.08 : gray) + ' g ' + f2(co) + ' ' + f2(si) + ' ' + f2(-si) + ' ' + f2(co) + ' ' + f2(px) + ' ' + f2(py) + ' Tm ' + showText(str) + ' Tj ET');
   }
   const ppf = layout.ppf || 18;
   for (const vpRaw of layout.viewports){
@@ -474,12 +540,13 @@ function paintTitleBlock(P, f2, textAt, model){
 
 export function buildLayoutPDF(entities, opts){
   const pg = layoutPage(entities, opts);
-  return { pdf: wrapPDFPages([pg]), ppf: pg.ppf, clipped: false };
+  return { pdf: wrapPDFPages([pg], embedPayload()), ppf: pg.ppf, clipped: false };
 }
 
 /* Every sheet in the document, one page each, in one file. Sheet numbering and
  * the sheet count in each title block come from the position in this list. */
 export function buildAllSheetsPDF(entities, opts){
+  setEmbeddedFont((opts && opts.font) || null);
   const o = opts || {};
   const sheets = Array.isArray(o.sheets) ? o.sheets.filter(Boolean) : [];
   if (!sheets.length) return buildPDF(entities, o);
@@ -488,5 +555,5 @@ export function buildAllSheetsPDF(entities, opts){
     sheetIndex: i,
     sheetCount: sheets.length
   })));
-  return { pdf: wrapPDFPages(pages), pages: pages.length, ppf: pages[0].ppf, clipped: false };
+  return { pdf: wrapPDFPages(pages, embedPayload()), pages: pages.length, ppf: pages[0].ppf, clipped: false };
 }
