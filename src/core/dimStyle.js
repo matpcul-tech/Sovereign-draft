@@ -14,9 +14,20 @@ export function dimLabel(e){
     return (Math.round(d * 10) / 10) + '°';
   }
   const L = dist(e.x1, e.y1, e.x2, e.y2);
-  if (e.kind === 'radius') return 'R ' + fmtFtIn(L, e.precision);
-  if (e.kind === 'diameter') return '⌀ ' + fmtFtIn(L * 2, e.precision);
-  return fmtFtIn(L, e.precision);
+  let base;
+  if (e.kind === 'radius') base = 'R ' + fmtFtIn(L, e.precision);
+  else if (e.kind === 'diameter') base = '⌀ ' + fmtFtIn(L * 2, e.precision);
+  else base = fmtFtIn(L, e.precision);
+  const plus = e.tolPlus != null ? Number(e.tolPlus) : null;
+  const minus = e.tolMinus != null ? Number(e.tolMinus) : null;
+  if (plus != null && isFinite(plus) || minus != null && isFinite(minus)){
+    const p = plus != null && isFinite(plus) ? plus : minus;
+    const m = minus != null && isFinite(minus) ? minus : plus;
+    if (Math.abs(p - m) < 1e-9) base += ' ±' + fmtFtIn(p, e.precision);
+    else base += ' +' + fmtFtIn(p, e.precision) + '/-' + fmtFtIn(m, e.precision);
+  }
+  if (e.assumed) base += ' TYP';
+  return base;
 }
 
 export const DIM_PRECISIONS = ['1/2', '1/4', 'decimal'];

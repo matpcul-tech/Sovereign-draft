@@ -30,7 +30,10 @@ export function defaultLayers(){
     { name: 'UNDERLAY',  color: '#4a5a73', aci: 8, visible: true, plot: false },
     { name: 'ROOMS',     color: '#4ade80', aci: 3, visible: true },
     { name: 'GRID',      color: '#8fa3c0', aci: 8, visible: true, lt: 'CENTER' },
-    { name: 'DEFPOINTS', color: '#6b7c93', aci: 8, visible: true, plot: false }
+    { name: 'DEFPOINTS', color: '#6b7c93', aci: 8, visible: true, plot: false },
+    { name: 'SECTION',   color: '#00d4b8', aci: 4, visible: true },
+    { name: 'GDT',       color: '#e8e4dd', aci: 7, visible: true },
+    { name: 'NOTES',     color: '#e8e4dd', aci: 7, visible: true }
   ];
 }
 

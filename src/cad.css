@@ -32,7 +32,9 @@ button{font-family:'Outfit',system-ui,sans-serif;color:var(--ink);background:non
 #wrap{position:fixed;inset:0}
 canvas{display:block;width:100%;height:100%;touch-action:none;background:var(--navy)}
 #hint{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);z-index:1;text-align:center;color:var(--ink-dim);
-  pointer-events:none;transition:opacity .4s;max-width:320px}
+  pointer-events:none;max-width:320px}
+#hint.empty{opacity:1}
+#hint:not(.empty){display:none !important;opacity:0;pointer-events:none;visibility:hidden}
 #hint h2{font-family:'Playfair Display',Georgia,serif;font-weight:500;color:var(--ink);font-size:20px;margin-bottom:8px}
 #hint p{font-size:13px;line-height:1.55;font-weight:300}
 #hint .k{color:var(--gold);font-weight:500}

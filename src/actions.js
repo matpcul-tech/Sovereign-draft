@@ -34,6 +34,11 @@ import { buildTakeoffTable, takeoffSummary } from './core/takeoff.js';
 import { syncAutoRooms } from './core/rooms.js';
 import { generateSheetSet } from './core/sheetset.js';
 import { envelopeDims } from './core/spec.js';
+import { buildSection, buildDetail } from './core/section.js';
+import { makeFcf, makeDatum, makeFinish, nextDatumLetter } from './core/gdt.js';
+import { addSheet } from './core/document.js';
+import { makeLayout, fitViewport } from './core/layout.js';
+import { makeDetailCallout, addAnnotation } from './core/sheetspace.js';
 
 export function applyConstraint(p1, p2){
   if (!p1 || !p2) return p2;
@@ -297,7 +302,15 @@ export function finishDraw(p1, p2, tool){
     return;
   }
   if (tool === 'image' && !ix.imageSrc){ toast('Pick an image file first'); return; }
-  if (dist(p1[0], p1[1], p2[0], p2[1]) < 0.05 && tool !== 'stretch') return;
+  if (tool === 'section'){
+    applySectionCut(p1, p2);
+    return;
+  }
+  if (tool === 'detail'){
+    applyDetailWindow(p1, p2);
+    return;
+  }
+  if (dist(p1[0], p1[1], p2[0], p2[1]) < 0.05 && tool !== 'stretch' && tool !== 'fcf') return;
   pushUndo();
   if (tool === 'line') addEntity({ type: 'line', layer: state.currentLayer, x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1] });
   else if (tool === 'rect') addEntity({ type: 'poly', layer: state.currentLayer, closed: true, pts: [[p1[0], p1[1]], [p2[0], p1[1]], [p2[0], p2[1]], [p1[0], p2[1]]] });
@@ -345,7 +358,97 @@ export function finishDraw(p1, p2, tool){
     toast('Type the true length of that span');
     return;
   }
+  else if (tool === 'fcf'){
+    const e = makeFcf({
+      x: p2[0], y: p2[1],
+      anchor: p1,
+      char: state.fcfChar || 'position',
+      tol: state.fcfTol != null ? state.fcfTol : 0.01,
+      datum: state.fcfDatum || ''
+    });
+    if (!e){ toast('FCF needs a tolerance'); return; }
+    addEntity(e);
+  }
   afterChange();
+}
+
+export function placeDatumAt(p){
+  if (!p) return;
+  const letter = nextDatumLetter(state.entities);
+  pushUndo();
+  addEntity(makeDatum({ x: p[0], y: p[1], letter }));
+  afterChange();
+  toast('Datum ' + letter);
+}
+
+export function placeFinishAt(p){
+  if (!p) return;
+  pushUndo();
+  addEntity(makeFinish({ x: p[0], y: p[1], roughness: state.finishRough || '' }));
+  afterChange();
+}
+
+export function applySectionCut(p1, p2){
+  const built = buildSection(state.entities, p1, p2);
+  if (!built.hits || !built.hits.length){
+    toast(built.note || 'Cut does not cross the drawing');
+    pushUndo();
+    addEntity(built.plane);
+    afterChange();
+    return 0;
+  }
+  pushUndo();
+  addEntity(built.plane);
+  built.entities.forEach(e => addEntity(e));
+  const layouts = addSheet(state.layouts, makeLayout, {
+    sheetNumber: 'S-' + built.tag,
+    name: 'S-' + built.tag + ' Section ' + built.tag + '-' + built.tag,
+    sheet: 'archd',
+    ppf: 18,
+    drawingType: 'section'
+  });
+  const sheet = layouts[layouts.length - 1];
+  if (sheet && sheet.viewports && sheet.viewports[0] && built.bbox){
+    fitViewport(sheet.viewports[0], built.bbox, 0.86);
+    sheet.ppf = sheet.viewports[0].ppf;
+    sheet.section = { bbox: built.bbox, name: 'SECTION ' + built.tag, source: 'cut' };
+  }
+  state.layouts = layouts;
+  try { document.dispatchEvent(new Event('sd-sheets-changed')); } catch (e){ /* node */ }
+  afterChange();
+  toast('Section ' + built.tag + '-' + built.tag + (built.assumedHeight ? ' · height assumed 8\'-0"' : ''));
+  return built.hits.length;
+}
+
+export function applyDetailWindow(p1, p2){
+  const d = buildDetail(state.entities, p1, p2, { layouts: state.layouts });
+  const w = d.bbox[2] - d.bbox[0], h = d.bbox[3] - d.bbox[1];
+  if (w < 0.4 || h < 0.4){ toast('Detail window too small'); return 0; }
+  pushUndo();
+  const layouts = addSheet(state.layouts, makeLayout, {
+    sheetNumber: d.sheetNumber,
+    name: d.name,
+    sheet: 'letter',
+    ppf: 36,
+    drawingType: 'part'
+  });
+  const sheet = layouts[layouts.length - 1];
+  if (sheet && sheet.viewports && sheet.viewports[0]){
+    fitViewport(sheet.viewports[0], d.bbox, 0.88);
+    sheet.ppf = sheet.viewports[0].ppf;
+    sheet.section = { bbox: d.bbox, name: d.name, source: 'detail' };
+  }
+  const cur = layouts.find(L => L.id === state.currentLayout) || layouts[0];
+  if (cur){
+    const patched = addAnnotation(cur, makeDetailCallout(2.2, 2.4, { sheetId: sheet.id, viewId: 1 }));
+    const idx = layouts.findIndex(L => L.id === cur.id);
+    if (idx >= 0) layouts[idx] = patched;
+  }
+  state.layouts = layouts;
+  try { document.dispatchEvent(new Event('sd-sheets-changed')); } catch (e){ /* node */ }
+  afterChange();
+  toast(d.sheetNumber + ' isolated detail');
+  return 1;
 }
 
 export function applyFillet(e1, e2, p1, p2){

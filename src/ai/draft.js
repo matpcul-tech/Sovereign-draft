@@ -17,66 +17,74 @@ import { normalizeSheets, defaultSheetNumber } from '../core/document.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation, makeDetailCallout } from '../core/sheetspace.js';
 import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, attributeKeys, paperKeynoteColW, paperScheduleColW } from '../core/keynote.js';
 import { membersBBox } from '../core/entities.js';
-
+import { makeFcf, makeDatum, makeFinish } from '../core/gdt.js';
+import { buildSection } from '../core/section.js';
 export const AI_SCHEMA_SPEC =
-'You are the drafting engine inside a professional 2D CAD application. Convert the request into constrained architectural geometry.\n' +
-'Respond with ONLY minified JSON, no markdown, no code fences, no commentary.\n' +
-'Schema:\n' +
-'{"drawingType":"plan"|"elevation"|"section"|"part"|"diagram",\n' +
-' "walls":[{"a":[x1,y1,x2,y2],"th":0.5}],\n' +
-' "openings":[{"kind":"door"|"window","wall":0,"t":0.5,"w":3,"swing":"L"|"R"}],\n' +
-' "fixtures":[{"kind":"Toilet"|"Sink"|"Tub"|"Shower"|"Stove"|"Fridge"|"Bed"|"Sofa"|"Stairs"|"Table","x":0,"y":0,"rot":0}],\n' +
-' "rooms":[{"name":"KITCHEN","pts":[[x,y],...]}],\n' +
-' "dims":[{"a":[x1,y1,x2,y2]}],\n' +
-' "profiles":[{"pts":[[x,y],...],"fill":"ANSI31"}],\n' +
-' "centerlines":[{"pts":[[x,y],...]}],\n' +
-' "callouts":[{"anchor":[x,y],"pts":[[x,y],[x,y]],"text":"NOSE CONE"}],\n' +
-' "hatchRegions":[{"pts":[[x,y],...],"pattern":"ANSI31"}]}\n' +
-'drawingType is REQUIRED. Choose it from the request:\n' +
-'  floor plan, site plan, layout, footprint -> plan\n' +
-'  front view, side view, elevation -> elevation\n' +
-'  cutaway, cross section -> section\n' +
-'  a machine, vehicle, assembly, or object with no building semantics -> part\n' +
-'  flow, schematic, wiring -> diagram\n' +
-'When the request is ambiguous, use plan.\n' +
-'walls, openings, rooms and fixtures are BUILDING ONLY. For elevation, part or\n' +
-'diagram emit profiles, centerlines, callouts and hatchRegions instead; any\n' +
-'wall, door or window you send for those types is discarded.\n' +
-'profiles: closed outlines of solid masses. No thickness, no openings, no swing.\n' +
-'centerlines: construction axes. callouts: leader plus label, used instead of\n' +
-'room names. hatchRegions: only where a cut face is genuinely hatched.\n' +
-'Square-foot area tags are emitted for plan only.\n' +
-'Any profile, callout or fixture may carry "mark":"E-1" and\n' +
-'"attrs":{"type":"MERLIN 1D","material":"...","size":"...","qty":1}.\n' +
-'Mark repeated parts so they can be scheduled. Nine identical engines are\n' +
-'either nine items marked E-1 through E-9, or one item marked E with qty 9.\n' +
-'Units are decimal feet. Y axis points up. Origin near (0,0). All coordinates >= 0.\n' +
-'walls: centerlines. th is thickness in feet (0.333, 0.5 or 0.667). Close exterior loops.\n' +
-'openings: wall is the 0-based index into walls; t is 0..1 along the centerline; w is opening width in feet.\n' +
-'fixtures.kind must be one of the names above. rot is degrees CCW.\n' +
-'rooms: closed polygon of interior corners (not wall centerlines). One hatch + label per room.\n' +
-'dims: overall exterior dimensions and major room sizes. 4 to 10 of them.\n' +
-'On elevation, section and part drawings dims are REQUIRED: overall height,\n' +
-'overall width (or diameter), and a station at each major labeled part.\n' +
-'A drawing with no dimensions cannot be built from.\n' +
-'Every callout SHOULD include mark plus attrs qty and size. Parse "x9" as\n' +
-'qty 9. Include material ONLY when the user named that material in the request.\n' +
-'Never invent alloys, trade names, or certifications. If unknown, omit material.\n' +
-'Stay under 40 walls. Do not emit raw leftover lines. Output must be valid JSON.\n' +
-'\n' +
-'You may also return a sheet set. Geometry is drawn once at true size; a sheet\n' +
-'is a window onto it at a scale, so sheets are cheap and nothing is redrawn:\n' +
-' "sheets":[{"number":"A-1","name":"OVERALL ELEVATION","size":"archd",\n' +
-'   "views":[{"name":"SOUTH ELEVATION","scale":"1/16","drawingType":"elevation",\n' +
-'             "extents":[x0,y0,x1,y1]}],\n' +
-'   "annotations":["keynoteLegend"],\n' +
-'   "details":[{"x":6.0,"y":4.0,"sheet":"A-2","view":1}]}]\n' +
-'size is letter, tabloid or archd. scale is an architectural fraction such as\n' +
-'1/16, 1/8, 1/4, 1/2 or 1. extents is the model rectangle that view shows.\n' +
-'annotations may list keynoteLegend and schedule; both are derived from the\n' +
-'marks you set, so mark the parts you want listed. details are cross reference\n' +
-'bubbles in paper inches on this sheet pointing at a view on another sheet.\n' +
-'Omit sheets entirely for a single drawing.';
+  "You are the drafting engine inside a professional 2D CAD application. Convert the request into constrained architectural geometry.\n" +
+  "Respond with ONLY minified JSON, no markdown, no code fences, no commentary.\n" +
+  "Schema:\n" +
+  '{"drawingType":"plan"|"elevation"|"section"|"part"|"diagram",\n' +
+  ' "walls":[{"a":[x1,y1,x2,y2],"th":0.5}],\n' +
+  ' "openings":[{"kind":"door"|"window","wall":0,"t":0.5,"w":3,"swing":"L"|"R"}],\n' +
+  ' "fixtures":[{"kind":"Toilet"|"Sink"|"Tub"|"Shower"|"Stove"|"Fridge"|"Bed"|"Sofa"|"Stairs"|"Table","x":0,"y":0,"rot":0}],\n' +
+  ' "rooms":[{"name":"KITCHEN","pts":[[x,y],...]}],\n' +
+  ' "dims":[{"a":[x1,y1,x2,y2]}],\n' +
+  ' "profiles":[{"pts":[[x,y],...],"fill":"ANSI31"}],\n' +
+  ' "centerlines":[{"pts":[[x,y],...]}],\n' +
+  ' "callouts":[{"anchor":[x,y],"pts":[[x,y],[x,y]],"text":"NOSE CONE"}],\n' +
+  ' "hatchRegions":[{"pts":[[x,y],...],"pattern":"ANSI31"}],\n' +
+  ' "gdt":[{"kind":"fcf"|"datum"|"finish","at":[x,y],"char":"position","tol":0.01,"datum":"A"}],\n' +
+  ' "cuts":[{"a":[x1,y1,x2,y2],"tag":"A"}]}\n' +
+  "drawingType is REQUIRED. Choose it from the request:\n" +
+  "  floor plan, site plan, layout, footprint -> plan\n" +
+  "  front view, side view, elevation -> elevation\n" +
+  "  cutaway, cross section -> section\n" +
+  "  a machine, vehicle, assembly, or object with no building semantics -> part\n" +
+  "  flow, schematic, wiring -> diagram\n" +
+  "When the request is ambiguous, use plan.\n" +
+  "walls, openings, rooms and fixtures are BUILDING ONLY. For elevation, part or\n" +
+  "diagram emit profiles, centerlines, callouts and hatchRegions instead; any\n" +
+  "wall, door or window you send for those types is discarded.\n" +
+  "profiles: closed outlines of solid masses. No thickness, no openings, no swing.\n" +
+  "centerlines: construction axes. callouts: leader plus label, used instead of\n" +
+  "room names. hatchRegions: only where a cut face is genuinely hatched.\n" +
+  "Square-foot area tags are emitted for plan only.\n" +
+  'Any profile, callout or fixture may carry "mark":"E-1" and\n' +
+  '"attrs":{"type":"MERLIN 1D","material":"...","size":"...","qty":1}.\n' +
+  "Mark repeated parts so they can be scheduled. Nine identical engines are\n" +
+  "either nine items marked E-1 through E-9, or one item marked E with qty 9.\n" +
+  "Units are decimal feet. Y axis points up. Origin near (0,0). All coordinates >= 0.\n" +
+  "walls: centerlines. th is thickness in feet (0.333, 0.5 or 0.667). Close exterior loops.\n" +
+  "openings: wall is the 0-based index into walls; t is 0..1 along the centerline; w is opening width in feet.\n" +
+  "fixtures.kind must be one of the names above. rot is degrees CCW.\n" +
+  "rooms: closed polygon of interior corners (not wall centerlines). One hatch + label per room.\n" +
+  "dims: overall exterior dimensions and major room sizes. 4 to 10 of them.\n" +
+  "On elevation, section and part drawings dims are REQUIRED: overall height,\n" +
+  "overall width (or diameter), and a station at each major labeled part.\n" +
+  "A drawing with no dimensions cannot be built from.\n" +
+  'Every callout SHOULD include mark plus attrs qty and size. Parse "x9" as\n' +
+  "qty 9. Include material ONLY when the user named that material in the request.\n" +
+  "Never invent alloys, trade names, or certifications. If unknown, omit material.\n" +
+  "gdt: feature control frames, datum letters, surface-finish marks. An fcf MUST\n" +
+  "include tol. Never invent a tolerance — omit the frame if the user did not give one.\n" +
+  "cuts: cutting planes. The app derives the hatched section and a sheet from the\n" +
+  "plane; send the plane only.\n" +
+  'dims may include "tolPlus" and "tolMinus" in feet when the user named a tolerance.\n' +
+  "Stay under 40 walls. Do not emit raw leftover lines. Output must be valid JSON.\n" +
+  "\n" +
+  "You may also return a sheet set. Geometry is drawn once at true size; a sheet\n" +
+  "is a window onto it at a scale, so sheets are cheap and nothing is redrawn:\n" +
+  ' "sheets":[{"number":"A-1","name":"OVERALL ELEVATION","size":"archd",\n' +
+  '   "views":[{"name":"SOUTH ELEVATION","scale":"1/16","drawingType":"elevation",\n' +
+  '             "extents":[x0,y0,x1,y1]}],\n' +
+  '   "annotations":["keynoteLegend"],\n' +
+  '   "details":[{"x":6.0,"y":4.0,"sheet":"A-2","view":1}]}]\n' +
+  "size is letter, tabloid or archd. scale is an architectural fraction such as\n" +
+  "1/16, 1/8, 1/4, 1/2 or 1. extents is the model rectangle that view shows.\n" +
+  "annotations may list keynoteLegend and schedule; both are derived from the\n" +
+  "marks you set, so mark the parts you want listed. details are cross reference\n" +
+  "bubbles in paper inches on this sheet pointing at a view on another sheet.\n" +
+  "Omit sheets entirely for a single drawing.";
 
 export const AI_SPEC = AI_SCHEMA_SPEC;
 
@@ -422,6 +430,39 @@ export function schemaToEntities(schema, ensureLayer){
     }, co));
   });
 
+  (Array.isArray(schema.gdt) ? schema.gdt : []).forEach(g => {
+    if (!g) return;
+    const at = Array.isArray(g.at) ? g.at : (Array.isArray(g.anchor) ? g.anchor : null);
+    if (!at) return;
+    const p = snap6(num(at[0]), num(at[1]));
+    const kind = String(g.kind || 'fcf').toLowerCase();
+    if (kind === 'datum'){
+      fresh.push(makeDatum({ x: p[0], y: p[1], letter: g.letter || g.tag || 'A', layer: ensureLayer('GDT') }));
+    } else if (kind === 'finish'){
+      fresh.push(makeFinish({ x: p[0], y: p[1], roughness: g.roughness || g.text || '', layer: ensureLayer('GDT') }));
+    } else {
+      const e = makeFcf({
+        x: p[0], y: p[1],
+        char: g.char,
+        tol: g.tol,
+        dia: !!g.dia,
+        datum: g.datum,
+        datums: g.datums,
+        layer: ensureLayer('GDT')
+      });
+      if (e) fresh.push(e);
+    }
+  });
+
+  (Array.isArray(schema.cuts) ? schema.cuts : []).forEach(c => {
+    if (!c || !c.a || c.a.length < 4) return;
+    const p1 = snap6(num(c.a[0]), num(c.a[1]));
+    const p2 = snap6(num(c.a[2]), num(c.a[3]));
+    const built = buildSection(fresh, p1, p2, { tag: c.tag });
+    fresh.push(built.plane);
+    (built.entities || []).forEach(e => fresh.push(e));
+  });
+
   /* Nothing downstream may reintroduce a fill the drawing type forbids. */
   assertNoImpliedFill(fresh, drawingType);
 
@@ -473,9 +514,32 @@ async function callAnthropic({ prompt, contextText, apiKey, model }){
   return (body.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
 }
 
+async function callGrok({ prompt, contextText }){
+  const fn = typeof window !== 'undefined' && window.__grokDraft;
+  if (typeof fn !== 'function') return null;
+  const res = await fn({ data: { prompt, contextText: contextText || '' } });
+  if (!res || !res.ok || !res.text) return null;
+  return res.text;
+}
+
 export async function generateDraft({ prompt, contextText, apiKey, model }){
-  if (!apiKey) throw new Error('Add your Anthropic API key in AI settings first');
-  let text;
+  let text = await callGrok({ prompt, contextText }).catch(() => null);
+  if (text){
+    try {
+      extractResponse(text);
+      return text;
+    } catch (err){
+      text = await callGrok({
+        prompt: prompt + '\n\nYour previous reply was not valid JSON matching the schema. Reply with ONLY the JSON object.',
+        contextText
+      }).catch(() => null);
+      if (text){
+        extractResponse(text);
+        return text;
+      }
+    }
+  }
+  if (!apiKey) throw new Error('Grok could not draft this. Try again, or add an Anthropic key in AI settings as a fallback.');
   try {
     text = await callAnthropic({ prompt, contextText, apiKey, model });
     extractResponse(text);

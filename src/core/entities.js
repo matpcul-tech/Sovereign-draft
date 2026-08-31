@@ -20,6 +20,10 @@
  *   {type:'callout',   layer, anchor,pts,content,textH}  leader + boxed label
  *   {type:'hatchRegion',layer, pts, pattern}  explicit region plus pattern
  *   {type:'xref',   layer, name,path,x,y,rot,scale,overlay,entities}
+ *   {type:'fcf',    layer, x,y,char,tol,dia,datums,anchor,h}  GD&T frame
+ *   {type:'datum',  layer, x,y,letter,h}
+ *   {type:'finish', layer, x,y,roughness,h}
+ *   {type:'cutplane',layer, x1,y1,x2,y2,tag}  section cut
  * Optional: lt (linetype), lw (mm lineweight), block group `g`, numeric `id`.
  * Walls are groups of lines tagged kind:'wall'. INSERT is a live parametric
  * block (no `g`) expanded at draw/hit/osnap/export; explode yields fragments.
@@ -28,6 +32,8 @@ import { dist, distToSeg, arcPoints, dimGeom, pointInPoly, ellipsePoints, cloudP
 import { hatchLines } from './hatch.js';
 import { expandInsert, insertGrips } from './dynblock.js';
 import { expandXref, xrefGrips } from './xref.js';
+import { expandGdt, isGdt } from './gdt.js';
+import { expandCutPlane, isSection } from './section.js';
 import { tableFrags, tableCorners } from './schedule.js';
 import { dimLabel } from './dimStyle.js';
 import { expandGrid } from './grid.js';
@@ -37,7 +43,7 @@ import { boxWidth, textWidth } from './textmetrics.js';
  * primitives, so hit testing, bounds and every exporter run on the expansion
  * instead of needing a bespoke branch per type.
  */
-export const COMPOSITE_TYPES = ['profile', 'centerline', 'callout', 'hatchRegion'];
+export const COMPOSITE_TYPES = ['profile', 'centerline', 'callout', 'hatchRegion', 'fcf', 'datum', 'finish', 'cutplane'];
 
 export function isComposite(e){ return !!e && COMPOSITE_TYPES.indexOf(e.type) >= 0; }
 
@@ -74,6 +80,8 @@ export function expandComposite(e){
     out.push({ type: 'text', layer: e.layer, x: tip[0] + h * 0.2, y: tip[1], size: h, content: String(e.content || '') });
     return out;
   }
+  if (isGdt(e)) return expandGdt(e);
+  if (isSection(e)) return expandCutPlane(e);
   return [e];
 }
 

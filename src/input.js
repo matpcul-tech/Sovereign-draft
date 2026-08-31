@@ -15,7 +15,8 @@ import {
   finishArc, commitTyped, closePoly, explodeSelection, flipSelection,
   applyStretchBox, matchTap, areaTap, listTap, idTap, dimRadTap, finishDimAng,
   placeScheduleAt, applyCleanup, applyOverkill, applyRooms, applyTakeoff,
-  applySheetSet, layerIsolate, layerUnisolate, bindSelection
+  applySheetSet, layerIsolate, layerUnisolate, bindSelection,
+  placeDatumAt, placeFinishAt
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
 import { setTool } from './ui/tools.js';
@@ -38,8 +39,8 @@ function findGrip(sx, sy){
   return null;
 }
 
-const DRAW_TOOLS = ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'wall', 'ellipse', 'image', 'calibrate', 'xline', 'grid', 'arraypolar'];
-const TAP_TOOLS = ['erase', 'text', 'symbol', 'offset', 'trim', 'extend', 'match', 'area', 'list', 'id', 'dimrad', 'dimdia', 'schedule'];
+const DRAW_TOOLS = ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'wall', 'ellipse', 'image', 'calibrate', 'xline', 'grid', 'arraypolar', 'section', 'detail', 'fcf'];
+const TAP_TOOLS = ['erase', 'text', 'symbol', 'offset', 'trim', 'extend', 'match', 'area', 'list', 'id', 'dimrad', 'dimdia', 'schedule', 'datum', 'finish'];
 const TWO_PICK = ['fillet', 'chamfer', 'mirror', 'move', 'copy', 'rotate', 'scale'];
 const POLY_TOOLS = ['poly', 'hatch', 'cloud', 'leader'];
 
@@ -136,7 +137,7 @@ function onPointerMove(ev){
       ix.hoverPt = p;
       updateStatus(p);
       if ((state.tool === 'poly' || state.tool === 'hatch' || state.tool === 'cloud' || state.tool === 'leader') && ix.polyPts.length) draw();
-      else if (ev.pointerType === 'mouse' && ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'symbol', 'wall', 'arc', 'mirror', 'move', 'copy', 'ellipse', 'image', 'stretch', 'dimang', 'xline', 'grid', 'arraypolar'].includes(state.tool)) draw();
+      else if (ev.pointerType === 'mouse' && ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'symbol', 'wall', 'arc', 'mirror', 'move', 'copy', 'ellipse', 'image', 'stretch', 'dimang', 'xline', 'grid', 'arraypolar', 'section', 'detail', 'fcf'].includes(state.tool)) draw();
     }
     return;
   }
@@ -233,11 +234,16 @@ function endPointer(ev){
   else if (drag.kind === 'dimdiatap'){ dimRadTap(sx, sy, true); }
   else if (drag.kind === 'scheduletap'){ placeScheduleAt(snapPt(sx, sy), ix.schedKind); }
   else if (drag.kind === 'texttap'){
-    ix.pendingTextPt = snapPt(sx, sy); ix.editTextId = null;
+    const p = snapPt(sx, sy);
+    ix.pendingText = p;
+    ix.pendingTextPt = p;
+    ix.editTextId = null;
     const el = document.getElementById('txtval'); if (el) el.value = '';
     openSheet('sheetText');
-    setTimeout(() => { const t = document.getElementById('txtval'); if (t) t.focus(); }, 300);
+    setTimeout(() => { const t = document.getElementById('txtval'); if (t) t.focus(); }, 200);
   }
+  else if (drag.kind === 'datumtap'){ placeDatumAt(snapPt(sx, sy)); }
+  else if (drag.kind === 'finishtap'){ placeFinishAt(snapPt(sx, sy)); }
   else if (drag.kind === 'symboltap'){ placeSymbolAt(sx, sy); }
   else if (drag.kind === 'offsettap'){ offsetTap(sx, sy); }
   else if (drag.kind === 'trimtap'){ trimTap(sx, sy); }

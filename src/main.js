@@ -60,7 +60,8 @@ export function boot(root){
     const hint = $('hint');
     if (hint){
       const empty = !state.entities.length;
-      hint.style.opacity = empty ? 1 : 0;
+      hint.style.opacity = empty ? '1' : '0';
+      hint.style.display = empty ? '' : 'none';
       hint.classList.toggle('empty', empty);
     }
     syncCtx();
@@ -276,13 +277,8 @@ function wireUi(){
     const btn = $('btnGenerate');
     if (!prompt){ st.textContent = 'Describe what to draft first.'; st.className = 'err'; return; }
     const settings = loadAISettings();
-    if (!settings.apiKey){
-      st.textContent = 'Add your Anthropic API key first.'; st.className = 'err';
-      setTimeout(openSettings, 700);
-      return;
-    }
     btn.disabled = true; btn.textContent = 'Drafting…';
-    st.className = ''; st.textContent = 'Claude is drafting walls, rooms and dims…';
+    st.className = ''; st.textContent = 'Grok is drafting geometry…';
     try {
       const text = await generateDraft({
         prompt,
