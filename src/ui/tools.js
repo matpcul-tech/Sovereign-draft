@@ -7,6 +7,10 @@ import { defaultPrompt } from '../core/command.js';
 import { ix } from '../interaction.js';
 
 export function setTool(t){
+  if (t === 'view3d'){
+    try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ }
+    return;
+  }
   if ((state.tool === 'poly' || state.tool === 'hatch' || state.tool === 'cloud' || state.tool === 'leader') && t !== state.tool) cancelPoly(true);
   if (t && t !== 'select' && t !== 'pan') state.lastTool = t;
   state.tool = t;

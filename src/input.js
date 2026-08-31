@@ -16,7 +16,7 @@ import {
   applyStretchBox, matchTap, areaTap, listTap, idTap, dimRadTap, finishDimAng,
   placeScheduleAt, applyCleanup, applyOverkill, applyRooms, applyTakeoff,
   applySheetSet, layerIsolate, layerUnisolate, bindSelection,
-  placeDatumAt, placeFinishAt
+  placeDatumAt, placeFinishAt, applyStoryHeight, beginHeightPrompt
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
 import { setTool } from './ui/tools.js';
@@ -351,6 +351,10 @@ function onKeyDown(ev){
   else if ((ev.key === 'Delete' || ev.key === 'Backspace') && state.selIds.length){ deleteSelection(); }
   else if (ev.key === 'Escape'){
     if (anySheetOpen()){ closeSheets(); return; }
+    if (typeof document !== 'undefined' && document.body && document.body.classList.contains('view3d')){
+      try { document.dispatchEvent(new Event('sd-view2d')); } catch (e){ /* node */ }
+      return;
+    }
     cancelLive();
   }
   else if (ev.key === 'Enter'){
@@ -469,6 +473,26 @@ export function handleCommand(text){
   }
   if (res.action === 'svg'){
     try { document.dispatchEvent(new Event('sd-export-svg')); } catch (e){ /* node */ }
+    return;
+  }
+  if (res.action === 'view3d'){
+    try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ }
+    return;
+  }
+  if (res.action === 'view2d'){
+    try { document.dispatchEvent(new Event('sd-view2d')); } catch (e){ /* node */ }
+    return;
+  }
+  if (res.action === 'height'){
+    if (res.rest) applyStoryHeight(res.rest);
+    else {
+      beginHeightPrompt();
+      setPrompt('HEIGHT Specify story height <' + fmtFtIn(state.storyHeight || 8) + '>:');
+    }
+    return;
+  }
+  if (res.action === 'dwgout'){
+    try { document.dispatchEvent(new Event('sd-export-dwg')); } catch (e){ /* node */ }
     return;
   }
   if (res.numeric != null){ syncCtx(); setPrompt(defaultPrompt(state.tool, state)); return; }

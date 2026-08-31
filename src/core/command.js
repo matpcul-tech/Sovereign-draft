@@ -67,7 +67,11 @@ export const COMMANDS = {
   DETAIL:  { aliases: ['DETAIL', 'DET'],                tool: 'detail',  prompt: 'Specify first corner of detail window' },
   FCF:     { aliases: ['FCF', 'GDT', 'TOL'],            tool: 'fcf',     prompt: 'Specify feature, then frame location' },
   DATUM:   { aliases: ['DATUM', 'DAT'],                 tool: 'datum',   prompt: 'Specify datum origin' },
-  SF:      { aliases: ['FINISH', 'SF', 'SURF'],         tool: 'finish',  prompt: 'Specify surface-finish origin' }
+  SF:      { aliases: ['FINISH', 'SF', 'SURF'],         tool: 'finish',  prompt: 'Specify surface-finish origin' },
+  V3D:     { aliases: ['3D', 'V3D', 'VIEW3D', 'ORBIT'], tool: null,     action: 'view3d' },
+  PLAN:    { aliases: ['PLAN', 'V2D', '2D'],            tool: null,     action: 'view2d' },
+  HEIGHT:  { aliases: ['HEIGHT', 'HT', 'STORY'],        tool: null,     action: 'height' },
+  DWGOUT:  { aliases: ['DWGOUT', 'SAVEASDWG'],          tool: null,     action: 'dwgout' }
 };
 
 const ALIAS = {};

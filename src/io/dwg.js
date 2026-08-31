@@ -8,7 +8,7 @@
  *
  * Mapped entities go through the same unit scaling as DXF ($INSUNITS / guess).
  */
-import { parseDXF } from './dxf.js';
+import { parseDrawing } from './dxf.js';
 
 const AC_RE = /^AC10\d{2}/;
 
@@ -156,22 +156,28 @@ export function mapDwgEntity(e){
 
 export function mapDwgDatabase(db, ensureLayer){
   const ens = [];
-  const push = (e) => {
+  const paper = [];
+  const push = (e, into) => {
     const m = mapDwgEntity(e);
     if (!m) return;
     if (ensureLayer) m.layer = ensureLayer(m.layer);
-    ens.push(m);
+    into.push(m);
   };
-  if (!db) return ens;
+  if (!db) return { entities: ens, paper };
   const lists = [db.entities, db.modelSpace, db.ents, db.objects];
   lists.forEach(list => {
-    if (Array.isArray(list)) list.forEach(push);
+    if (Array.isArray(list)) list.forEach(e => push(e, ens));
+  });
+  const paperLists = [db.paperSpace, db.paperspace, db.layouts];
+  paperLists.forEach(list => {
+    if (Array.isArray(list)) list.forEach(e => push(e, paper));
+    else if (list && Array.isArray(list.entities)) list.entities.forEach(e => push(e, paper));
   });
   if (db.tables && db.tables.blocks){
     /* skip block defs — INSERTs should already be exploded by the parser, or ignored */
   }
-  if (!ens.length && Array.isArray(db)) db.forEach(push);
-  return ens;
+  if (!ens.length && Array.isArray(db)) db.forEach(e => push(e, ens));
+  return { entities: ens, paper };
 }
 
 async function loadLibreDwg(loader){
@@ -213,13 +219,43 @@ export async function parseDwg(bytes, opts){
   const ensureLayer = o.ensureLayer || (n => String(n || 'WALLS').toUpperCase().slice(0, 24));
   const embedded = extractEmbeddedDxf(bytes);
   if (embedded){
-    return { entities: parseDXF(embedded, ensureLayer), source: 'dxf' };
+    const d = parseDrawing(embedded, ensureLayer);
+    return { entities: d.entities, layouts: d.layouts, paper: d.paper, source: 'dxf' };
   }
   if (!dwgVersion(bytes) && !String(o.filename || '').toLowerCase().endsWith('.dwg')){
     throw new Error('Not a DWG file');
   }
   const mod = await loadLibreDwg(o.loader);
   const db = await runParser(mod, bytes);
-  const entities = mapDwgDatabase(db, ensureLayer);
-  return { entities, source: 'libredwg', raw: db };
+  const mapped = mapDwgDatabase(db, ensureLayer);
+  const layouts = layoutsFromLibre(db, mapped.paper);
+  return { entities: mapped.entities, layouts, paper: mapped.paper, source: 'libredwg', raw: db };
+}
+
+function layoutsFromLibre(db, paper){
+  const out = [];
+  const raw = (db && (db.layouts || (db.tables && db.tables.layouts))) || [];
+  const list = Array.isArray(raw) ? raw : [];
+  list.forEach((L, i) => {
+    const name = String((L && (L.name || L.layoutName)) || ('Layout ' + (i + 1)));
+    if (/^model$/i.test(name)) return;
+    const w = Number((L && (L.width || L.paperWidth || L.tabWidth)) || 36);
+    const h = Number((L && (L.height || L.paperHeight || L.tabHeight)) || 24);
+    out.push({
+      id: 'PS' + (i + 1),
+      name,
+      sheet: (h > w * 1.15) ? 'archdp' : 'archd',
+      ppf: 18,
+      titleBlock: true,
+      viewports: [],
+      paper: paper || []
+    });
+  });
+  if (!out.length && paper && paper.length){
+    out.push({
+      id: 'PS1', name: 'Paperspace', sheet: 'archd', ppf: 18,
+      titleBlock: true, viewports: [], paper
+    });
+  }
+  return out;
 }

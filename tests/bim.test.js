@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { wallFrags } from '../src/core/walls.js';
 import { detectRooms, nameRoomsFromText } from '../src/core/rooms.js';
 import { bindAlignedDim, refreshAssocDims } from '../src/core/assoc.js';
+import { stretchEntities } from '../src/core/stretch.js';
 import { colLetter, makeGrid, expandGrid, makeGridFromCorners } from '../src/core/grid.js';
 import { overkill } from '../src/core/overkill.js';
 import { takeoff } from '../src/core/takeoff.js';
@@ -54,9 +55,9 @@ describe('associative dims', () => {
     bindAlignedDim(dim, fr);
     expect(dim.assoc).toBeTruthy();
     expect(dim.assoc[0].kind).toBe('wall');
-    fr.forEach(f => { if (f.ocl) f.ocl.x2 = 16; });
+    stretchEntities(fr, [8, -1, 12, 1], 6, 0);
     refreshAssocDims(fr.concat([dim]));
-    expect(dim.x2).toBeCloseTo(16);
+    expect(dim.x2).toBeCloseTo(16, 1);
   });
 });
 

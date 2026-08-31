@@ -11,7 +11,7 @@ import { state, afterChange } from './core/state.js';
 import { applyProject, validateProject } from './io/project.js';
 import { zoomFit } from './core/viewport.js';
 import { draw as redraw } from './render/draw.js';
-import { open, openAsync, toPDF, toDXF, toJSON, sheetset } from './api.js';
+import { open, openAsync, toPDF, toDXF, toDWG, toJSON, sheetset } from './api.js';
 
 function params(){
   try { return new URLSearchParams(location.search || ''); }
@@ -93,6 +93,12 @@ function onMessage(ev){
       reply(ev.source, { type: 'sovereign-draft', action: 'pdf', pdf });
     } else if (action === 'dxf'){
       reply(ev.source, { type: 'sovereign-draft', action: 'dxf', dxf: toDXF({ entities: state.entities, layers: state.layers, userBlocks: state.userBlocks, dxfVer: state.dxfVer }) });
+    } else if (action === 'dwg'){
+      const bytes = toDWG({
+        entities: state.entities, layers: state.layers, userBlocks: state.userBlocks,
+        storyHeight: state.storyHeight, heightAssumed: state.heightAssumed
+      });
+      reply(ev.source, { type: 'sovereign-draft', action: 'dwg', dwg: Array.from(bytes) });
     } else if (action === 'json'){
       reply(ev.source, { type: 'sovereign-draft', action: 'json', json: toJSON({
         name: state.projectName, firm: state.firm, layers: state.layers,

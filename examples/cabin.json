@@ -85,6 +85,24 @@
    "aci": 8,
    "visible": true,
    "plot": false
+  },
+  {
+   "name": "SECTION",
+   "color": "#00d4b8",
+   "aci": 4,
+   "visible": true
+  },
+  {
+   "name": "GDT",
+   "color": "#e8e4dd",
+   "aci": 7,
+   "visible": true
+  },
+  {
+   "name": "NOTES",
+   "color": "#e8e4dd",
+   "aci": 7,
+   "visible": true
   }
  ],
  "entities": [
@@ -1227,8 +1245,8 @@
     },
     {
      "kind": "wall",
-     "g": "cab1",
-     "end": 1
+     "g": "cab2",
+     "end": 0
     }
    ]
   },
@@ -1270,19 +1288,7 @@
    "dimStyle": "ARCH",
    "arrow": "tick",
    "textH": 0.8,
-   "precision": "1/2",
-   "assoc": [
-    {
-     "kind": "wall",
-     "g": "cab4",
-     "end": 0
-    },
-    {
-     "kind": "wall",
-     "g": "cab5",
-     "end": 1
-    }
-   ]
+   "precision": "1/2"
   },
   {
    "type": "dim",
@@ -1305,8 +1311,8 @@
     },
     {
      "kind": "wall",
-     "g": "cab1",
-     "end": 1
+     "g": "cab2",
+     "end": 0
     }
    ]
   },
@@ -2038,7 +2044,7 @@
    "id": "A102",
    "name": "A-102 Kitchen",
    "sheet": "archd",
-   "ppf": 18,
+   "ppf": 36,
    "titleBlock": true,
    "viewports": [
     {
@@ -2046,9 +2052,9 @@
      "py": 2.15,
      "pw": 31,
      "ph": 21.35,
-     "mx": 48.861999999999995,
+     "mx": 20.717499999999998,
      "my": 17,
-     "ppf": 18,
+     "ppf": 36,
      "id": 1,
      "name": "PLAN",
      "drawingType": "plan"
@@ -2057,10 +2063,10 @@
    "kind": "section",
    "section": {
     "bbox": [
-     -0.55,
-     9.45,
-     14.55,
-     24.55
+     -0.15000000000000002,
+     9.85,
+     14.15,
+     24.15
     ],
     "name": "KITCHEN",
     "source": "room"
@@ -2185,7 +2191,7 @@
    "id": "A103",
    "name": "A-103 Living",
    "sheet": "archd",
-   "ppf": 18,
+   "ppf": 36,
    "titleBlock": true,
    "viewports": [
     {
@@ -2193,9 +2199,9 @@
      "py": 2.15,
      "pw": 31,
      "ph": 21.35,
-     "mx": 48.861999999999995,
+     "mx": 20.717499999999998,
      "my": 5,
-     "ppf": 18,
+     "ppf": 36,
      "id": 1,
      "name": "PLAN",
      "drawingType": "plan"
@@ -2204,10 +2210,10 @@
    "kind": "section",
    "section": {
     "bbox": [
-     -0.55,
-     -0.55,
-     14.55,
-     10.55
+     -0.15000000000000002,
+     -0.15000000000000002,
+     14.15,
+     10.15
     ],
     "name": "LIVING",
     "source": "room"
@@ -2328,7 +2334,7 @@
    "id": "A104",
    "name": "A-104 Bedroom",
    "sheet": "archd",
-   "ppf": 18,
+   "ppf": 27,
    "titleBlock": true,
    "viewports": [
     {
@@ -2336,9 +2342,9 @@
      "py": 2.15,
      "pw": 31,
      "ph": 21.35,
-     "mx": 55.971999999999994,
+     "mx": 38.7175,
      "my": 12,
-     "ppf": 18,
+     "ppf": 27,
      "id": 1,
      "name": "PLAN",
      "drawingType": "plan"
@@ -2347,10 +2353,10 @@
    "kind": "section",
    "section": {
     "bbox": [
-     13.45,
-     -0.55,
-     36.55,
-     24.55
+     13.85,
+     -0.15000000000000002,
+     36.15,
+     24.15
     ],
     "name": "BEDROOM",
     "source": "room"
@@ -2478,5 +2484,8 @@
  ],
  "currentLayout": "G001",
  "space": "model",
- "dxfVer": "R12"
+ "dxfVer": "R2000",
+ "units": "ft",
+ "storyHeight": 8,
+ "heightAssumed": true
 }

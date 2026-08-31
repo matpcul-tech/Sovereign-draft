@@ -103,7 +103,11 @@ export function syncCtx(){
     $('chipHatchPat').style.display = state.tool === 'hatch' ? '' : 'none';
     $('chipHatchPat').textContent = state.hatchPattern || 'ANSI31';
   }
-  if ($('stSpace')) $('stSpace').textContent = state.space === 'model' ? 'MODEL' : (state.currentLayout || 'PAPER');
+  if ($('stSpace')) $('stSpace').textContent = state.view3d ? '3D' : (state.space === 'model' ? 'MODEL' : (state.currentLayout || 'PAPER'));
+  if ($('stHeight')){
+    const h = state.storyHeight || 8;
+    $('stHeight').textContent = 'H ' + fmtFtIn(h) + (state.heightAssumed ? ' · ASSUMED' : '');
+  }
   if ($('tabLayout')){
     const Lyt = state.layouts.find(l => l.id === state.currentLayout);
     $('tabLayout').textContent = Lyt ? Lyt.name.split(' ')[0] : 'A-1';

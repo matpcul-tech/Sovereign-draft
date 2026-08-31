@@ -8,7 +8,7 @@
  */
 import { readFileSync, writeFileSync } from 'fs';
 import { basename } from 'path';
-import { open, openAsync, draw, sheetset, toPDF, toDXF, toJSON, toSVG, toHTML, sampleCabin, encodeShare, shareUrl, attach } from '../src/api.js';
+import { open, openAsync, draw, sheetset, toPDF, toDXF, toJSON, toSVG, toHTML, toDWG, sampleCabin, encodeShare, shareUrl, attach } from '../src/api.js';
 import { setDisplayUnits } from '../src/core/format.js';
 
 function parseArgs(argv){
@@ -19,6 +19,7 @@ function parseArgs(argv){
     if (a === '--prompt') opts.prompt = next();
     else if (a === '--pdf') opts.pdf = next();
     else if (a === '--dxf') opts.dxf = next();
+    else if (a === '--dwg') opts.dwg = next();
     else if (a === '--json') opts.json = next();
     else if (a === '--svg') opts.svg = next();
     else if (a === '--html') opts.html = next();
@@ -44,6 +45,7 @@ function help(){
     '',
     '  sovereign-draft <file.json|.dxf|.dwg> --pdf out.pdf',
     '  sovereign-draft <file> --dxf out.dxf',
+    '  sovereign-draft <file> --dwg out.dwg',
     '  sovereign-draft <file> --json out.json',
     '  sovereign-draft <file> --svg out.svg',
     '  sovereign-draft <file> --html out.html',
@@ -81,7 +83,7 @@ async function loadDoc(opts){
 
 async function main(){
   const opts = parseArgs(process.argv.slice(2));
-  if (opts.help || (!opts.files.length && !opts.prompt && !opts.sample && !opts.pdf && !opts.dxf && !opts.json && !opts.svg && !opts.html && !opts.share)){
+  if (opts.help || (!opts.files.length && !opts.prompt && !opts.sample && !opts.pdf && !opts.dxf && !opts.dwg && !opts.json && !opts.svg && !opts.html && !opts.share)){
     console.log(help());
     process.exit(opts.help ? 0 : 1);
   }
@@ -110,6 +112,10 @@ async function main(){
     writeFileSync(opts.dxf, toDXF(doc), 'utf8');
     console.log('wrote ' + opts.dxf);
   }
+  if (opts.dwg){
+    writeFileSync(opts.dwg, Buffer.from(toDWG(doc)));
+    console.log('wrote ' + opts.dwg);
+  }
   if (opts.json){
     writeFileSync(opts.json, toJSON(doc, true), 'utf8');
     console.log('wrote ' + opts.json);
@@ -126,7 +132,7 @@ async function main(){
     const token = await encodeShare(toJSON(doc, false));
     console.log(shareUrl(token, ''));
   }
-  if (!opts.pdf && !opts.dxf && !opts.json && !opts.svg && !opts.html && !opts.share){
+  if (!opts.pdf && !opts.dxf && !opts.dwg && !opts.json && !opts.svg && !opts.html && !opts.share){
     writeFileSync(1, toJSON(doc, true) + '\n');
   }
 }

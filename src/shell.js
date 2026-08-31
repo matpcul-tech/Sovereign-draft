@@ -39,6 +39,9 @@ export function shellHTML(){
   </div>
   <button class="tb-btn" id="btnUndo" aria-label="Undo">${SVG.undo}</button>
   <button class="tb-btn" id="btnRedo" aria-label="Redo">${SVG.redo}</button>
+  <button class="tb-btn" id="btn3d" aria-label="3D orbit">
+    <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M3 12c2 6 6 9 9 9s7-3 9-9"/><path d="M3 12c2-6 6-9 9-9s7 3 9 9"/></svg>
+  </button>
   <button class="tb-btn" id="btnFit" aria-label="Zoom to fit">${SVG.fit}</button>
   <button class="tb-btn" id="btnProps" aria-label="Properties">${SVG.props}</button>
   <button class="tb-btn" id="btnMenu" aria-label="Menu">${SVG.menu}</button>
@@ -134,6 +137,7 @@ export function shellHTML(){
       ${tool('fcf','FCF','Feature control frame','<rect x="3" y="8" width="6" height="8"/><rect x="9" y="8" width="7" height="8"/><rect x="16" y="8" width="5" height="8"/>')}
       ${tool('datum','DATUM','Datum feature','<rect x="8" y="6" width="8" height="8"/><path d="m8 14 4 5 4-5"/>')}
       ${tool('finish','SF','Surface finish','<path d="M5 18 9 6l6 10"/>')}
+      ${tool('view3d','3D','Orbit 3D (3D)','<ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M3 12c2 6 6 9 9 9s7-3 9-9"/>')}
     </div>
   </div>
 </div>
@@ -147,6 +151,7 @@ export function shellHTML(){
   <button type="button" id="stWall">WALL</button>
   <button type="button" id="stUnits">FT</button>
   <span id="stSpace">MODEL</span>
+  <span id="stHeight">H 8'-0" · ASSUMED</span>
 </div>
 <div id="backdrop"></div>
 <div class="sheet" id="sheetLayers">
@@ -258,6 +263,7 @@ export function shellHTML(){
   <button class="mrow" id="mShare"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>Copy share link<small>no server · URL hash</small></button>
   <button class="mrow" id="mExportHTML"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Export HTML<small>email a drawing</small></button>
   <button class="mrow" id="mExportDXF"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export DXF<small>R12 / R2000 · feet</small></button>
+  <button class="mrow" id="mExportDWG"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 8h8v8H8z"/></svg>Export DWG<small>R2000 · 3D faces</small></button>
   <button class="mrow" id="mExportPDF"><svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/></svg>Export PDF<small>to print scale</small></button>
   <button class="mrow" id="mExportAllPDF"><svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v12"/><path d="M16 7H9a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V11z"/><path d="M16 7v4h4"/></svg>Export all sheets<small>one PDF</small></button>
   <button class="mrow" id="mExportSVG"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 16c1.5-4 6.5-4 8 0"/></svg>Export SVG<small>for Illustrator / web</small></button>
@@ -277,11 +283,13 @@ export function shellHTML(){
   <button class="mrow" id="mSettings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>AI settings<small>API key, model</small></button>
   <div class="row" style="margin-top:8px">
     <span class="nm">DXF version</span>
-    <button class="chip on" id="chipDxfVer">R12</button>
+    <button class="chip on" id="chipDxfVer">R2000</button>
   </div>
   <button class="mrow" id="mSample"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M9 6v12"/></svg>Sample 24×36 cabin<small>walls, doors, hatch, dims</small></button>
+  <button class="mrow" id="mSamplePart"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="8" rx="1"/><circle cx="8" cy="12" r="1"/><circle cx="16" cy="12" r="1"/></svg>Sample plate<small>12" × 8" · GD&T</small></button>
+  <button class="mrow" id="mSampleGA"><svg viewBox="0 0 24 24"><path d="M12 3 6 9v12h12V9z"/></svg>Sample GA<small>arrangement — not a spec</small></button>
   <button class="mrow" id="mNew"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg><span id="mNewLabel">New drawing</span></button>
-  <div class="subtle" id="menuFooter">Sovereign Draft is the editor. Open a DXF from AutoCAD, LibreCAD or DraftSight — units follow $INSUNITS (mm, inches, meters → feet). Drawing stays on this device until you export.</div>
+  <div class="subtle" id="menuFooter">Issued 2D, free, DXF/DWG out. Open a DXF from AutoCAD, LibreCAD or DraftSight — units follow $INSUNITS. Drawing stays on this device until you export.</div>
 </div>
 <input type="file" id="fileOpen" accept=".dxf,.json,.dwg,application/json,application/dxf" style="display:none">
 <input type="file" id="fileDXF" accept=".dxf,application/dxf" style="display:none">

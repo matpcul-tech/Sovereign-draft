@@ -6,8 +6,10 @@
 import { fmtN, dimGeom, arcPoints } from '../core/geometry.js';
 import { LTYPE_NAMES, LINETYPES } from '../core/style.js';
 import { hatchLines } from '../core/hatch.js';
-import { explodeForIO } from '../core/entities.js';
+import { explodeForIO, membersBBox } from '../core/entities.js';
 import { dimLabel } from '../core/dimStyle.js';
+import { sheetOf, makeLayout, TITLE_BLOCK_H, SHEET_MARGIN } from '../core/layout.js';
+import { bindAllDims } from '../core/assoc.js';
 
 function ltypeName(e){ return (e && e.lt) ? String(e.lt).toUpperCase() : 'CONTINUOUS'; }
 
@@ -22,33 +24,81 @@ export function buildDXF(entities, layers, opts){
   const L = [];
   function w(...args){ for (const a of args) L.push(String(a)); }
   const acadver = r2000 ? 'AC1015' : 'AC1009';
+  const ly = layers && layers.length ? layers : [{ name: '0', aci: 7, lt: 'CONTINUOUS' }];
+  let bb = [0, 0, 36, 24];
+  try { if (entities && entities.length) bb = membersBBox(entities); } catch (err){ /* empty */ }
+  if (!isFinite(bb[0]) || bb[0] > 1e8) bb = [0, 0, 36, 24];
+
   w(0, 'SECTION', 2, 'HEADER',
     9, '$ACADVER', 1, acadver,
     9, '$INSUNITS', 70, 2,
-    9, '$MEASUREMENT', 70, 0,
-    0, 'ENDSEC');
+    9, '$MEASUREMENT', 70, 0);
+  if (r2000){
+    w(9, '$HANDLING', 70, 1,
+      9, '$HANDSEED', 5, 'FFFF',
+      9, '$TILEMODE', 70, 1,
+      9, '$LWDISPLAY', 70, 1,
+      9, '$EXTMIN', 10, fmtN(bb[0]), 20, fmtN(bb[1]), 30, 0,
+      9, '$EXTMAX', 10, fmtN(bb[2]), 20, fmtN(bb[3]), 30, 0,
+      9, '$LIMMIN', 10, 0, 20, 0,
+      9, '$LIMMAX', 10, fmtN(Math.max(bb[2], 36)), 20, fmtN(Math.max(bb[3], 24)),
+      9, '$LUNITS', 70, 4,
+      9, '$LUPREC', 70, 4,
+      9, '$AUNITS', 70, 0,
+      9, '$AUPREC', 70, 0,
+      9, '$LTSCALE', 40, 1,
+      9, '$PSLTSCALE', 70, 1,
+      9, '$FILLMODE', 70, 1,
+      9, '$MIRRTEXT', 70, 1,
+      9, '$ATTMODE', 70, 1,
+      9, '$PDMODE', 70, 0,
+      9, '$PDSIZE', 40, 0,
+      9, '$CLAYER', 8, '0',
+      9, '$TEXTSTYLE', 7, 'Standard',
+      9, '$DIMSTYLE', 2, 'Standard',
+      9, '$DIMASO', 70, 1,
+      9, '$DIMASSOC', 280, 2);
+  }
+  w(0, 'ENDSEC');
 
   w(0, 'SECTION', 2, 'TABLES');
-  /* LTYPE table */
-  const ltypes = LTYPE_NAMES.slice();
+  if (r2000) writeVportTable(w);
+  const ltypes = r2000 ? ['ByBlock', 'ByLayer'].concat(LTYPE_NAMES) : LTYPE_NAMES.slice();
   w(0, 'TABLE', 2, 'LTYPE', 70, ltypes.length);
   ltypes.forEach(n => {
+    if (n === 'ByBlock' || n === 'ByLayer'){
+      w(0, 'LTYPE', 2, n, 70, 0, 3, n, 72, 65, 73, 0, 40, 0);
+      return;
+    }
     const lt = LINETYPES[n];
     w(0, 'LTYPE', 2, n, 70, 0, 3, n, 72, 65, 73, lt.dashes.length, 40, lt.dashes.reduce((a, b) => a + Math.abs(b), 0));
     lt.dashes.forEach((d, i) => w(49, fmtN(i % 2 === 0 ? d : -d)));
   });
   w(0, 'ENDTAB');
 
-  w(0, 'TABLE', 2, 'LAYER', 70, layers.length);
-  layers.forEach(l => {
+  w(0, 'TABLE', 2, 'LAYER', 70, ly.length);
+  ly.forEach(l => {
     w(0, 'LAYER', 2, l.name, 70, 0, 62, l.aci, 6, l.lt || 'CONTINUOUS');
+    if (r2000 && l.lw != null) w(370, Math.round(Number(l.lw) * 100) || -3);
   });
-  w(0, 'ENDTAB', 0, 'ENDSEC');
+  w(0, 'ENDTAB');
+  if (r2000){
+    writeStyleTable(w);
+    w(0, 'TABLE', 2, 'VIEW', 70, 0, 0, 'ENDTAB');
+    w(0, 'TABLE', 2, 'UCS', 70, 0, 0, 'ENDTAB');
+    w(0, 'TABLE', 2, 'APPID', 70, 1, 0, 'APPID', 2, 'ACAD', 70, 0, 0, 'ENDTAB');
+    writeDimStyleTable(w);
+    writeBlockRecordTable(w, opts.userBlocks, opts.layouts);
+  }
+  w(0, 'ENDSEC');
 
-  /* BLOCKS — user blocks as INSERT targets when exporting R2000; R12 inlines. */
   const blocks = opts.userBlocks || [];
   const useInsert = r2000 && blocks.length;
   w(0, 'SECTION', 2, 'BLOCKS');
+  if (r2000){
+    w(0, 'BLOCK', 8, '0', 2, '*MODEL_SPACE', 70, 0, 10, 0, 20, 0, 30, 0, 0, 'ENDBLK');
+    w(0, 'BLOCK', 8, '0', 2, '*PAPER_SPACE', 70, 0, 10, 0, 20, 0, 30, 0, 0, 'ENDBLK');
+  }
   if (useInsert){
     blocks.forEach((b, i) => {
       const name = dxfName(b.name || ('BLK' + i));
@@ -60,19 +110,107 @@ export function buildDXF(entities, layers, opts){
   w(0, 'ENDSEC');
 
   w(0, 'SECTION', 2, 'ENTITIES');
-  entities.forEach(e => writeEnt(w, e, r2000, false));
-  w(0, 'ENDSEC', 0, 'EOF');
+  (entities || []).forEach(e => writeEnt(w, e, r2000, false, 0));
+  (opts.faces || []).forEach(f => writeEnt(w, f, r2000, false, 0));
+  if (r2000 && opts.layouts && opts.layouts.length){
+    writePaperSpace(w, opts.layouts, r2000);
+  }
+  w(0, 'ENDSEC');
+  if (r2000) writeObjects(w, opts.layouts);
+  w(0, 'EOF');
   return L.join('\r\n');
+}
+
+function writeVportTable(w){
+  w(0, 'TABLE', 2, 'VPORT', 70, 1,
+    0, 'VPORT', 2, '*ACTIVE', 70, 0,
+    10, 0, 20, 0, 11, 1, 21, 1,
+    12, 0, 22, 0, 13, 0, 23, 0,
+    14, 0.5, 24, 0.5, 15, 0.5, 25, 0.5,
+    16, 0, 26, 0, 36, 1, 17, 0, 27, 0, 37, 0,
+    40, 50, 41, 1.4, 42, 50, 43, 0, 44, 0, 50, 0, 51, 0,
+    71, 0, 72, 100, 73, 1, 74, 3, 75, 0, 76, 0, 77, 0, 78, 0,
+    0, 'ENDTAB');
+}
+
+function writeStyleTable(w){
+  w(0, 'TABLE', 2, 'STYLE', 70, 1,
+    0, 'STYLE', 2, 'Standard', 70, 0, 40, 0, 41, 1, 50, 0, 71, 0, 42, 0.2, 3, 'txt', 4, '',
+    0, 'ENDTAB');
+}
+
+function writeDimStyleTable(w){
+  w(0, 'TABLE', 2, 'DIMSTYLE', 70, 1,
+    0, 'DIMSTYLE', 2, 'Standard', 70, 0, 3, '', 4, '', 5, '', 6, '', 7, '',
+    40, 1, 41, 0.18, 42, 0.0625, 43, 0.38, 44, 0.18, 140, 0.18, 141, 0.09,
+    147, 0.09, 271, 4, 272, 4, 273, 2, 274, 3, 275, 0, 276, 0, 277, 2, 278, 46, 279, 1, 280, 0, 281, 0, 282, 0, 283, 1, 284, 0, 285, 0, 286, 0, 288, 0, 289, 3,
+    0, 'ENDTAB');
+}
+
+function writeBlockRecordTable(w, userBlocks, layouts){
+  const names = ['*MODEL_SPACE', '*PAPER_SPACE'];
+  (userBlocks || []).forEach((b, i) => names.push(dxfName(b.name || ('BLK' + i))));
+  (layouts || []).forEach((L, i) => { if (i > 0) names.push('*PAPER_SPACE' + i); });
+  w(0, 'TABLE', 2, 'BLOCK_RECORD', 70, names.length);
+  names.forEach(n => w(0, 'BLOCK_RECORD', 2, n));
+  w(0, 'ENDTAB');
+}
+
+function writePaperSpace(w, layouts, r2000){
+  (layouts || []).forEach((layout, li) => {
+    const sh = sheetOf(layout.sheet);
+    const vps = layout.viewports || [];
+    vps.forEach((vp, vi) => {
+      const cx = vp.px + vp.pw / 2, cy = vp.py + vp.ph / 2;
+      const viewH = vp.ph * 72 / (vp.ppf || layout.ppf || 18);
+      w(0, 'VIEWPORT', 8, '0', 67, 1, 68, 2, 69, li * 10 + vi + 2,
+        10, fmtN(cx), 20, fmtN(cy), 30, 0,
+        40, fmtN(vp.pw), 41, fmtN(vp.ph),
+        12, fmtN(vp.mx || 0), 22, fmtN(vp.my || 0),
+        13, 0, 23, 0, 14, 0.5, 24, 0.5, 15, 0.5, 25, 0.5,
+        16, 0, 26, 0, 36, 1, 17, 0, 27, 0, 37, 0,
+        42, 50, 43, 0, 44, 0, 45, fmtN(viewH || 24));
+    });
+    /* Sheet outline so a paperspace round-trip still has a sheet. */
+    w(0, 'LWPOLYLINE', 8, '0', 67, 1, 90, 4, 70, 1,
+      10, 0, 20, 0, 10, fmtN(sh.w), 20, 0, 10, fmtN(sh.w), 20, fmtN(sh.h), 10, 0, 20, fmtN(sh.h));
+    const title = String(layout.name || 'Layout');
+    w(0, 'TEXT', 8, 'TEXT', 67, 1, 10, fmtN(SHEET_MARGIN + 0.2), 20, fmtN(SHEET_MARGIN + 0.35), 30, 0, 40, 0.18, 1, title);
+    (layout.paper || []).forEach(e => writeEnt(w, e, r2000, false, 1));
+  });
+}
+
+function writeObjects(w, layouts){
+  const list = layouts && layouts.length ? layouts : [];
+  w(0, 'SECTION', 2, 'OBJECTS',
+    0, 'DICTIONARY', 5, 'C', 3, 'ACAD_GROUP', 350, 'D', 3, 'ACAD_LAYOUT', 350, '1A',
+    0, 'DICTIONARY', 5, '1A', 3, 'Model', 350, '1B');
+  list.forEach((L, i) => w(3, String(L.name || ('Layout' + (i + 1))).slice(0, 32), 350, (0x1C + i).toString(16).toUpperCase()));
+  writeLayoutObj(w, '1B', 'Model', 36, 24, 1);
+  list.forEach((L, i) => {
+    const sh = sheetOf(L.sheet);
+    writeLayoutObj(w, (0x1C + i).toString(16).toUpperCase(), String(L.name || ('Layout' + (i + 1))).slice(0, 32), sh.w, sh.h, 0);
+  });
+  w(0, 'ENDSEC');
+}
+
+function writeLayoutObj(w, handle, name, pw, ph, tab){
+  w(0, 'LAYOUT', 5, handle, 100, 'AcDbPlotSettings', 100, 'AcDbLayout',
+    1, name, 70, tab, 71, 1,
+    10, 0, 20, 0, 11, fmtN(pw), 21, fmtN(ph),
+    12, 0, 22, 0, 14, 0, 24, 0, 15, fmtN(pw), 25, fmtN(ph),
+    146, 0, 13, 0, 23, 0, 16, 1, 26, 0, 36, 0, 17, 0, 27, 1, 37, 0, 76, 0);
 }
 
 function dxfName(s){
   return String(s || 'BLK').toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 31) || 'BLK';
 }
 
-function writeEnt(w, e, r2000, inBlock){
+function writeEnt(w, e, r2000, inBlock, paper){
   const lt = ltypeName(e);
   const common = () => {
     w(8, e.layer || '0');
+    if (paper) w(67, 1);
     if (lt && lt !== 'CONTINUOUS') w(6, lt);
     if (e.lw != null) w(370, lw370(e));
   };
@@ -100,7 +238,6 @@ function writeEnt(w, e, r2000, inBlock){
     w(0, 'TEXT'); common();
     w(10, fmtN(e.x), 20, fmtN(e.y), 30, 0, 40, fmtN(e.size), 1, e.content || '');
   } else if (e.type === 'hatch'){
-    /* Explode hatch to lines so R12 viewers agree; R2000 still gets lines (HATCH is finicky). */
     hatchLines(e).forEach(seg => {
       w(0, 'LINE'); common();
       w(10, fmtN(seg[0][0]), 20, fmtN(seg[0][1]), 30, 0, 11, fmtN(seg[1][0]), 21, fmtN(seg[1][1]), 31, 0);
@@ -113,22 +250,43 @@ function writeEnt(w, e, r2000, inBlock){
       }
     }
   } else if (e.type === 'dim' && e.kind !== 'angular' && e.kind !== 'radius' && e.kind !== 'diameter'){
-    const g = dimGeom(e);
-    [g.e1, g.e2, g.d].forEach(seg => {
-      w(0, 'LINE', 8, 'DIMS', 10, fmtN(seg[0][0]), 20, fmtN(seg[0][1]), 30, 0, 11, fmtN(seg[1][0]), 21, fmtN(seg[1][1]), 31, 0);
-    });
-    const tick = 0.4, ux = g.u[0], uy = g.u[1];
-    [g.d[0], g.d[1]].forEach(p => {
-      const ax = (ux - uy) * 0.7071 * tick, ay = (uy + ux) * 0.7071 * tick;
-      w(0, 'LINE', 8, 'DIMS', 10, fmtN(p[0] - ax), 20, fmtN(p[1] - ay), 30, 0, 11, fmtN(p[0] + ax), 21, fmtN(p[1] + ay), 31, 0);
-    });
-    let deg = g.ang * 180 / Math.PI;
-    if (deg > 90 || deg < -90) deg += 180;
-    w(0, 'TEXT', 8, 'DIMS', 10, fmtN(g.mid[0]), 20, fmtN(g.mid[1]), 30, 0, 40, 0.8, 50, fmtN(deg), 72, 1, 11, fmtN(g.mid[0]), 21, fmtN(g.mid[1]), 31, 0, 1, dimLabel(e));
+    if (r2000){
+      const g = dimGeom(e);
+      w(0, 'DIMENSION'); common();
+      w(2, '*D0',
+        10, fmtN(g.d[0][0]), 20, fmtN(g.d[0][1]), 30, 0,
+        11, fmtN(g.mid[0]), 21, fmtN(g.mid[1]), 31, 0,
+        12, 0, 22, 0, 32, 0,
+        70, 1,
+        1, dimLabel(e),
+        13, fmtN(e.x1), 23, fmtN(e.y1), 33, 0,
+        14, fmtN(e.x2), 24, fmtN(e.y2), 34, 0);
+    } else {
+      const g = dimGeom(e);
+      [g.e1, g.e2, g.d].forEach(seg => {
+        w(0, 'LINE', 8, 'DIMS', 10, fmtN(seg[0][0]), 20, fmtN(seg[0][1]), 30, 0, 11, fmtN(seg[1][0]), 21, fmtN(seg[1][1]), 31, 0);
+      });
+      const tick = 0.4, ux = g.u[0], uy = g.u[1];
+      [g.d[0], g.d[1]].forEach(p => {
+        const ax = (ux - uy) * 0.7071 * tick, ay = (uy + ux) * 0.7071 * tick;
+        w(0, 'LINE', 8, 'DIMS', 10, fmtN(p[0] - ax), 20, fmtN(p[1] - ay), 30, 0, 11, fmtN(p[0] + ax), 21, fmtN(p[1] + ay), 31, 0);
+      });
+      let deg = g.ang * 180 / Math.PI;
+      if (deg > 90 || deg < -90) deg += 180;
+      w(0, 'TEXT', 8, 'DIMS', 10, fmtN(g.mid[0]), 20, fmtN(g.mid[1]), 30, 0, 40, 0.8, 50, fmtN(deg), 72, 1, 11, fmtN(g.mid[0]), 21, fmtN(g.mid[1]), 31, 0, 1, dimLabel(e));
+    }
+  } else if (e.type === 'face' && e.a && e.b && e.c){
+    const a = e.a, b = e.b, c = e.c, d = e.d || c;
+    w(0, '3DFACE'); common();
+    w(10, fmtN(a[0]), 20, fmtN(a[1]), 30, fmtN(a[2] || 0));
+    w(11, fmtN(b[0]), 21, fmtN(b[1]), 31, fmtN(b[2] || 0));
+    w(12, fmtN(c[0]), 22, fmtN(c[1]), 32, fmtN(c[2] || 0));
+    w(13, fmtN(d[0]), 23, fmtN(d[1]), 33, fmtN(d[2] || 0));
   } else if (e.type === 'insert' || e.type === 'xref' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || e.type === 'profile' || e.type === 'centerline' || e.type === 'callout' || e.type === 'hatchRegion' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
-    explodeForIO(e).forEach(f => writeEnt(w, f, r2000, inBlock));
+    explodeForIO(e).forEach(f => writeEnt(w, f, r2000, inBlock, paper));
   }
   void arcPoints;
+  void TITLE_BLOCK_H;
 }
 
 function num(v){ v = Number(v); return isFinite(v) ? v : 0; }
@@ -145,7 +303,7 @@ function flattenMtext(s){
 /* Parse DXF text into entity objects (no ids). ensureLayer(name) -> canonical
  * layer name, creating the layer as a side effect when needed.
  */
-export function parseDXF(txt, ensureLayer){
+export function parseDXF(txt, ensureLayer, sink){
   const lines = txt.split(/\r\n|\n|\r/);
   const pairs = [];
   for (let i = 0; i + 1 < lines.length; i += 2){
@@ -153,15 +311,21 @@ export function parseDXF(txt, ensureLayer){
     if (isNaN(code)){ i--; continue; }
     pairs.push([code, lines[i + 1] !== undefined ? lines[i + 1].trim() : '']);
   }
-  let inEnt = false, inBlocks = false, inHeader = false, cur = null, curVerts = null;
+  let inEnt = false, inBlocks = false, inHeader = false, inObjects = false, cur = null, curVerts = null;
   const added = [];
+  const paper = [];
+  const viewports = [];
+  const layoutRecs = [];
   const blockDefs = {};
   let blockName = null, blockEnts = null;
   let insunits = 0, headerVar = '';
+  const header = {};
+  const meta = sink || {};
 
 
   function emit(e){
     if (blockName){ blockEnts.push(e); return; }
+    if (e._paper){ delete e._paper; paper.push(e); return; }
     added.push(e);
   }
 
@@ -170,7 +334,33 @@ export function parseDXF(txt, ensureLayer){
     const t = cur._t, ly = ensureLayer(cur[8] || 'WALLS');
     const lt = cur[6] ? String(cur[6]).toUpperCase() : undefined;
     const lw = cur[370] != null ? num(cur[370]) / 100 : undefined;
-    const style = (e) => { if (lt && lt !== 'CONTINUOUS') e.lt = lt; if (lw) e.lw = lw; return e; };
+    const paperFlag = num(cur[67]) === 1;
+    const style = (e) => {
+      if (lt && lt !== 'CONTINUOUS') e.lt = lt;
+      if (lw) e.lw = lw;
+      if (paperFlag) e._paper = true;
+      return e;
+    };
+    if (t === 'VIEWPORT'){
+      viewports.push({
+        cx: num(cur[10]), cy: num(cur[20]),
+        pw: num(cur[40]) || 10, ph: num(cur[41]) || 8,
+        mx: num(cur[12]), my: num(cur[22]),
+        viewH: num(cur[45]) || 0
+      });
+      cur = null; curVerts = null;
+      return;
+    }
+    if (t === 'LAYOUT'){
+      layoutRecs.push({
+        name: String(cur[1] || 'Layout'),
+        w: num(cur[15]) || num(cur[11]) || 36,
+        h: num(cur[25]) || num(cur[21]) || 24,
+        tab: num(cur[70])
+      });
+      cur = null; curVerts = null;
+      return;
+    }
     if (t === 'LINE' && cur[10] !== undefined) emit(style({ type: 'line', layer: ly, x1: num(cur[10]), y1: num(cur[20]), x2: num(cur[11]), y2: num(cur[21]) }));
     else if (t === 'CIRCLE' && cur[10] !== undefined) emit(style({ type: 'circle', layer: ly, cx: num(cur[10]), cy: num(cur[20]), r: num(cur[40]) || 0.1 }));
     else if (t === 'ARC' && cur[10] !== undefined) emit(style({ type: 'arc', layer: ly, cx: num(cur[10]), cy: num(cur[20]), r: num(cur[40]) || 0.1, a1: num(cur[50]), a2: num(cur[51]) }));
@@ -231,17 +421,25 @@ export function parseDXF(txt, ensureLayer){
 
   for (const [c, v] of pairs){
     if (c === 0 && v === 'SECTION') continue;
-    if (c === 2 && v === 'HEADER'){ inHeader = true; inEnt = false; inBlocks = false; continue; }
-    if (c === 2 && v === 'BLOCKS'){ inBlocks = true; inEnt = false; inHeader = false; continue; }
-    if (c === 2 && v === 'ENTITIES'){ inEnt = true; inBlocks = false; inHeader = false; blockName = null; continue; }
+    if (c === 2 && v === 'HEADER'){ inHeader = true; inEnt = false; inBlocks = false; inObjects = false; continue; }
+    if (c === 2 && v === 'BLOCKS'){ inBlocks = true; inEnt = false; inHeader = false; inObjects = false; continue; }
+    if (c === 2 && v === 'ENTITIES'){ inEnt = true; inBlocks = false; inHeader = false; inObjects = false; blockName = null; continue; }
+    if (c === 2 && v === 'OBJECTS'){ inObjects = true; inEnt = false; inBlocks = false; inHeader = false; continue; }
     if (c === 0 && v === 'ENDSEC'){
-      if (inEnt || inBlocks) flush();
-      inEnt = false; inBlocks = false; inHeader = false; blockName = null;
+      if (inEnt || inBlocks || inObjects) flush();
+      inEnt = false; inBlocks = false; inHeader = false; inObjects = false; blockName = null;
       continue;
     }
     if (inHeader){
       if (c === 9) headerVar = v;
       else if (headerVar === '$INSUNITS' && (c === 70 || c === 10)) insunits = parseInt(v, 10) || 0;
+      else if (headerVar && (c === 70 || c === 40 || c === 10 || c === 1 || c === 2 || c === 8)) header[headerVar] = v;
+      continue;
+    }
+    if (inObjects){
+      if (c === 0){ flush(); cur = { _t: v }; continue; }
+      if (!cur) continue;
+      if (cur[c] === undefined) cur[c] = v;
       continue;
     }
     if (inBlocks && c === 0 && v === 'BLOCK'){ flush(); cur = { _t: 'BLOCK' }; continue; }
@@ -281,7 +479,83 @@ export function parseDXF(txt, ensureLayer){
   flush();
   const out = added.filter(e => e.type !== 'poly' || e.pts.every(p => p[0] !== null && p[1] !== null));
   const scaled = applyDxfUnits(out, insunits);
+  bindAllDims(scaled);
+  const layouts = layoutsFromDxf(layoutRecs, viewports, paper);
+  meta.layouts = layouts;
+  meta.paper = paper;
+  meta.header = header;
+  meta.insunits = insunits;
   return scaled;
+}
+
+function sheetKeyFromSize(w, h){
+  const W = Number(w) || 0, H = Number(h) || 0;
+  if (Math.abs(W - 36) < 1 && Math.abs(H - 24) < 1) return 'archd';
+  if (Math.abs(W - 24) < 1 && Math.abs(H - 36) < 1) return 'archdp';
+  if (Math.abs(W - 17) < 1 && Math.abs(H - 11) < 1) return 'tabloid';
+  if (Math.abs(W - 11) < 1 && Math.abs(H - 8.5) < 1) return 'letter';
+  if (H > W * 1.2) return 'archdp';
+  return 'archd';
+}
+
+function layoutsFromDxf(recs, viewports, paper){
+  const named = (recs || []).filter(r => r && String(r.name).toLowerCase() !== 'model' && r.tab !== 1);
+  const layouts = [];
+  if (named.length){
+    named.forEach((r, i) => {
+      const sheet = sheetKeyFromSize(r.w, r.h);
+      const L = makeLayout({
+        id: 'PS' + (i + 1),
+        name: r.name || ('Layout ' + (i + 1)),
+        sheet,
+        ppf: 18
+      });
+      const vp = viewports[i] || viewports[0];
+      if (vp){
+        L.viewports = [{
+          px: Math.max(0, vp.cx - vp.pw / 2),
+          py: Math.max(0, vp.cy - vp.ph / 2),
+          pw: vp.pw || 30,
+          ph: vp.ph || 20,
+          mx: vp.mx || 0,
+          my: vp.my || 0,
+          ppf: vp.viewH && vp.ph ? (vp.ph * 72 / vp.viewH) : 18
+        }];
+      }
+      if (paper && paper.length) L.paper = paper;
+      layouts.push(L);
+    });
+  } else if (viewports.length){
+    const vp = viewports[0];
+    const sheet = sheetKeyFromSize(vp.pw + 2, vp.ph + 3);
+    const L = makeLayout({ id: 'PS1', name: 'Paperspace', sheet, ppf: 18 });
+    L.viewports = [{
+      px: Math.max(0, vp.cx - vp.pw / 2),
+      py: Math.max(0, vp.cy - vp.ph / 2),
+      pw: vp.pw || 30, ph: vp.ph || 20,
+      mx: vp.mx || 0, my: vp.my || 0,
+      ppf: vp.viewH && vp.ph ? (vp.ph * 72 / vp.viewH) : 18
+    }];
+    if (paper && paper.length) L.paper = paper;
+    layouts.push(L);
+  } else if (paper && paper.length){
+    const L = makeLayout({ id: 'PS1', name: 'Paperspace', sheet: 'archd', ppf: 18 });
+    L.paper = paper;
+    layouts.push(L);
+  }
+  return layouts;
+}
+
+export function parseDrawing(txt, ensureLayer){
+  const sink = {};
+  const entities = parseDXF(txt, ensureLayer || (n => n || 'WALLS'), sink);
+  return {
+    entities,
+    layouts: sink.layouts || [],
+    paper: sink.paper || [],
+    header: sink.header || {},
+    insunits: sink.insunits || 0
+  };
 }
 
 const INSUNITS_TO_FEET = {
@@ -354,9 +628,18 @@ function peekInsUnits(txt){
 }
 
 export function openDXF(txt, ensureLayer){
-  const entities = parseDXF(txt, ensureLayer || (n => n || 'WALLS'));
+  const sink = {};
+  const entities = parseDXF(txt, ensureLayer || (n => n || 'WALLS'), sink);
   const insunits = peekInsUnits(txt);
-  return { entities, count: entities.length, insunits, units: dxfUnitLabel(insunits) };
+  return {
+    entities,
+    count: entities.length,
+    insunits,
+    units: dxfUnitLabel(insunits),
+    layouts: sink.layouts || [],
+    paper: sink.paper || [],
+    header: sink.header || {}
+  };
 }
 
 function scaleRotateTranslate(e, x, y, sx, sy, deg){

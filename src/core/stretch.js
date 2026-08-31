@@ -15,6 +15,8 @@ export function stretchEntities(entities, box, dx, dy){
   let n = 0;
   (entities || []).forEach(e => {
     if (e.type === 'line' || (e.type === 'dim' && e.kind !== 'angular' && e.kind !== 'radius' && e.kind !== 'diameter')){
+      /* Associative dims follow the host on refresh — don't double-move them. */
+      if (e.type === 'dim' && e.assoc && e.assoc.length >= 2) return;
       if (inBox(e.x1, e.y1, box)){ e.x1 += dx; e.y1 += dy; n++; }
       if (inBox(e.x2, e.y2, box)){ e.x2 += dx; e.y2 += dy; n++; }
     } else if (e.type === 'poly' || e.type === 'hatch' || e.type === 'cloud' || e.type === 'leader'){

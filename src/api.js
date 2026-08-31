@@ -5,19 +5,21 @@
  *   writeFileSync('plan.pdf', toPDF(doc), 'latin1')
  */
 import { defaultLayers } from './core/state.js';
-import { defaultLayouts } from './core/layout.js';
+import { defaultLayouts, makeLayout, fitViewport } from './core/layout.js';
 import { defaultDimStyles } from './core/dimStyle.js';
 import { normalizeSheets } from './core/document.js';
 import { generateSheetSet } from './core/sheetset.js';
 import { envelopeDims } from './core/spec.js';
-import { buildDXF, parseDXF, sniffDrawing, openDXF } from './io/dxf.js';
+import { buildDXF, parseDXF, sniffDrawing, openDXF, parseDrawing } from './io/dxf.js';
 import { buildPDF, buildAllSheetsPDF } from './io/pdf.js';
 import { serializeProject, validateProject } from './io/project.js';
 import { generateDraft, realizeDocument } from './ai/draft.js';
 import { isDwgBuffer, parseDwg } from './io/dwg.js';
+import { buildDWG } from './io/dwgwrite.js';
+import { extrudeDrawing, meshesToFaces } from './core/solid.js';
 import { buildSVG } from './io/svg.js';
 import { toHTML } from './io/html.js';
-import { cabin24x36 } from './core/demo.js';
+import { cabin24x36, partPlate, gaDiagram } from './core/demo.js';
 import { attachXref } from './core/xref.js';
 import { setDisplayUnits } from './core/format.js';
 
@@ -47,8 +49,10 @@ export function createDocument(opts){
     currentDimStyle: o.currentDimStyle || 'ARCH',
     currentLayout: o.currentLayout || (o.layouts && o.layouts[0] && o.layouts[0].id) || 'A1',
     space: o.space || 'model',
-    dxfVer: o.dxfVer === 'R2000' ? 'R2000' : 'R12',
-    units: o.units === 'mm' || o.units === 'm' ? o.units : 'ft'
+    dxfVer: o.dxfVer === 'R12' ? 'R12' : 'R2000',
+    units: o.units === 'mm' || o.units === 'm' ? o.units : 'ft',
+    storyHeight: o.storyHeight > 0 ? o.storyHeight : 8,
+    heightAssumed: o.heightAssumed !== false
   };
 }
 
@@ -69,7 +73,10 @@ function fromValidated(p){
     currentDimStyle: p.currentDimStyle,
     currentLayout: p.currentLayout,
     space: p.space,
-    dxfVer: p.dxfVer
+    dxfVer: p.dxfVer,
+    units: p.units,
+    storyHeight: p.storyHeight,
+    heightAssumed: p.heightAssumed
   });
 }
 
@@ -90,9 +97,14 @@ export function open(input, filename){
     throw new Error('DWG is binary — use openAsync(arrayBuffer, filename)');
   }
   const layers = defaultLayers();
-  const { entities, count } = openDXF(text, makeEnsureLayer(layers));
+  const { entities, count, layouts } = openDXF(text, makeEnsureLayer(layers));
   if (!count) throw new Error('No supported objects in that file');
-  return createDocument({ name: nameFromFile(filename), entities, layers });
+  return createDocument({
+    name: nameFromFile(filename),
+    entities,
+    layers,
+    layouts: layouts && layouts.length ? layouts : undefined
+  });
 }
 
 export async function openAsync(input, filename, opts){
@@ -101,7 +113,12 @@ export async function openAsync(input, filename, opts){
       const layers = defaultLayers();
       const r = await parseDwg(input, Object.assign({ ensureLayer: makeEnsureLayer(layers) }, opts || {}));
       if (!r.entities.length) throw new Error('No supported objects in that DWG');
-      return createDocument({ name: nameFromFile(filename), entities: r.entities, layers });
+      return createDocument({
+        name: nameFromFile(filename),
+        entities: r.entities,
+        layers,
+        layouts: r.layouts && r.layouts.length ? r.layouts : undefined
+      });
     }
     const text = new TextDecoder('latin1').decode(input instanceof Uint8Array ? input : new Uint8Array(input));
     return open(text, filename);
@@ -175,9 +192,40 @@ export function toPDF(doc, opts){
 
 export function toDXF(doc, opts){
   const d = doc || {};
+  const o = opts || {};
+  const faces = o.solid ? meshesToFaces(extrudeDrawing(d.entities || [], {
+    height: o.height || d.storyHeight,
+    assumed: d.heightAssumed,
+    layers: d.layers || defaultLayers()
+  }).meshes) : o.faces;
   return buildDXF(d.entities || [], d.layers || defaultLayers(), {
-    ver: (opts && opts.ver) || d.dxfVer || 'R12',
-    userBlocks: d.userBlocks
+    ver: o.ver || d.dxfVer || 'R2000',
+    userBlocks: d.userBlocks,
+    faces,
+    layouts: o.layouts || d.layouts
+  });
+}
+
+export function toDWG(doc, opts){
+  const d = doc || {};
+  const o = opts || {};
+  return buildDWG(d.entities || [], d.layers || defaultLayers(), {
+    ver: 'R2000',
+    userBlocks: d.userBlocks,
+    height: o.height || d.storyHeight,
+    assumed: d.heightAssumed,
+    solid: o.solid !== false,
+    layouts: o.layouts || d.layouts
+  });
+}
+
+export function toSolid(doc, opts){
+  const d = doc || {};
+  const o = opts || {};
+  return extrudeDrawing(d.entities || [], {
+    height: o.height || d.storyHeight,
+    assumed: o.assumed != null ? o.assumed : d.heightAssumed,
+    layers: d.layers || defaultLayers()
   });
 }
 
@@ -202,7 +250,9 @@ export function toJSON(doc, pretty){
     currentLayout: d.currentLayout,
     space: d.space,
     dxfVer: d.dxfVer,
-    units: d.units
+    units: d.units,
+    storyHeight: d.storyHeight,
+    heightAssumed: d.heightAssumed
   }, pretty !== false);
 }
 
@@ -215,5 +265,21 @@ export function sampleCabin(){
   }));
 }
 
-export { parseDXF, sniffDrawing, openDXF, buildDXF, buildPDF, buildAllSheetsPDF, buildSVG, generateSheetSet, cabin24x36, toHTML };
+export function samplePart(){
+  const entities = partPlate();
+  const layout = makeLayout({ id: 'D1', name: 'D-1 Plate', sheet: 'letter', ppf: 864 });
+  if (layout.viewports[0]) fitViewport(layout.viewports[0], [-0.4, -0.5, 1.8, 1.2]);
+  return createDocument({ name: '12x8 Plate', entities, layouts: [layout], dxfVer: 'R2000' });
+}
+
+export function sampleGA(){
+  const entities = gaDiagram();
+  const layout = makeLayout({ id: 'G1', name: 'G-1 General Arrangement', sheet: 'archdp', ppf: 18 });
+  if (layout.viewports[0]) fitViewport(layout.viewports[0], [-1, -2, 14, 24]);
+  return createDocument({ name: 'GA Diagram', entities, layouts: [layout], dxfVer: 'R2000' });
+}
+
+export { parseDXF, sniffDrawing, openDXF, buildDXF, buildPDF, buildAllSheetsPDF, buildSVG, generateSheetSet, cabin24x36, partPlate, gaDiagram, toHTML, parseDrawing };
+export { buildDWG, writeDwg } from './io/dwgwrite.js';
+export { extrudeDrawing, meshesToFaces, heightStamp } from './core/solid.js';
 export { encodeShare, decodeShare, shareUrl, tokenFromHash } from './io/share.js';

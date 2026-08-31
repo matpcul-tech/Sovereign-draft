@@ -1,5 +1,7 @@
 # Sovereign Draft
 
+Issued 2D, free, DXF/DWG out.
+
 The CAD program you open when you don’t have a license — and shouldn’t need one.
 
 Browser 2D CAD. No account, no install, no seat. Decimal feet, Y-up, dimensions to the nearest ½″. The drawing stays on the device until you export. A sentence can become a sheet set; a JSON file can live in git next to the code.
@@ -10,14 +12,15 @@ This is how we democratize CAD: the 80% of drawings that are plans, elevations, 
 
 | You get | You don’t |
 |---|---|
-| 2D drafting in the browser (PWA) | 3D solids, CAM, or CATIA |
-| Command line (`L`, `TR`, `@8<45`, F8) | Native DWG *write* (we read DWG, write DXF) |
-| Issued sheets: title block, copyright, multi-page PDF | CAM, welding maps, or 3D solids |
+| 2D drafting in the browser (PWA) | CATIA, Fusion, or CAM |
+| Command line (`L`, `TR`, `@8<45`, F8) | Invented materials or tolerances |
+| Issued sheets: title block, copyright, multi-page PDF | A substitute for a professional of record |
 | Cutting planes (`SE`) that hatch a true section + a sheet | Pretending 8'-0" is a known story height |
-| Feature control frames, datums, ± tolerances (`FCF` / `DATUM`) | Invented tolerances — a frame without a number is refused |
-| Isolated detail sheets (`DET`) — a tighter viewport, not a copy | A substitute for a professional of record |
-| Grok drafts for free (optional Anthropic fallback) | Invented materials |
-| `XREF` / `BIND`, DWG open, JSON in git | A server that holds your drawings |
+| 3D orbit (`3D`) of the extruded plan — walls, doors, floors | B-rep solids, NURBS, or a second 3D model |
+| Feature control frames, datums, ± tolerances (`FCF` / `DATUM`) | A frame without a number |
+| Isolated detail sheets (`DET`) — a tighter viewport, not a copy | |
+| Grok drafts for free (optional Anthropic fallback) | |
+| `XREF` / `BIND`, DWG open **and write**, JSON in git | A server that holds your drawings |
 | Share link in the URL hash, millimetres or metres on the glass | A CAD license |
 
 A cabin floor plan with walls, doors, rooms, dims, and a G-001/A-101 set is the job. A rocket silhouette with a parts table is a general arrangement, not a build spec — we will not pretend otherwise.
@@ -48,6 +51,8 @@ Copy share link (Sheet menu) puts a gzipped drawing in the URL hash. No server. 
 | `DXFIN` | Insert DXF (merge) | `XREF` | Attach xref |
 | `BIND` | Bind xref | `SHEETSET` | Generate sheet set |
 | `SE` | Section cut | `DET` | Isolated detail |
+| `3D` | Orbit the extruded plan | `HT` | Story height |
+| `DWGOUT` | Export DWG | `2D` | Back to plan |
 | `FCF` | Feature control frame | `DATUM` | Datum feature |
 | `SF` | Surface finish | | |
 
@@ -195,7 +200,13 @@ The project JSON is the source of truth — plain objects, diffable in git, next
 **Units.** World units are decimal feet, Y-up. The writer stamps `$INSUNITS=2`. The reader honors `$INSUNITS` (inches, mm, cm, meters → feet). If the header is missing and coordinates look like millimetres (max > 2000), they are scaled to feet; otherwise feet are assumed. A 36 ft cabin is never auto-scaled.
 
 **In:** LINE, ARC, CIRCLE, ELLIPSE, TEXT, MTEXT (flattened), LWPOLYLINE, POLYLINE, SPLINE (as polyline), SOLID / 3DFACE, INSERT (block geometry), HATCH, XLINE, RAY, DIMENSION (aligned), LEADER.  
-**Out:** R12 (POLYLINE + LTYPE table + 370 weights + `$INSUNITS`) or R2000 (LWPOLYLINE). Toggle in the Sheet menu. Inserts, rooms and dims explode to ordinary geometry on export. Stays pure JS.
+**Out:** R12 or R2000 DXF. R2000 is the AutoCAD Open path: STYLE, DIMSTYLE, `*MODEL_SPACE` / `*PAPER_SPACE`, DIMENSION objects (not exploded), LAYOUT + VIEWPORT so paperspace survives. **DWG** (`DWGOUT`) writes AC1015 this app reopens, with the same R2000 DXF inside and 3DFACE from the extrusion. Autodesk's native DWG is still proprietary — if their Open refuses the binary, the DXF R2000 is the interchange they document. Inserts, rooms and dims explode to ordinary geometry on R12 only.
+
+Three starter drawings live in `examples/`: `cabin.json` (24×36 plan), `part.json` (12"×8" plate with GD&T), `ga.json` (general arrangement — not a build spec).
+
+## 3D
+
+`3D` (toolbar or command) extrudes the **same** 2D model: walls to story height, doors 6'-8", window sills 3'-0". Type `HEIGHT 9` (or `9'`) to set the story; until you do, the view is stamped **ASSUMED**. This is not a second model and not Fusion. Escape or `2D` returns to the plan. GLB is on the 3D HUD.
 
 ## AI drafting
 
@@ -228,13 +239,19 @@ Type a length (`3`, `2'6"`) with a door or window selected to set width. Propert
 
 ## Privacy
 
-Autosave to `localStorage`. No account, no backend. Hosted Grok drafting needs no key; the standalone editor's only optional network call is `api.anthropic.com` with **your** key.
+Autosave to `localStorage`. No account, no backend. Grok drafting uses the app owner's xAI key on the server. The only optional browser network call is `api.anthropic.com` with your key.
 
 ## Status
 
-Shipped in this tree: library + CLI, honest AI, Grok drafting with no key, untruncated schedule cells, tighter room views with marks, DWG open, embed, cutting-plane sections, isolated details, feature control frames and ± tolerances.
+Shipped in this tree: library + CLI, honest AI, Grok drafting with no key, untruncated schedule cells, tighter room views with marks, DWG open **and write**, paperspace kept on open, associative dims that follow a stretch, issued 24×36 PDF with ISO lineweights, embed, cutting-plane sections, isolated details, feature control frames, ± tolerances, 3D orbit of the extruded plan. Starters: cabin, plate, GA.
 
-Still ahead: DWG write (never), 3D (never), a hosted share link (maybe). Floor-plan sheets will keep getting tighter. Collaboration only after the kernel is something you can import — it already is.
+Still ahead: ODA-grade DWG that every AutoCAD build opens without Recover, B-rep solids, a hosted share link (maybe). Floor-plan sheets will keep getting tighter. Collaboration only after the kernel is something you can import — it already is.
+
+```
+npm test
+node bin/sovereign-draft.js --sample --pdf cabin.pdf
+node bin/sovereign-draft.js examples/part.json --dxf part.dxf
+```
 
 ## Development
 

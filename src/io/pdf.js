@@ -13,8 +13,11 @@ import { detailBubbleText } from '../core/sheetspace.js';
 import { sheetOf } from '../core/layout.js';
 import { titleBlockModel, drawingTitleOf, fitPaperText, viewportClearOfTitle } from '../core/titleblock.js';
 import { entsInBBox } from '../core/legend.js';
+import { plotLwPt } from './plotstyle.js';
 
 export const SCALE_LADDER = [
+  { ppf: 864,  lbl: '1:1' },
+  { ppf: 432,  lbl: '6" = 1\'-0"' },
   { ppf: 72,   lbl: '1" = 1\'-0"' },
   { ppf: 54,   lbl: '3/4" = 1\'-0"' },
   { ppf: 36,   lbl: '1/2" = 1\'-0"' },
@@ -88,7 +91,7 @@ function assemblePDF(objs){
   return pdf;
 }
 
-function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts){
+function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts, issued){
   const list = [];
   visible.forEach(e => {
     if (e.type === 'insert' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || e.type === 'profile' || e.type === 'centerline' || e.type === 'callout' || e.type === 'hatchRegion' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
@@ -98,7 +101,12 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts)
   list.forEach(e => {
     const isDim = e.layer === 'DIMS';
     const isWall = e.layer === 'WALLS' || e.kind === 'wall';
-    P((isWall ? '1.4' : (isDim ? '0.4' : '0.7')) + ' w');
+    if (issued){
+      const pt = plotLwPt(e);
+      P(f2(isDim ? Math.min(pt, 0.55) : pt) + ' w');
+    } else {
+      P((isWall ? '1.4' : (isDim ? '0.4' : '0.7')) + ' w');
+    }
     P((isDim ? '0.35' : '0.08') + ' G');
     if (e.type === 'line') seg(e.x1, e.y1, e.x2, e.y2);
     else if (e.type === 'poly') path(e.pts, e.closed);
@@ -260,9 +268,24 @@ function layoutPage(entities, opts){
     }
     P('q');
     P(f2(VX) + ' ' + f2(VY) + ' ' + f2(VW) + ' ' + f2(VH) + ' re W n');
-    drawEntities(P, f2, TX, TY, visible, vppf, textAt, seg, path, circlePts);
+    drawEntities(P, f2, TX, TY, visible, vppf, textAt, seg, path, circlePts, true);
     P('Q');
+    drawScaleBar(P, f2, textAt, vp0, vppf);
   }
+  /* Paper-space entities preserved from a DWG/DXF layout (inches). */
+  (layout.paper || []).forEach(e => {
+    const IX = v => v * 72, IY = v => v * 72;
+    P(f2(plotLwPt(e)) + ' w 0.08 G');
+    if (e.type === 'line'){
+      P(f2(IX(e.x1)) + ' ' + f2(IY(e.y1)) + ' m ' + f2(IX(e.x2)) + ' ' + f2(IY(e.y2)) + ' l S');
+    } else if (e.type === 'text'){
+      textAt(IX(e.x), IY(e.y), Math.max((e.size || 0.12) * 72, 6), e.content || '', 0, false, 0.1);
+    } else if (e.type === 'poly' && e.pts && e.pts.length){
+      let s = f2(IX(e.pts[0][0])) + ' ' + f2(IY(e.pts[0][1])) + ' m';
+      for (let i = 1; i < e.pts.length; i++) s += ' ' + f2(IX(e.pts[i][0])) + ' ' + f2(IY(e.pts[i][1])) + ' l';
+      P(s + (e.closed ? ' h S' : ' S'));
+    }
+  });
   /* Sheet space annotations. Coordinates are paper inches, so a legend keeps
    * its size and position whatever scale the views are drawn at. */
   (layout.annotations || []).forEach(a => {
@@ -341,6 +364,25 @@ function layoutPage(entities, opts){
   return { stream: C.join('\n'), pageW, pageH, ppf };
 }
 
+function drawScaleBar(P, f2, textAt, vp, ppf){
+  if (!vp || !ppf) return;
+  const ft = ppf >= 27 ? 5 : ppf >= 13 ? 10 : 20;
+  const x = (vp.px + 0.28) * 72;
+  const y = (vp.py + 0.28) * 72;
+  const w = ft * ppf;
+  if (w < 28 || w > (vp.pw || 10) * 72 * 0.4) return;
+  const segs = 4;
+  const sw = w / segs;
+  for (let i = 0; i < segs; i++){
+    P((i % 2 ? '0.12' : '0.92') + ' g');
+    P(f2(x + i * sw) + ' ' + f2(y) + ' ' + f2(sw) + ' 5.5 re f');
+  }
+  P('0.08 G 0.55 w');
+  P(f2(x) + ' ' + f2(y) + ' ' + f2(w) + ' 5.5 re S');
+  textAt(x, y + 7.5, 6.2, '0', 0, false, 0.3);
+  const lab = ft + ' FT';
+  textAt(x + w - helveticaWidth(lab, 6.2, false), y + 7.5, 6.2, lab, 0, false, 0.3);
+}
 
 function paintTitleBlock(P, f2, textAt, model){
   const IX = v => v * 72, IY = v => v * 72;
