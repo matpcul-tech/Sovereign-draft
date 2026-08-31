@@ -86,7 +86,11 @@ export const COMMANDS = {
   CFIX:    { aliases: ['CFIX', 'ANCHOR'],               tool: null,     action: 'con:fix' },
   CSOLVE:  { aliases: ['CSOLVE', 'SOLVE'],              tool: null,     action: 'csolve' },
   CDEL:    { aliases: ['CDEL', 'UNCONSTRAIN'],          tool: null,     action: 'cdel' },
-  BHATCH:  { aliases: ['BHATCH', 'HATCHI'],             tool: null,     action: 'bhatch' }
+  BHATCH:  { aliases: ['BHATCH', 'HATCHI'],             tool: null,     action: 'bhatch' },
+  UNION:   { aliases: ['UNION', 'BUNION'],              tool: null,     action: 'bool:union' },
+  SUBTRACT:{ aliases: ['SUBTRACT', 'BSUB'],             tool: null,     action: 'bool:difference' },
+  INTERSECT:{ aliases: ['INTERSECT', 'BINT'],           tool: null,     action: 'bool:intersect' },
+  BXOR:    { aliases: ['BXOR', 'EXCLUSIVE'],            tool: null,     action: 'bool:xor' }
 };
 
 const ALIAS = {};

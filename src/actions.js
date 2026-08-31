@@ -17,6 +17,7 @@ import { filletLines, chamferLines, arcFrom3, moveEntities, rotateEntities, scal
 import { wallFrags, WALL_THICKNESS } from './core/walls.js';
 import { makeHatch, boundaryContaining, HATCH_PATTERNS, closedLoops, hatchWithIslands, hatchArea } from './core/hatch.js';
 import { makeSpline } from './core/spline.js';
+import { polyBoolean, ringsArea } from './core/boolean.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
 import { makeIndexCache, queryPoint, queryBox, worthIndexing } from './core/spatial.js';
 import { alignedDim, continueDim, baselineDim, applyStyleToDim, angularDim, radiusDim, diameterDim, makeLeader } from './core/dimStyle.js';
@@ -139,6 +140,51 @@ export function closePoly(){
     ix.polyPts = []; ix.hoverPt = null;
     afterChange();
   }
+}
+
+/* Boolean operations over the closed regions in the selection.
+ *
+ * Union merges everything into one outline. Subtract cuts every later
+ * selection out of the first. Intersect keeps only what they all share.
+ * The result replaces the operands, because a boolean that leaves its inputs
+ * behind just gives you overlapping geometry again.
+ */
+function selectionRegions(){
+  const ms = selMembers();
+  const groups = [];
+  ms.forEach(e => {
+    const loops = closedLoops([e]);
+    if (loops.length) groups.push({ e, loops });
+  });
+  return groups;
+}
+
+export function booleanOnSelection(op){
+  const groups = selectionRegions();
+  if (groups.length < 2){ toast('Select at least two closed regions'); return; }
+  let acc = groups[0].loops;
+  for (let i = 1; i < groups.length; i++){
+    acc = polyBoolean(acc, groups[i].loops, op);
+    /* Subtracting everything away is a real answer, not a failure, but there
+     * is nothing left to keep going with. */
+    if (!acc.length) break;
+  }
+  const before = groups.reduce((a, g) => a + ringsArea(g.loops), 0);
+  const after = ringsArea(acc);
+  pushUndo();
+  const src = groups[0].e;
+  const useHatch = groups.every(g => g.e.type === 'hatch');
+  deleteEntities(groups.map(g => g.e.id));
+  if (useHatch){
+    hatchWithIslands(acc, { layer: src.layer, pattern: src.pattern || state.hatchPattern || 'ANSI31' }).forEach(h => addEntity(h));
+  } else {
+    acc.forEach(ring => addEntity({ type: 'poly', layer: src.layer, closed: true, pts: ring.map(p => [p[0], p[1]]), lt: src.lt, lw: src.lw }));
+  }
+  afterChange();
+  const verb = op === 'union' ? 'Union' : op === 'intersect' ? 'Intersection' : op === 'difference' ? 'Subtraction' : 'Exclusive or';
+  toast(acc.length
+    ? verb + ': ' + acc.length + ' region' + (acc.length === 1 ? '' : 's') + ', ' + after.toFixed(1) + ' SF net (was ' + before.toFixed(1) + ' SF over ' + groups.length + ')'
+    : verb + ' removed everything', 4000);
 }
 
 /* Hatch a selection of closed boundaries with island detection: a loop nested
