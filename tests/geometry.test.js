@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dist, clamp, arcSpan, arcPoints, angDeg, onArc, distToSeg, lineIntersect, segSegParam, lineCircleTs, dimGeom, fmtN } from '../src/core/geometry.js';
+import { dist, clamp, arcSpan, arcPoints, angDeg, onArc, distToSeg, lineIntersect, segSegParam, lineCircleTs, dimGeom, fmtN, clipSegToBox, ptInBox } from '../src/core/geometry.js';
 
 describe('basic helpers', () => {
   it('dist computes euclidean distance', () => {
@@ -78,5 +78,21 @@ describe('dimGeom', () => {
     expect(g.d[1][1]).toBeCloseTo(2);
     expect(g.mid[0]).toBeCloseTo(5);
     expect(g.mid[1]).toBeCloseTo(2);
+  });
+});
+
+describe('clipSegToBox', () => {
+  it('clips a tall line to a station band', () => {
+    const c = clipSegToBox(0, 0, 0, 230, [0, 0, 12, 8]);
+    expect(c).toBeTruthy();
+    expect(c.y1).toBeCloseTo(0);
+    expect(c.y2).toBeCloseTo(8);
+  });
+  it('returns null when the segment misses the box', () => {
+    expect(clipSegToBox(0, 20, 0, 30, [0, 0, 12, 8])).toBeNull();
+  });
+  it('ptInBox is inclusive on the edges', () => {
+    expect(ptInBox(0, 0, [0, 0, 12, 8])).toBe(true);
+    expect(ptInBox(0, 230, [0, 0, 12, 8])).toBe(false);
   });
 });
