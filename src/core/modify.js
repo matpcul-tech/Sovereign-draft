@@ -5,6 +5,7 @@ import {
   dist, deep, hypot, norm, angDeg, onArc, arcSpan, circleFrom3,
   lineIntersectStrict, rotatePt, scalePt, mirrorPt, copyStyle, perpFoot
 } from './geometry.js';
+import { hasBulge, bulgeLength, bulgeArea, polyOutline, arcToBulge } from './bulge.js';
 
 function lineEnds(e){
   if (e.type === 'line') return [[e.x1, e.y1], [e.x2, e.y2]];
@@ -289,6 +290,9 @@ export function mirrorEntities(ents, ax, ay, bx, by){
       e.flip = (e.flip || 1) * -1;
       e.rot = ma * 2 - (e.rot || 0);
     }
+    /* Reflection reverses the sense of rotation, so every arc segment in a
+     * polyline swaps direction or the curve would mirror inside out. */
+    if (e.bulge) e.bulge = e.bulge.map(b => (b ? -b : 0));
   });
   return out;
 }
@@ -331,48 +335,85 @@ function endsOf(e){
 
 function chainPts(e){
   if (e.type === 'line') return [[e.x1, e.y1], [e.x2, e.y2]];
+  if (e.type === 'arc') return arcToBulge(e).pts.map(p => p.slice());
   if (e.type === 'poly') return e.pts.map(p => p.slice());
   return null;
+}
+
+/* A chain carries a bulge per segment alongside its points, so joining an arc
+ * into a polyline keeps the curve instead of replacing it with its chord.
+ * bul[i] belongs to the segment from pts[i] to pts[i+1]. */
+function chainOf(e){
+  const pts = chainPts(e);
+  if (!pts) return null;
+  const bul = new Array(pts.length).fill(0);
+  if (e.type === 'arc') bul[0] = arcToBulge(e).bulge[0];
+  else if (e.type === 'poly' && e.bulge) for (let i = 0; i < bul.length; i++) bul[i] = e.bulge[i] || 0;
+  return { pts, bul };
+}
+
+/* Reversing a chain reverses its points and flips the sense of every arc,
+ * because an arc traversed the other way sweeps the other way. */
+function revChain(c){
+  const n = c.pts.length;
+  const pts = c.pts.slice().reverse();
+  const bul = new Array(n).fill(0);
+  for (let i = 0; i < n - 1; i++){ const b = c.bul[n - 2 - i] || 0; bul[i] = b ? -b : 0; }
+  return { pts, bul };
+}
+
+/* Append b to the tail of a, where a's last point and b's first coincide. */
+function catChain(a, b){
+  return {
+    pts: a.pts.concat(b.pts.slice(1)),
+    bul: a.bul.slice(0, a.pts.length - 1).concat(b.bul)
+  };
 }
 
 function closeEnough(a, b){ return dist(a[0], a[1], b[0], b[1]) < JOIN_TOL; }
 
 /* Join a set of lines/open polylines into as few polylines as possible. */
 export function joinEntities(ents){
-  const pool = ents.filter(e => (e.type === 'line' || (e.type === 'poly' && !e.closed)) && chainPts(e));
-  if (pool.length < 2) return { ok: false, msg: 'Select at least two lines or polylines' };
+  /* Arcs are eligible now: they become a two vertex bulged segment, so a
+   * filleted outline joins into one polyline with its curves intact. */
+  const pool = ents.filter(e => (e.type === 'line' || e.type === 'arc' || (e.type === 'poly' && !e.closed)) && chainPts(e));
+  if (pool.length < 2) return { ok: false, msg: 'Select at least two lines, arcs or polylines' };
   const used = new Set();
   const chains = [];
-  function take(i, reverse){
-    used.add(i);
-    const pts = chainPts(pool[i]);
-    return reverse ? pts.reverse() : pts;
-  }
   for (let i = 0; i < pool.length; i++){
     if (used.has(i)) continue;
-    let pts = take(i, false);
+    used.add(i);
+    let c = chainOf(pool[i]);
     let grew = true;
     while (grew){
       grew = false;
       for (let j = 0; j < pool.length; j++){
         if (used.has(j)) continue;
-        const other = chainPts(pool[j]);
-        const head = pts[0], tail = pts[pts.length - 1];
-        const oH = other[0], oT = other[other.length - 1];
-        if (closeEnough(tail, oH)){ pts = pts.concat(other.slice(1)); used.add(j); grew = true; }
-        else if (closeEnough(tail, oT)){ pts = pts.concat(other.slice(0, -1).reverse()); used.add(j); grew = true; }
-        else if (closeEnough(head, oT)){ pts = other.slice(0, -1).concat(pts); used.add(j); grew = true; }
-        else if (closeEnough(head, oH)){ pts = other.slice(1).reverse().concat(pts); used.add(j); grew = true; }
+        const o = chainOf(pool[j]);
+        const head = c.pts[0], tail = c.pts[c.pts.length - 1];
+        const oH = o.pts[0], oT = o.pts[o.pts.length - 1];
+        if (closeEnough(tail, oH)) c = catChain(c, o);
+        else if (closeEnough(tail, oT)) c = catChain(c, revChain(o));
+        else if (closeEnough(head, oT)) c = catChain(o, c);
+        else if (closeEnough(head, oH)) c = catChain(revChain(o), c);
+        else continue;
+        used.add(j); grew = true;
       }
     }
-    /* Dedup consecutive */
-    const clean = [pts[0]];
-    for (let k = 1; k < pts.length; k++){
-      if (!closeEnough(clean[clean.length - 1], pts[k])) clean.push(pts[k]);
+    /* Dedup consecutive. A zero length segment has no meaningful bulge, so
+     * its entry goes with it. */
+    const pts = [c.pts[0]];
+    const bul = [c.bul[0]];
+    for (let k = 1; k < c.pts.length; k++){
+      if (closeEnough(pts[pts.length - 1], c.pts[k])) continue;
+      pts.push(c.pts[k]);
+      bul.push(c.bul[k]);
     }
-    const closed = clean.length > 2 && closeEnough(clean[0], clean[clean.length - 1]);
-    if (closed) clean.pop();
-    chains.push({ type: 'poly', layer: pool[i].layer, closed, pts: clean, lt: pool[i].lt, lw: pool[i].lw });
+    const closed = pts.length > 2 && closeEnough(pts[0], pts[pts.length - 1]);
+    if (closed){ pts.pop(); bul.pop(); }
+    const out = { type: 'poly', layer: pool[i].layer, closed, pts, lt: pool[i].lt, lw: pool[i].lw };
+    if (bul.some(b => b)) out.bulge = bul;
+    chains.push(out);
   }
   return { ok: true, replace: chains, orig: pool };
 }
@@ -387,6 +428,9 @@ export function entityLength(e){
     return Math.PI * (rx + ry) * (1 + 3 * h / (10 + Math.sqrt(4 - 3 * h)));
   }
   if (e.type === 'poly' || e.type === 'leader' || e.type === 'cloud'){
+    /* An arc segment is longer than its chord, so a curved polyline has to be
+     * measured along the curve or the readout under-reports it. */
+    if (e.type === 'poly' && hasBulge(e)) return bulgeLength(e);
     const pts = e.pts || [];
     let L = 0;
     for (let i = 0; i < pts.length - 1; i++) L += dist(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
@@ -402,6 +446,8 @@ export function entityArea(e){
   if (e.type === 'ellipse') return Math.PI * (e.rx || 0) * (e.ry || 0);
   if (e.type === 'room') return e.area != null ? e.area : 0;
   if ((e.type === 'poly' && e.closed) || e.type === 'hatch' || e.type === 'cloud'){
+    /* Arcs contribute exactly, not as a fine chord approximation. */
+    if (e.type === 'poly' && hasBulge(e)) return bulgeArea(e);
     const pts = e.pts || [];
     let a = 0;
     for (let i = 0; i < pts.length; i++){

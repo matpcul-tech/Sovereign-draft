@@ -3,6 +3,7 @@ import { fmtN, dimGeom, arcPoints, ellipsePoints, cloudPoints } from '../core/ge
 import { fmtFtIn } from '../core/format.js';
 import { membersBBox, explodeForIO } from '../core/entities.js';
 import { hatchLines } from '../core/hatch.js';
+import { polyOutline } from '../core/bulge.js';
 import { expandInsert } from '../core/dynblock.js';
 import { tableFrags } from '../core/schedule.js';
 
@@ -65,7 +66,7 @@ export function buildSVG(entities, layers, opts){
     if (e.type === 'line'){
       parts.push('<line x1="' + tx(e.x1) + '" y1="' + ty(e.y1) + '" x2="' + tx(e.x2) + '" y2="' + ty(e.y2) + '" stroke="' + c + '" fill="none" stroke-width="0.03"/>');
     } else if (e.type === 'poly'){
-      const d = (e.pts || []).map((p, i) => (i ? 'L' : 'M') + tx(p[0]) + ' ' + ty(p[1])).join(' ') + (e.closed ? ' Z' : '');
+      const d = polyOutline(e).map((p, i) => (i ? 'L' : 'M') + tx(p[0]) + ' ' + ty(p[1])).join(' ') + (e.closed ? ' Z' : '');
       parts.push('<path d="' + d + '" stroke="' + c + '" fill="none" stroke-width="0.03"/>');
     } else if (e.type === 'circle'){
       parts.push('<circle cx="' + tx(e.cx) + '" cy="' + ty(e.cy) + '" r="' + fmtN(e.r) + '" stroke="' + c + '" fill="none" stroke-width="0.03"/>');

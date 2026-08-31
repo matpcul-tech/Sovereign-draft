@@ -3,7 +3,7 @@
  * undo, autosave and redraw stay consistent.
  */
 import { state, layerByName, layerVisible, layerLocked, pushUndo, afterChange, selMembers, addEntity, deleteEntities, replaceEntity, replaceMany, GRID_SNAP, OFFSETS, POLAR_STEP, rememberVec, pushCmd, currentDimStyleObj } from './core/state.js';
-import { deep, dist, polarSnap } from './core/geometry.js';
+import { deep, dist, polarSnap, distToSeg, closestOnSeg } from './core/geometry.js';
 import { entPoints, entHit, translateEnt, membersBBox, entBBox, rotateMembers, explodeForIO } from './core/entities.js';
 import { offsetEntity } from './core/offset.js';
 import { trimEntity, extendEntity } from './core/trimExtend.js';
@@ -17,6 +17,7 @@ import { filletLines, chamferLines, arcFrom3, moveEntities, rotateEntities, scal
 import { wallFrags, WALL_THICKNESS } from './core/walls.js';
 import { makeHatch, boundaryContaining, HATCH_PATTERNS, closedLoops, hatchWithIslands, hatchArea } from './core/hatch.js';
 import { makeSpline } from './core/spline.js';
+import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
 import { alignedDim, continueDim, baselineDim, applyStyleToDim, angularDim, radiusDim, diameterDim, makeLeader } from './core/dimStyle.js';
 import { lookupCommand } from './core/command.js';
 import {
@@ -889,6 +890,40 @@ export function matchTap(sx, sy){
   else h.lw = ix.matchSrc.lw;
   afterChange();
   toast('Matched ' + h.type);
+}
+
+/* Turn the polyline segment nearest the tap into an arc that passes through
+ * the tapped point, or back into a straight segment when it is already an
+ * arc. This is the edit a rounded slab or a curved curb actually needs, and
+ * without it a bulge could be read from DXF but never authored. */
+export function arcSegTap(sx, sy){
+  const w = S2W(sx, sy);
+  const polys = state.entities.filter(e => e.type === 'poly' && e.pts && e.pts.length >= 2 && !layerLocked(e.layer) && layerVisible(e.layer));
+  let best = null, bestD = Infinity;
+  polys.forEach(e => {
+    const last = e.closed ? e.pts.length : e.pts.length - 1;
+    for (let i = 0; i < last; i++){
+      const a = e.pts[i], b = e.pts[(i + 1) % e.pts.length];
+      const d = distToSeg(w[0], w[1], a[0], a[1], b[0], b[1]);
+      if (d < bestD){ bestD = d; best = { e, i, a, b }; }
+    }
+  });
+  if (!best || bestD > 20 / state.view.scale){ toast('Tap near a polyline segment'); return; }
+  pushUndo();
+  if (bulgeAt(best.e, best.i)){
+    setBulge(best.e, best.i, 0);
+    afterChange();
+    toast('Segment straightened');
+    return;
+  }
+  /* Project the tap off the chord so a tap right on the line does not ask for
+   * an arc of infinite radius. */
+  const foot = closestOnSeg(w[0], w[1], best.a[0], best.a[1], best.b[0], best.b[1]);
+  const off = dist(w[0], w[1], foot[0], foot[1]);
+  if (off < 1e-6){ toast('Tap to one side of the segment to set the bulge'); return; }
+  setBulge(best.e, best.i, bulgeThrough(best.a, best.b, w));
+  afterChange();
+  toast('Arc segment through the tapped point');
 }
 
 export function areaTap(sx, sy){

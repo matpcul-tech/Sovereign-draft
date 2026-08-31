@@ -40,6 +40,7 @@ import { dimLabel } from './dimStyle.js';
 import { expandGrid } from './grid.js';
 import { boxWidth, textWidth } from './textmetrics.js';
 import { splinePoints, splineToPoly, translateSpline } from './spline.js';
+import { hasBulge, polyOutline } from './bulge.js';
 
 /* Composite drafting entities used by non-building drawings. Each reduces to
  * primitives, so hit testing, bounds and every exporter run on the expansion
@@ -107,6 +108,9 @@ export function flattenEnt(e){
   if (!e) return [];
   if (isComposite(e)) return expandComposite(e);
   if (e.type === 'spline') return [splineToPoly(e)];
+  /* Arc segments become line work here, so exporters and hatching see the
+   * real curve instead of a chord. The entity itself keeps its bulges. */
+  if (e.type === 'poly' && hasBulge(e)) return [{ type: 'poly', closed: !!e.closed, pts: polyOutline(e), layer: e.layer, lt: e.lt, lw: e.lw }];
   if (e.type === 'insert') return expandInsert(e);
   if (e.type === 'xref') return expandXref(e);
   if (e.type === 'grid') return expandGrid(e);
@@ -118,6 +122,9 @@ export function explodeForIO(e){
   if (!e) return [];
   if (isComposite(e)) return expandComposite(e);
   if (e.type === 'spline') return [splineToPoly(e)];
+  /* Line work for consumers that cannot express an arc segment. The DXF
+   * writer never reaches here for a polyline, so group 42 still survives. */
+  if (e.type === 'poly' && hasBulge(e)) return [{ type: 'poly', closed: !!e.closed, pts: polyOutline(e), layer: e.layer, lt: e.lt, lw: e.lw }];
   if (e.type === 'insert') return expandInsert(e);
   if (e.type === 'xref') return expandXref(e);
   if (e.type === 'table') return tableFrags(e);
@@ -237,7 +244,7 @@ export function entHit(e, w, tol){
     return hitPath(e.pts, w, tol, true);
   }
   if (e.type === 'line') return distToSeg(w[0], w[1], e.x1, e.y1, e.x2, e.y2) < tol;
-  if (e.type === 'poly' || e.type === 'leader') return hitPath(e.pts, w, tol, e.closed);
+  if (e.type === 'poly' || e.type === 'leader') return hitPath(polyOutline(e), w, tol, e.closed);
   if (e.type === 'cloud') return hitPath(cloudPoints(e.pts || [], e.amp), w, tol, true) || (e.pts && pointInPoly(w[0], w[1], e.pts));
   if (e.type === 'ellipse') return hitPath(ellipsePoints(e), w, tol, true);
   if (e.type === 'hatch'){
@@ -301,7 +308,10 @@ export function entBBox(e, bb){
   if (e.type === 'insert' || e.type === 'xref'){ flattenEnt(e).forEach(f => entBBox(f, bb)); add(e.x, e.y); return; }
   if (e.type === 'grid'){ flattenEnt(e).forEach(f => entBBox(f, bb)); return; }
   if (e.type === 'line' || e.type === 'xline'){ add(e.x1, e.y1); add(e.x2, e.y2); }
-  else if (e.type === 'poly' || e.type === 'hatch' || e.type === 'leader' || e.type === 'room'){ for (let i = 0; i < (e.pts || []).length; i++) add(e.pts[i][0], e.pts[i][1]); }
+  else if (e.type === 'poly' || e.type === 'hatch' || e.type === 'leader' || e.type === 'room'){
+    const op = e.type === 'poly' ? polyOutline(e) : (e.pts || []);
+    for (let i = 0; i < op.length; i++) add(op[i][0], op[i][1]);
+  }
   else if (e.type === 'cloud'){ cloudPoints(e.pts || [], e.amp).forEach(p => add(p[0], p[1])); }
   else if (e.type === 'ellipse'){ ellipsePoints(e).forEach(p => add(p[0], p[1])); }
   else if (e.type === 'circle'){ add(e.cx - e.r, e.cy - e.r); add(e.cx + e.r, e.cy + e.r); }

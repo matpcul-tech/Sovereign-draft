@@ -8,6 +8,7 @@ import { LTYPE_NAMES, LINETYPES } from '../core/style.js';
 import { hatchLines } from '../core/hatch.js';
 import { explodeForIO, membersBBox } from '../core/entities.js';
 import { knotsOf, splineToPoly, makeSpline } from '../core/spline.js';
+import { hasBulge, bulgeAt } from '../core/bulge.js';
 import { dimLabel } from '../core/dimStyle.js';
 import { sheetOf, makeLayout, TITLE_BLOCK_H, SHEET_MARGIN } from '../core/layout.js';
 import { bindAllDims } from '../core/assoc.js';
@@ -239,14 +240,24 @@ function writeEnt(w, e, r2000, inBlock, paper){
       writeEnt(w, splineToPoly(e), r2000, inBlock, paper);
     }
   } else if (e.type === 'poly'){
+    /* Group 42 is the vertex bulge, and it is the only way an arc segment
+     * survives the trip. It is written only where there is a curve, so a
+     * straight polyline comes out exactly as it always did. */
+    const bulged = hasBulge(e);
     if (r2000){
       w(0, 'LWPOLYLINE'); common();
       w(90, e.pts.length, 70, e.closed ? 1 : 0);
-      e.pts.forEach(p => w(10, fmtN(p[0]), 20, fmtN(p[1])));
+      e.pts.forEach((p, i) => {
+        w(10, fmtN(p[0]), 20, fmtN(p[1]));
+        if (bulged && bulgeAt(e, i)) w(42, fmtN(bulgeAt(e, i)));
+      });
     } else {
       w(0, 'POLYLINE'); common();
       w(66, 1, 70, e.closed ? 1 : 0, 10, 0, 20, 0, 30, 0);
-      e.pts.forEach(p => { w(0, 'VERTEX', 8, e.layer || '0', 10, fmtN(p[0]), 20, fmtN(p[1]), 30, 0); });
+      e.pts.forEach((p, i) => {
+        w(0, 'VERTEX', 8, e.layer || '0', 10, fmtN(p[0]), 20, fmtN(p[1]), 30, 0);
+        if (bulged && bulgeAt(e, i)) w(42, fmtN(bulgeAt(e, i)));
+      });
       w(0, 'SEQEND', 8, e.layer || '0');
     }
   } else if (e.type === 'text'){
@@ -318,6 +329,16 @@ function flattenMtext(s){
 /* Parse DXF text into entity objects (no ids). ensureLayer(name) -> canonical
  * layer name, creating the layer as a side effect when needed.
  */
+/* Attach a bulge array only when it carries a curve, so a straight polyline
+ * reads back byte for byte the way it always did. */
+function withBulge(e, bul){
+  if (!bul || !bul.length) return e;
+  const b = new Array(e.pts.length).fill(0);
+  for (let i = 0; i < bul.length && i < b.length; i++) b[i] = bul[i] || 0;
+  if (b.some(v => v)) e.bulge = b;
+  return e;
+}
+
 export function parseDXF(txt, ensureLayer, sink){
   const lines = txt.split(/\r\n|\n|\r/);
   const pairs = [];
@@ -326,7 +347,7 @@ export function parseDXF(txt, ensureLayer, sink){
     if (isNaN(code)){ i--; continue; }
     pairs.push([code, lines[i + 1] !== undefined ? lines[i + 1].trim() : '']);
   }
-  let inEnt = false, inBlocks = false, inHeader = false, inObjects = false, cur = null, curVerts = null;
+  let inEnt = false, inBlocks = false, inHeader = false, inObjects = false, cur = null, curVerts = null, curBul = null;
   const added = [];
   const paper = [];
   const viewports = [];
@@ -363,7 +384,7 @@ export function parseDXF(txt, ensureLayer, sink){
         mx: num(cur[12]), my: num(cur[22]),
         viewH: num(cur[45]) || 0
       });
-      cur = null; curVerts = null;
+      cur = null; curVerts = null; curBul = null;
       return;
     }
     if (t === 'LAYOUT'){
@@ -373,7 +394,7 @@ export function parseDXF(txt, ensureLayer, sink){
         h: num(cur[25]) || num(cur[21]) || 24,
         tab: num(cur[70])
       });
-      cur = null; curVerts = null;
+      cur = null; curVerts = null; curBul = null;
       return;
     }
     if (t === 'LINE' && cur[10] !== undefined) emit(style({ type: 'line', layer: ly, x1: num(cur[10]), y1: num(cur[20]), x2: num(cur[11]), y2: num(cur[21]) }));
@@ -383,8 +404,8 @@ export function parseDXF(txt, ensureLayer, sink){
       const content = t === 'MTEXT' ? flattenMtext(cur[1] || '') : String(cur[1] || '');
       emit(style({ type: 'text', layer: ly, x: num(cur[10]), y: num(cur[20]), size: num(cur[40]) || 1, content }));
     }
-    else if (t === 'LWPOLYLINE' && cur._pts && cur._pts.length >= 2) emit(style({ type: 'poly', layer: ly, closed: !!(num(cur[70]) & 1), pts: cur._pts }));
-    else if (t === 'POLYLINE' && curVerts && curVerts.length >= 2) emit(style({ type: 'poly', layer: ly, closed: !!(num(cur[70]) & 1), pts: curVerts }));
+    else if (t === 'LWPOLYLINE' && cur._pts && cur._pts.length >= 2) emit(style(withBulge({ type: 'poly', layer: ly, closed: !!(num(cur[70]) & 1), pts: cur._pts }, cur._bul)));
+    else if (t === 'POLYLINE' && curVerts && curVerts.length >= 2) emit(style(withBulge({ type: 'poly', layer: ly, closed: !!(num(cur[70]) & 1), pts: curVerts }, curBul)));
     else if (t === 'INSERT' && cur[2]){
       const name = String(cur[2]);
       const def = blockDefs[name] || blockDefs[name.toUpperCase()];
@@ -437,7 +458,7 @@ export function parseDXF(txt, ensureLayer, sink){
     else if (t === 'LEADER' && cur._pts && cur._pts.length >= 2){
       emit(style({ type: 'leader', layer: ly, pts: cur._pts, content: String(cur[1] || '') }));
     }
-    cur = null; curVerts = null;
+    cur = null; curVerts = null; curBul = null;
   }
 
   for (const [c, v] of pairs){
@@ -489,6 +510,19 @@ export function parseDXF(txt, ensureLayer, sink){
       const ycode = (c === 20 || c === 21);
       if (xcode) cur._pts.push([num(v), 0]);
       else if (ycode && cur._pts.length) cur._pts[cur._pts.length - 1][1] = num(v);
+      continue;
+    }
+    /* A bulge belongs to the vertex it follows. */
+    if (cur._t === 'LWPOLYLINE' && c === 42){
+      if (!cur._bul) cur._bul = [];
+      while (cur._bul.length < cur._pts.length - 1) cur._bul.push(0);
+      cur._bul[cur._pts.length - 1] = num(v);
+      continue;
+    }
+    if (cur._t === 'POLYLINE' && cur._inv && curVerts && c === 42){
+      if (!curBul) curBul = [];
+      while (curBul.length < curVerts.length - 1) curBul.push(0);
+      curBul[curVerts.length - 1] = num(v);
       continue;
     }
     if (cur._t === 'POLYLINE' && cur._inv && curVerts && (c === 10 || c === 20)){

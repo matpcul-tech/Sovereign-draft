@@ -7,6 +7,7 @@ export const COMMANDS = {
   LINE:    { aliases: ['LINE', 'L'],                    tool: 'line',    prompt: 'Specify first point' },
   PLINE:   { aliases: ['PLINE', 'POLY', 'P'],           tool: 'poly',    prompt: 'Specify start point' },
   SPLINE:  { aliases: ['SPLINE', 'SPL'],                tool: 'spline',  prompt: 'Specify first control point' },
+  ARCSEG:  { aliases: ['ARCSEG', 'PARC'],                tool: 'arcseg',  prompt: 'Tap beside a polyline segment to curve it' },
   RECT:    { aliases: ['RECT', 'RECTANGLE', 'REC'],     tool: 'rect',    prompt: 'Specify first corner' },
   CIRCLE:  { aliases: ['CIRCLE', 'C'],                  tool: 'circle',  prompt: 'Specify center point' },
   ARC:     { aliases: ['ARC', 'A'],                     tool: 'arc',     prompt: 'Specify start point of arc' },

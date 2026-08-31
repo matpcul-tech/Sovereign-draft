@@ -6,6 +6,7 @@ import { fmtFtIn } from '../core/format.js';
 import { dashFor, lwToPx } from '../core/style.js';
 import { hatchLines, hatchPlan, pxPerFootToScaleFactor } from '../core/hatch.js';
 import { splinePoints, SPLINE_TOL } from '../core/spline.js';
+import { polyOutline } from '../core/bulge.js';
 import { flattenEnt, spanXline, isComposite, expandComposite} from '../core/entities.js';
 import { tableFrags } from '../core/schedule.js';
 import { dimLabel } from '../core/dimStyle.js';
@@ -38,7 +39,7 @@ export function drawEnt(c, e, color, sel, toS, scl, bg){
   }
   applyStroke(c, e, color, sel, scl);
   if (e.type === 'line') strokePathOn(c, toS, [[e.x1, e.y1], [e.x2, e.y2]]);
-  else if (e.type === 'poly') strokePathOn(c, toS, e.pts, e.closed);
+  else if (e.type === 'poly') strokePathOn(c, toS, polyOutline(e, scl > 0 ? 0.6 / scl : undefined), e.closed);
   else if (e.type === 'circle'){
     const p = toS(e.cx, e.cy);
     c.beginPath(); c.arc(p[0], p[1], e.r * scl, 0, Math.PI * 2); c.stroke();

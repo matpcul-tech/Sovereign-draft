@@ -18,7 +18,7 @@ import {
   applySheetSet, layerIsolate, layerUnisolate, bindSelection,
   placeDatumAt, placeFinishAt, applyStoryHeight, beginHeightPrompt,
   addConstraint, solveConstraintsNow, deleteConstraintsOnSelection, solveAfterEdit,
-  hatchIslandsFromSelection
+  hatchIslandsFromSelection, arcSegTap
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
 import { setTool } from './ui/tools.js';
@@ -42,7 +42,7 @@ function findGrip(sx, sy){
 }
 
 const DRAW_TOOLS = ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'wall', 'ellipse', 'image', 'calibrate', 'xline', 'grid', 'arraypolar', 'section', 'detail', 'fcf'];
-const TAP_TOOLS = ['erase', 'text', 'symbol', 'offset', 'trim', 'extend', 'match', 'area', 'list', 'id', 'dimrad', 'dimdia', 'schedule', 'datum', 'finish'];
+const TAP_TOOLS = ['erase', 'text', 'symbol', 'offset', 'trim', 'extend', 'match', 'area', 'list', 'id', 'dimrad', 'dimdia', 'schedule', 'datum', 'finish', 'arcseg'];
 const TWO_PICK = ['fillet', 'chamfer', 'mirror', 'move', 'copy', 'rotate', 'scale'];
 const POLY_TOOLS = ['poly', 'hatch', 'cloud', 'leader', 'spline'];
 
@@ -230,6 +230,7 @@ function endPointer(ev){
   else if (drag.kind === 'erasetap'){ eraseTap(sx, sy); }
   else if (drag.kind === 'matchtap'){ matchTap(sx, sy); }
   else if (drag.kind === 'areatap'){ areaTap(sx, sy); }
+  else if (drag.kind === 'arcsegtap'){ arcSegTap(sx, sy); }
   else if (drag.kind === 'listtap'){ listTap(sx, sy); }
   else if (drag.kind === 'idtap'){ idTap(sx, sy); }
   else if (drag.kind === 'dimradtap'){ dimRadTap(sx, sy, false); }

@@ -6,6 +6,7 @@ import { arcPoints, dimGeom } from '../core/geometry.js';
 import { fmtFtIn } from '../core/format.js';
 import { membersBBox, explodeForIO } from '../core/entities.js';
 import { hatchLines, hatchPlan, ppfToScaleFactor } from '../core/hatch.js';
+import { polyOutline } from '../core/bulge.js';
 import { helveticaWidth } from '../core/textmetrics.js';
 import { sheetLabel } from '../core/document.js';
 import { tableFrags } from '../core/schedule.js';
@@ -109,7 +110,7 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts,
     }
     P((isDim ? '0.35' : '0.08') + ' G');
     if (e.type === 'line') seg(e.x1, e.y1, e.x2, e.y2);
-    else if (e.type === 'poly') path(e.pts, e.closed);
+    else if (e.type === 'poly') path(polyOutline(e), e.closed);
     else if (e.type === 'circle') path(circlePts(e.cx, e.cy, e.r), false);
     else if (e.type === 'arc') path(arcPoints(e), false);
     else if (e.type === 'hatch'){
