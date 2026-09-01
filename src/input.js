@@ -1,7 +1,7 @@
 /* Pointer, wheel and keyboard input. Touch: one finger draws, two fingers pan
  * and zoom. Desktop: scroll wheel zooms, middle-drag pans, keys switch tools.
  */
-import { state, pushUndo, doUndo, doRedo, afterChange, selMembers, currentDimStyleObj } from './core/state.js';
+import { state, pushUndo, undoScope, doUndo, doRedo, afterChange, selMembers, currentDimStyleObj } from './core/state.js';
 import { dist, clamp } from './core/geometry.js';
 import { gripPts, translateEnt } from './core/entities.js';
 import { fmtFtIn } from './core/format.js';
@@ -168,7 +168,7 @@ function onPointerMove(ev){
     drag.last = [sx, sy]; draw(); return;
   }
   if (drag.kind === 'grip'){
-    if (!drag.moved){ pushUndo(); drag.moved = true; }
+    if (!drag.moved){ pushUndo(undoScope(drag.ent ? [drag.ent.id] : [])); drag.moved = true; }
     drag.gp.apply(snapPt(sx, sy));
     if (drag.ent && drag.ent.host) syncHostWall(state, drag.ent.host);
     draw(); return;
@@ -178,7 +178,9 @@ function onPointerMove(ev){
     if (!ms.length) return;
     if (!drag.moved){
       if (dist(sx, sy, drag.s0[0], drag.s0[1]) < 6) return;
-      pushUndo(); drag.moved = true;
+      /* The scope is computed once, before anything moves, so the record
+       * holds the pre edit copies of everything the drag can reach. */
+      pushUndo(undoScope(ms.map(e => e.id))); drag.moved = true;
     }
     const hosted = ms.length === 1 && ms[0].type === 'insert' && ms[0].host && ms[0].cl;
     if (hosted){
@@ -267,9 +269,9 @@ function endPointer(ev){
     const p = snapPt(sx, sy);
     const style = currentDimStyleObj();
     if (tool === 'dimcont' && ix.dimLast){
-      pushUndo(); const e = continueDim(ix.dimLast, p, style); bindAlignedDim(e, state.entities); addEntity(e); ix.dimLast = e; afterChange();
+      pushUndo(undoScope([])); const e = continueDim(ix.dimLast, p, style); bindAlignedDim(e, state.entities); addEntity(e); ix.dimLast = e; afterChange();
     } else if (tool === 'dimbase' && ix.dimBase){
-      pushUndo(); const e = baselineDim(ix.dimBase, p, style); bindAlignedDim(e, state.entities); addEntity(e); afterChange();
+      pushUndo(undoScope([])); const e = baselineDim(ix.dimBase, p, style); bindAlignedDim(e, state.entities); addEntity(e); afterChange();
     } else toast('Place a linear dimension first');
   }
   else if (drag.kind === 'modpick'){

@@ -179,23 +179,165 @@ function restore(s){
   if (!layerByName(state.currentLayer)) state.currentLayer = state.layers[0] ? state.layers[0].name : 'WALLS';
 }
 
-export function pushUndo(){
-  state.undoStack.push(snapshot());
+/* ---------- scoped undo ----------
+ *
+ * A full snapshot deep copies the whole drawing: at 200,000 entities that is
+ * half a second and 16 MB on every single edit, and fifty of them is most of
+ * a gigabyte of undo stack. Every feature works at any drawing size except
+ * this one, which fails at a fixed size regardless of features.
+ *
+ * A sparse record instead stores only the entities an operation can touch,
+ * each with its position in the draw order, plus the id counter. Ids are
+ * monotonic and never reused, so anything with an id at or past the recorded
+ * counter was created after the record and undo removes it without ever
+ * having been told about it. Entities in the record are put back exactly
+ * where they were; everything else is untouched by construction.
+ *
+ * The contract: a caller passing a scope asserts the operation touches only
+ * those entities, entities it creates, the constraint list and the scalars
+ * below. Layers, styles and layouts are out of bounds for a scoped push;
+ * an operation that can reach them takes the full snapshot as always. The
+ * differential test in tests/undo.test.js holds this contract against a
+ * full snapshot oracle over randomised operation sequences.
+ */
+function sparseSnapshot(ids){
+  const idSet = new Set(ids);
+  const copies = [];
+  /* A plain loop, because this runs on every edit and a closure per entity
+   * is a third of the pass at two hundred thousand of them. */
+  const es = state.entities;
+  for (let i = 0; i < es.length; i++){
+    if (idSet.has(es[i].id)) copies.push({ i, e: deep(es[i]) });
+  }
+  return {
+    sparse: true,
+    ids: [...idSet],
+    copies,
+    idSeq: state.idSeq,
+    gSeq: state.gSeq,
+    selIds: state.selIds.slice(),
+    currentLayer: state.currentLayer,
+    constraints: deep(state.constraints || [])
+  };
+}
+
+function sparseRestore(rec){
+  const idSet = new Set(rec.ids);
+  /* Everything the operation declared, plus everything it created. */
+  state.entities = state.entities.filter(e => !idSet.has(e.id) && e.id < rec.idSeq);
+  /* Reinsert at the recorded positions, ascending, which reconstructs the
+   * original interleaving because nothing reorders untouched entities. */
+  const sorted = rec.copies.slice().sort((a, b) => a.i - b.i);
+  for (const c of sorted){
+    state.entities.splice(Math.min(c.i, state.entities.length), 0, deep(c.e));
+  }
+  state.idSeq = rec.idSeq;
+  state.gSeq = rec.gSeq;
+  state.constraints = deep(rec.constraints || []);
+  if (rec.currentLayer && layerByName(rec.currentLayer)) state.currentLayer = rec.currentLayer;
+}
+
+/* The record that reverses restoring `rec` from the current state: the same
+ * declared scope, plus whatever the operation created since the record was
+ * taken. Cheap in both directions, which is what keeps redo from paying the
+ * full snapshot cost undo just avoided. */
+function counterpart(rec){
+  if (!rec || !rec.sparse) return snapshot();
+  const ids = new Set(rec.ids);
+  state.entities.forEach(e => { if (e.id >= rec.idSeq) ids.add(e.id); });
+  return sparseSnapshot([...ids]);
+}
+
+function restoreAny(rec){
+  if (rec && rec.sparse) sparseRestore(rec);
+  else restore(rec);
+}
+
+/* The entities an edit to `seedIds` can actually reach. Wider than the
+ * selection on purpose:
+ *  - group members move together;
+ *  - a door or window drag regenerates its host wall, deleting and
+ *    recreating every member of that group;
+ *  - dims associated to anything in scope follow it, and a dim with no
+ *    binding yet can gain one from geometry arriving at its endpoints;
+ *  - the constraint solver can move any entity in the constraint network,
+ *    so when constraints exist at all, every constrained entity is in scope.
+ * Returns null when the blast radius is not computable (auto rooms
+ * regenerate globally), which tells the caller to take a full snapshot.
+ */
+export function undoScope(seedIds){
+  if (state.autoRooms) return null;
+
+  /* Ids wanted before looking at any entity: the seeds, and every entity a
+   * constraint names, since the solver can move any of them. Both sets are
+   * small; the entity list is not, so it is walked once, not indexed. An
+   * id-to-entity Map over 200,000 entities costs forty milliseconds to
+   * build, which is most of what this rewrite exists to remove. */
+  const want = new Set(seedIds || []);
+  if (state.constraints && state.constraints.length){
+    for (const k of state.constraints){
+      if (k.a != null) want.add(k.a);
+      if (k.b != null) want.add(k.b);
+    }
+  }
+
+  const idSet = new Set();
+  const groups = new Set();
+  const hosts = new Set();
+  const dims = [];
+  let expand = false;
+  const grab = e => {
+    if (e.id == null || idSet.has(e.id)) return;
+    idSet.add(e.id);
+    if (e.g){ groups.add(e.g); expand = true; }
+    if (e.type === 'insert' && e.host){ hosts.add(e.host); expand = true; }
+  };
+
+  for (const e of state.entities){
+    if (e.type === 'dim') dims.push(e);
+    if (want.has(e.id)) grab(e);
+  }
+
+  /* Group and host expansion costs extra passes, so it runs only when
+   * something grabbed actually has a group or a host. */
+  if (expand){
+    let size = -1;
+    while (size !== idSet.size){
+      size = idSet.size;
+      for (const e of state.entities){
+        if (e.g && (groups.has(e.g) || hosts.has(e.g))) grab(e);
+        else if (e.type === 'insert' && e.host && hosts.has(e.host)) grab(e);
+      }
+    }
+  }
+
+  for (const e of dims){
+    if (idSet.has(e.id)) continue;
+    if (!e.assoc){ grab(e); continue; }
+    if (e.assoc.some(a => a && idSet.has(a.id))) grab(e);
+  }
+  return [...idSet];
+}
+
+export function pushUndo(scopeIds){
+  state.undoStack.push(Array.isArray(scopeIds) ? sparseSnapshot(scopeIds) : snapshot());
   if (state.undoStack.length > UNDO_LIMIT) state.undoStack.shift();
   state.redoStack = [];
 }
 export function doUndo(){
   if (!state.undoStack.length) return false;
-  state.redoStack.push(snapshot());
-  restore(state.undoStack.pop());
+  const rec = state.undoStack.pop();
+  state.redoStack.push(counterpart(rec));
+  restoreAny(rec);
   state.selIds = [];
   afterChange();
   return true;
 }
 export function doRedo(){
   if (!state.redoStack.length) return false;
-  state.undoStack.push(snapshot());
-  restore(state.redoStack.pop());
+  const rec = state.redoStack.pop();
+  state.undoStack.push(counterpart(rec));
+  restoreAny(rec);
   state.selIds = [];
   afterChange();
   return true;

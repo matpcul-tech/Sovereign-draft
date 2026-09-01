@@ -2,7 +2,7 @@
  * chip/button UI. Everything that mutates the drawing goes through here so
  * undo, autosave and redraw stay consistent.
  */
-import { state, layerByName, layerVisible, layerLocked, pushUndo, afterChange, selMembers, addEntity, deleteEntities, replaceEntity, replaceMany, GRID_SNAP, OFFSETS, POLAR_STEP, rememberVec, pushCmd, currentDimStyleObj, activeLayout } from './core/state.js';
+import { state, layerByName, layerVisible, layerLocked, pushUndo, undoScope, afterChange, selMembers, addEntity, deleteEntities, replaceEntity, replaceMany, GRID_SNAP, OFFSETS, POLAR_STEP, rememberVec, pushCmd, currentDimStyleObj, activeLayout } from './core/state.js';
 import { deep, dist, polarSnap, distToSeg, closestOnSeg } from './core/geometry.js';
 import { entPoints, entHit, translateEnt, membersBBox, entBBox, rotateMembers, explodeForIO } from './core/entities.js';
 import { offsetEntity } from './core/offset.js';
@@ -105,7 +105,7 @@ export function hitTest(sx, sy){
 
 export function cancelPoly(commit){
   if (commit && ix.polyPts.length > 1){
-    pushUndo();
+    pushUndo(undoScope([]));
     if (state.tool === 'hatch'){
       const h = makeHatch(ix.polyPts, { layer: 'HATCH', pattern: state.hatchPattern || 'ANSI31' });
       if (h) addEntity(h);
@@ -127,7 +127,7 @@ export function cancelPoly(commit){
 
 export function closePoly(){
   if (ix.polyPts.length > 2){
-    pushUndo();
+    pushUndo(undoScope([]));
     if (state.tool === 'hatch'){
       const h = makeHatch(ix.polyPts, { layer: 'HATCH', pattern: state.hatchPattern || 'ANSI31' });
       if (h) addEntity(h);
@@ -378,7 +378,7 @@ export function hatchIslandsFromSelection(){
 
 export function deleteSelection(){
   const ms = selMembers(); if (!ms.length) return;
-  pushUndo();
+  pushUndo(undoScope(ms.map(e => e.id)));
   const hosts = new Set();
   ms.forEach(e => { if (e.type === 'insert' && e.host) hosts.add(e.host); });
   deleteEntities(ms.map(e => e.id));
@@ -586,7 +586,9 @@ export function finishDraw(p1, p2, tool){
     return;
   }
   if (dist(p1[0], p1[1], p2[0], p2[1]) < 0.05 && tool !== 'stretch' && tool !== 'fcf') return;
-  pushUndo();
+  /* Drawing creates; it changes nothing that already exists. An empty scope
+   * still catches the created entities through the id counter. */
+  pushUndo(undoScope([]));
   if (tool === 'line') addEntity({ type: 'line', layer: state.currentLayer, x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1] });
   else if (tool === 'rect') addEntity({ type: 'poly', layer: state.currentLayer, closed: true, pts: [[p1[0], p1[1]], [p2[0], p1[1]], [p2[0], p2[1]], [p1[0], p2[1]]] });
   else if (tool === 'circle') addEntity({ type: 'circle', layer: state.currentLayer, cx: p1[0], cy: p1[1], r: dist(p1[0], p1[1], p2[0], p2[1]) });
@@ -817,7 +819,7 @@ export function applyProps(patch){
 
 export function transformSelection(kind, p1, p2){
   const ms = selMembers(); if (!ms.length || !p1 || !p2) return;
-  pushUndo();
+  pushUndo(undoScope(ms.map(e => e.id)));
   let copies;
   const hosts = new Set();
   const takeHost = e => { if (e.type === 'insert' && e.host) hosts.add(e.host); };
