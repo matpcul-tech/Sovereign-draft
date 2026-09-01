@@ -24,7 +24,7 @@ import {
   extrudeSelection, revolveSelection, loftSelection, clearSolids,
   toggleAnnotative, setAnnoScale, openScriptSheet, runSavedScript,
   makePrimitive, makeRoof, makeDrawings, makeStack, makePlans, makeRoofPlan, makeTakeoff3d, makeDormer,
-  setSunStudy, setMaterial, requestRender, manageView3dCam, requestTurntable,
+  setSunStudy, setMaterial, requestRender, manageView3dCam, requestTurntable, requestWalk,
   sweepSelection, boolean3d, sliceSolid, listSolids, deleteSolid,
   makeElevation, modelPlan
 } from './actions.js';
@@ -512,6 +512,7 @@ export function handleCommand(text){
   if (res.action === 'render'){ requestRender(res.rest); return; }
   if (res.action === 'view3dcam'){ manageView3dCam(res.rest); return; }
   if (res.action === 'turntable'){ requestTurntable(res.rest); return; }
+  if (res.action === 'walk'){ requestWalk(res.rest); return; }
   if (res.action === 'sweep3d'){ sweepSelection(res.rest); return; }
   if (res.action && res.action.indexOf('bool3d:') === 0){ boolean3d(res.action.slice(7), res.rest); return; }
   if (res.action === 'slice3d'){ sliceSolid(res.rest); return; }

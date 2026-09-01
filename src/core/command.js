@@ -122,6 +122,7 @@ export const COMMANDS = {
   RENDER:  { aliases: ['RENDER'],                       tool: null,     action: 'render' },
   VIEW:    { aliases: ['VIEW', 'VIEWS'],                tool: null,     action: 'view3dcam' },
   TURNTABLE:{ aliases: ['TURNTABLE', 'ORBITVID'],       tool: null,     action: 'turntable' },
+  WALK:    { aliases: ['WALK', 'FLYTHROUGH'],           tool: null,     action: 'walk' },
   DRAWINGS:{ aliases: ['DRAWINGS', 'DWGSET'],           tool: null,     action: 'drawings' },
   SWEEP:   { aliases: ['SWEEP'],                        tool: null,     action: 'sweep3d' },
   U3D:     { aliases: ['U3D', 'UNION3D'],               tool: null,     action: 'bool3d:union' },

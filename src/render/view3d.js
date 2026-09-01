@@ -12,6 +12,7 @@ import {
 } from '../core/mesh.js';
 import { pushPullPrism } from '../core/model3d.js';
 import { sunVector } from '../core/sun.js';
+import { samplePath, easeInOut } from '../core/campath.js';
 
 let renderer = null;
 let scene = null;
@@ -21,6 +22,7 @@ let root = null;
 let hud = null;
 let canvas = null;
 let running = false;
+let framedOnce = false;
 let onClose = null;
 let lastSolid = null;
 let lastSun = null;
@@ -144,9 +146,21 @@ function applySun(solid){
   }
 }
 
+/* A drag leaves damping velocity that keeps the camera coasting for a
+ * second after the mouse is up. Anything that captures the camera as
+ * data freezes that coast first, so what is saved is what is seen. */
+function freezeCoast(){
+  if (!controls) return;
+  const d = controls.enableDamping;
+  controls.enableDamping = false;
+  controls.update();
+  controls.enableDamping = d;
+}
+
 /* The camera as data, for saved views. */
 export function getCamera3d(){
   if (!camera || !controls) return null;
+  freezeCoast();
   return {
     pos: [camera.position.x, camera.position.z, camera.position.y],
     target: [controls.target.x, controls.target.z, controls.target.y],
@@ -223,6 +237,7 @@ export function renderTurntable(seconds){
   }
   const chunks = [];
   rec.ondataavailable = ev => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+  freezeCoast();
   const eye0 = camera.position.clone();
   const tgt = controls.target.clone();
   const r0 = Math.hypot(eye0.x - tgt.x, eye0.z - tgt.z);
@@ -248,6 +263,57 @@ export function renderTurntable(seconds){
     rec.onstop = () => resolve(chunks.length ? new Blob(chunks, { type: 'video/webm' }) : null);
     rec.start(200);
     requestAnimationFrame(spin);
+  });
+}
+
+/* A walkthrough: the camera rides a Catmull-Rom spline through saved
+ * views (CAD-order pos/target triples) and the canvas is recorded to a
+ * webm, same machinery as the turntable. Eased so it starts and stops
+ * gently. Resolves the Blob, or null where recording is impossible. */
+export function renderWalkthrough(views, seconds){
+  if (!canvas || !camera || !controls || typeof MediaRecorder === 'undefined') return Promise.resolve(null);
+  if (!views || views.length < 2) return Promise.resolve(null);
+  const secs = Math.max(2, Math.min(60, Number(seconds) || 8));
+  let stream;
+  try { stream = canvas.captureStream(30); } catch (e){ return Promise.resolve(null); }
+  let rec;
+  try { rec = new MediaRecorder(stream, { mimeType: 'video/webm' }); }
+  catch (e){
+    try { rec = new MediaRecorder(stream); } catch (e2){ return Promise.resolve(null); }
+  }
+  const chunks = [];
+  rec.ondataavailable = ev => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+  freezeCoast();
+  const eye0 = camera.position.clone();
+  const tgt0 = controls.target.clone();
+  const fov0 = camera.fov;
+  const t0 = performance.now();
+  return new Promise(resolve => {
+    const step = () => {
+      const t = (performance.now() - t0) / (secs * 1000);
+      if (t >= 1){
+        camera.position.copy(eye0);
+        controls.target.copy(tgt0);
+        camera.fov = fov0;
+        camera.updateProjectionMatrix();
+        controls.update();
+        render();
+        rec.stop();
+        return;
+      }
+      const s = samplePath(views, easeInOut(t));
+      /* CAD Z-up (x, y_plan, z_height) -> Three Y-up (x, height, y_plan). */
+      camera.position.set(s.pos[0], s.pos[2], s.pos[1]);
+      controls.target.set(s.target[0], s.target[2], s.target[1]);
+      camera.fov = s.fov;
+      camera.updateProjectionMatrix();
+      camera.lookAt(controls.target);
+      render();
+      requestAnimationFrame(step);
+    };
+    rec.onstop = () => resolve(chunks.length ? new Blob(chunks, { type: 'video/webm' }) : null);
+    rec.start(200);
+    requestAnimationFrame(step);
   });
 }
 
@@ -302,15 +368,22 @@ function addMeshes(solid){
   grid.position.set(cx, 0, cz);
   scene.add(grid);
 
+  /* Frame the model once per opening of the view. Later rebuilds (a wall
+   * moved, a material set, a view saved: anything that syncs the scene)
+   * keep the camera where the user put it; only the clip planes and the
+   * orbit limits follow the new extents. */
   if (camera){
-    camera.position.set(cx + span * 0.85, (solid.height || 8) * 1.7, cz + span * 0.95);
-    camera.lookAt(cx, (solid.height || 8) * 0.35, cz);
+    if (!framedOnce){
+      camera.position.set(cx + span * 0.85, (solid.height || 8) * 1.7, cz + span * 0.95);
+      camera.lookAt(cx, (solid.height || 8) * 0.35, cz);
+      framedOnce = true;
+      if (controls) controls.target.set(cx, (solid.height || 8) * 0.35, cz);
+    }
     camera.near = 0.1;
     camera.far = Math.max(200, span * 20);
     camera.updateProjectionMatrix();
   }
   if (controls){
-    controls.target.set(cx, (solid.height || 8) * 0.35, cz);
     controls.minDistance = 4;
     controls.maxDistance = span * 12;
     controls.update();
@@ -1240,6 +1313,7 @@ export function syncView3d(opts){
 export function hideView3d(){
   if (pick.dragging) cancelDrag();
   running = false;
+  framedOnce = false;
   if (renderer) renderer.setAnimationLoop(null);
   window.removeEventListener('resize', onResize);
   if (root) root.style.display = 'none';

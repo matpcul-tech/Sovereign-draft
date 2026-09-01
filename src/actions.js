@@ -418,6 +418,15 @@ export function manageView3dCam(rest){
   document.dispatchEvent(new CustomEvent('sd-view-go', { detail: { name: toks[0].toUpperCase() } }));
 }
 
+export function requestWalk(rest){
+  const toks = String(rest || '').trim().split(/\s+/).filter(Boolean);
+  const seconds = Number(toks.find(t => Number.isFinite(Number(t)))) || 8;
+  const names = toks.filter(t => !Number.isFinite(Number(t))).map(t => t.toUpperCase());
+  try {
+    document.dispatchEvent(new CustomEvent('sd-walk', { detail: { names, seconds } }));
+  } catch (e){ toast('WALK needs the browser'); }
+}
+
 export function requestTurntable(rest){
   const secs = Number(String(rest || '').trim()) || 6;
   try {

@@ -1336,6 +1336,25 @@ function wireUi(){
     if (!m.isView3dOpen()) await openView3d();
     if (m.setCamera3d(v)) toast('View ' + v.name);
   });
+  document.addEventListener('sd-walk', async ev => {
+    const all = state.views3d || [];
+    const names = (ev.detail && ev.detail.names) || [];
+    const views = names.length ? names.map(n => all.find(v => v.name === n)).filter(Boolean) : all;
+    if (names.length && views.length < names.length){
+      const missing = names.filter(n => !all.some(v => v.name === n));
+      toast('No view ' + missing.join(', ') + '. VIEWS lists them');
+      return;
+    }
+    if (views.length < 2){ toast('WALK needs two saved views. VIEW SAVE NAME as you frame each stop'); return; }
+    const m = await loadView3d();
+    if (!m.isView3dOpen()) await openView3d();
+    if (!m.isView3dOpen()){ toast('Nothing to walk through: model something first'); return; }
+    toast('Walking ' + views.map(v => v.name).join(' > ') + '...');
+    const blob = await m.renderWalkthrough(views, ev.detail && ev.detail.seconds);
+    if (!blob){ toast('This browser cannot record the canvas'); return; }
+    download(fileSlug() + '-walkthrough.webm', blob, 'video/webm');
+    toast('Walkthrough saved, ' + Math.round(blob.size / 1024) + ' KB webm');
+  });
   document.addEventListener('sd-turntable', async ev => {
     const m = await loadView3d();
     if (!m.isView3dOpen()) await openView3d();
