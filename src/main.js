@@ -296,6 +296,19 @@ function wireUi(){
   $('btnProps') && $('btnProps').addEventListener('click', () => { renderProps(); openSheet('sheetProps'); });
 
   document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+  /* One toolrow at a time. The tab survives reloads, and a tool picked
+   * by key or command pulls its own row forward. */
+  const showToolRow = row => {
+    document.querySelectorAll('#tooltabs .ttab').forEach(t => t.classList.toggle('on', t.dataset.row === row));
+    document.querySelectorAll('#toolstrip .toolrow').forEach(r => r.classList.toggle('on', r.id === row));
+    try { localStorage.setItem('sd-tooltab', row); } catch (e){ /* private mode */ }
+  };
+  document.querySelectorAll('#tooltabs .ttab').forEach(b => b.addEventListener('click', () => showToolRow(b.dataset.row)));
+  document.addEventListener('sd-toolrow', ev => showToolRow(ev.detail.row));
+  try {
+    const savedRow = localStorage.getItem('sd-tooltab');
+    if (savedRow && document.getElementById(savedRow)) showToolRow(savedRow);
+  } catch (e){ /* private mode */ }
 
   $('chipAI') && $('chipAI').addEventListener('click', () => openSheet('sheetAI'));
   $('chipLayer') && $('chipLayer').addEventListener('click', () => { ix.assignMode = false; renderLayers(); openSheet('sheetLayers'); });

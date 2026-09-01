@@ -105,6 +105,8 @@ Copy share link (Sheet menu) puts a gzipped drawing in the URL hash. No server. 
 | `DATUM` | Datum feature | `SF` | Surface finish |
 | `JS` | Script sheet (`sd.*` API) | `RUN` | Run a saved script |
 
+The tool rail shows one row at a time behind Draw / Modify / Issue / Build tabs; the tab you leave it on survives reloads, and picking a tool by key or command pulls its row forward. In 3D the Build row is pinned.
+
 **Wall mode** draws two parallel faces + caps. Thickness chip: 4″ / 6″ / 8″. Walls **heal as you draw** — L-corners miter and T-junctions recut automatically. Doors and windows are **dynamic INSERT blocks**: stretch the width grip, tap the diamond to flip swing, type `2'6"` with the door selected. They recut the host wall. **Explode** (`XP`) yields ordinary lines and arcs. Fixtures (stove, bed, …) are the same INSERT type with rotate + flip grips.
 
 **Live rooms** (`ROOMS`): closed wall loops become named rooms with live SF. Turn auto-rooms on and the labels follow as walls move. Text inside a loop names the room.

@@ -173,14 +173,19 @@ body.view3d .tool[data-tool="view3d"] span{color:var(--gold)}
 #v3dRail button.on{border-color:var(--gold);color:var(--gold);background:rgba(212,168,67,.12)}
 #v3dRail button[data-act]{color:var(--teal);border-color:rgba(0,212,184,.35)}
 body.view3d #toolrow-draw, body.view3d #toolrow-mod, body.view3d #toolrow-issue{display:none !important}
-body.view3d #toolstrip .toolrow-label{display:none !important}
-body.view3d #label-3d{display:block !important}
+body.view3d #tooltabs{display:none !important}
+body.view3d #toolrow-3d{display:flex !important}
 body.view3d #view3d{bottom:calc(env(safe-area-inset-bottom) + 92px)}
 
 #bottom{bottom:28px;padding-bottom:8px}
 #toolstrip{display:flex;flex-direction:column;gap:4px}
-.toolrow-label{font-size:9px;letter-spacing:.16em;color:var(--ink-dim);text-transform:uppercase;padding:0 4px}
-.toolrow{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;-webkit-overflow-scrolling:touch;
+#tooltabs{display:flex;gap:4px;padding:0 2px}
+.ttab{height:24px;padding:0 10px;border-radius:7px;border:1px solid transparent;background:transparent;
+  font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);font-weight:600}
+.ttab.on{border-color:var(--line);background:var(--navy-2);color:var(--ink)}
+.toolrow{display:none}
+.toolrow.on{display:flex}
+.toolrow{gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;-webkit-overflow-scrolling:touch;
   scroll-padding-inline:8px;padding-right:14px;
   -webkit-mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 22px),transparent 100%);
   mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 22px),transparent 100%)}

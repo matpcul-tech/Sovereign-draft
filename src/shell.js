@@ -80,8 +80,13 @@ export function shellHTML(){
     <button class="chip" id="chipWindow" style="display:none">Window</button>
   </div>
   <div id="toolstrip">
-    <div class="toolrow-label">Draw</div>
-    <div id="toolrow-draw" class="toolrow">
+    <div id="tooltabs">
+      <button type="button" class="ttab on" data-row="toolrow-draw">Draw</button>
+      <button type="button" class="ttab" data-row="toolrow-mod">Modify</button>
+      <button type="button" class="ttab" data-row="toolrow-issue">Issue</button>
+      <button type="button" class="ttab" data-row="toolrow-3d">Build</button>
+    </div>
+    <div id="toolrow-draw" class="toolrow on">
       ${tool('select','SELECT','Select (V)','<path d="M5 3l14 7-6 2-2 6z"/>')}
       ${tool('pan','PAN','Pan (H)','<path d="M12 3v18M3 12h18"/><path d="m9 6 3-3 3 3M9 18l3 3 3-3M6 9 3 12l3 3M18 9l3 3-3 3"/>')}
       ${tool('line','LINE','Line (L)','<path d="M5 19 19 5"/><circle cx="5" cy="19" r="1.5"/><circle cx="19" cy="5" r="1.5"/>')}
@@ -104,7 +109,6 @@ export function shellHTML(){
       ${tool('measure','MEAS','Measure (M)','<path d="m3 17 4 4L21 7l-4-4z"/>')}
       ${tool('erase','ERASE','Erase (Q)','<path d="M19 13 9 3 3 9l10 10h6"/>')}
     </div>
-    <div class="toolrow-label">Modify</div>
     <div id="toolrow-mod" class="toolrow">
       ${tool('offset','OFFS','Offset (O)','<path d="M5 4v16M12 4v16"/><path d="m16 8 4 4-4 4"/>')}
       ${tool('trim','TRIM','Trim (X)','<path d="M8 8 21 21M8 16 21 3"/>')}
@@ -130,7 +134,6 @@ export function shellHTML(){
       ${tool('list','LIST','List object','<path d="M8 6h12M8 12h12M8 18h8M4 6h.01M4 12h.01M4 18h.01"/>')}
       ${tool('schedule','SCH','Place schedule','<path d="M4 4h16v16H4zM4 9h16M9 4v16"/>')}
     </div>
-    <div class="toolrow-label">Issue</div>
     <div id="toolrow-issue" class="toolrow">
       ${tool('section','SECT','Section cut (SE)','<path d="M4 20 20 4"/><path d="M8 4v4M16 16v4"/><path d="M5 8h3M16 16h3"/>')}
       ${tool('detail','DET','Isolated detail','<circle cx="12" cy="12" r="7"/><path d="M12 8v8M8 12h8"/>')}
@@ -139,7 +142,6 @@ export function shellHTML(){
       ${tool('finish','SF','Surface finish','<path d="M5 18 9 6l6 10"/>')}
       ${tool('view3d','3D','3D model (3D)','<ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M3 12c2 6 6 9 9 9s7-3 9-9"/>')}
     </div>
-    <div class="toolrow-label" id="label-3d">Build</div>
     <div id="toolrow-3d" class="toolrow">
       ${tool('bmodel','MODEL','Plan becomes solids (MODEL)','<path d="M4 20V10l8-5 8 5v10z"/><path d="M4 10l8 5 8-5M12 15v5"/>')}
       ${tool('bstack','STACK','Add storeys (STACK 2)','<rect x="5" y="14" width="14" height="5"/><rect x="5" y="8" width="14" height="5"/><path d="M12 2v4m-3-2 3 3 3-3"/>')}

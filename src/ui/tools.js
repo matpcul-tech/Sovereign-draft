@@ -46,6 +46,13 @@ export function setTool(t){
   if (t === 'wall') state.wallMode = true;
   ix.modA = null; ix.arcPts = [];
   markActiveTool();
+  try {
+    const btn = document.querySelector('.tool[data-tool="' + t + '"]');
+    const row = btn && btn.closest('.toolrow');
+    if (row && !row.classList.contains('on') && !document.body.classList.contains('view3d')){
+      document.dispatchEvent(new CustomEvent('sd-toolrow', { detail: { row: row.id } }));
+    }
+  } catch (e){ /* node */ }
   if (t === 'symbol'){ renderSymbols(); openSheet('sheetSymbols'); }
   if (t === 'image'){
     const f = document.getElementById('fileImage');
