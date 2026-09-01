@@ -170,7 +170,7 @@ export function extrudeSelection(rest){
   if (!loops.length){ toast('Select closed regions to extrude'); return; }
   const h = parseLength(String(rest || '').trim());
   const height = Number.isFinite(h) && h !== 0 ? h : (state.storyHeight > 0 ? state.storyHeight : 8);
-  pushUndo();
+  pushUndo(undoScope([]));
   reportSolid(extrudeRings(loops, height), 'Extruded ' + fmtFtIn(height));
 }
 
@@ -183,7 +183,7 @@ export function revolveSelection(rest){
    * height, which is the lathe convention and the only reading that makes a
    * plan profile mean anything on an axis. */
   const prof = loops[0].map(p => [p[0], p[1]]);
-  pushUndo();
+  pushUndo(undoScope([]));
   reportSolid(revolveProfile(prof, { angle, segments: 96 }), 'Revolved ' + angle + ' degrees');
 }
 
@@ -197,7 +197,7 @@ export function loftSelection(){
   }
   const step = state.storyHeight > 0 ? state.storyHeight : 8;
   const sections = loops.map((ring, i) => ({ ring, z: i * step }));
-  pushUndo();
+  pushUndo(undoScope([]));
   reportSolid(loftRings(sections), 'Lofted ' + loops.length + ' sections');
 }
 
@@ -496,7 +496,7 @@ export function offsetTap(sx, sy){
   if (hit.type === 'insert' || (hit.g && hit.kind !== 'wall')){ toast('Explode the block first'); return; }
   const ne = offsetEntity(hit, state.offsetDist || OFFSETS[state.offIdx], w);
   if (ne){
-    pushUndo(); addEntity(ne); afterChange();
+    pushUndo(undoScope([])); addEntity(ne); afterChange();
     toast('Offset ' + fmtFtIn(state.offsetDist || OFFSETS[state.offIdx]));
   } else toast('Cannot offset that far inward');
 }
@@ -525,7 +525,7 @@ export function extendTap(sx, sy){
 export function eraseTap(sx, sy){
   const hit = hitTest(sx, sy);
   if (!hit) return;
-  pushUndo();
+  pushUndo(undoScope([hit.id]));
   if (hit.type === 'insert'){
     const host = hit.host;
     deleteEntities([hit.id]);
@@ -772,7 +772,7 @@ export function applyJoin(){
   const ms = selMembers().filter(e => e.type === 'line' || e.type === 'poly' || e.type === 'arc');
   const res = joinEntities(ms);
   if (!res.ok){ toast(res.msg); return; }
-  pushUndo();
+  pushUndo(undoScope(ms.map(e => e.id)));
   deleteEntities(res.orig.map(e => e.id));
   res.replace.forEach(e => addEntity(e));
   afterChange();
@@ -785,7 +785,7 @@ export function hatchTap(sx, sy){
   const names = Object.keys(HATCH_PATTERNS);
   if (hit && hit.type === 'hatch'){
     const i = Math.max(0, names.indexOf(hit.pattern || 'ANSI31'));
-    pushUndo();
+    pushUndo(undoScope([hit.id]));
     hit.pattern = names[(i + 1) % names.length];
     afterChange();
     toast('Hatch ' + hit.pattern);
@@ -976,7 +976,7 @@ export function bindSelection(){
 export function flipSelection(){
   const ms = selMembers();
   if (ms.length === 1 && ms[0].type === 'dim'){
-    pushUndo(); ms[0].off = -ms[0].off; afterChange(); return;
+    pushUndo(undoScope([ms[0].id])); ms[0].off = -ms[0].off; afterChange(); return;
   }
   const ins = ms.filter(e => e.type === 'insert');
   if (!ins.length) return;
