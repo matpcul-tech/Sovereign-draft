@@ -11,7 +11,7 @@ import { syncCtx, renderHistory, renderProps, cycleCurrentLt, cycleCurrentLw, cy
 import { openSheet, closeSheets } from './ui/sheets.js';
 import { renderLayers } from './ui/layersPanel.js';
 import { toast } from './ui/toast.js';
-import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90, placeAllSchedules, exportScheduleCSV, applyCleanup, applyOverkill, applyRooms, applyTakeoff, applySheetSet, applyAttachXref } from './actions.js';
+import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90, placeAllSchedules, exportScheduleCSV, applyCleanup, applyOverkill, applyRooms, applyTakeoff, applySheetSet, applyAttachXref , restoreLayerState, deleteLayerState, setAnnoScale, setPlotStyle, saveLayerState, solveConstraintsNow, deleteConstraintsOnSelection} from './actions.js';
 import { buildDXF, sniffDrawing, openDXF } from './io/dxf.js';
 import { isDwgBuffer, parseDwg } from './io/dwg.js';
 import { buildPDF, buildAllSheetsPDF, scaleLabel } from './io/pdf.js';
@@ -33,6 +33,7 @@ import { toHTML } from './io/html.js';
 import { encodeShare, decodeShare, shareUrl, tokenFromHash } from './io/share.js';
 import { setDisplayUnits } from './core/format.js';
 import { makeMText } from './core/mtext.js';
+import { describeConstraint } from './core/constrain.js';
 import { latin1ToBytes } from './io/pdffont.js';
 import { mergeMeshes } from './core/mesh.js';
 import { extrudeDrawing, meshesToFaces } from './core/solid.js';
@@ -708,6 +709,70 @@ function wireUi(){
     });
     return { verts, faces: tris };
   }
+  function renderDraftSheet(){
+    const sc = $('dsScale');
+    if (sc) sc.value = String(state.annoPpf || 18);
+    const pl = $('dsPlot');
+    if (pl){
+      pl.innerHTML = '';
+      (state.plotStyles || []).forEach(t => {
+        const o = document.createElement('option');
+        o.value = t.name; o.textContent = t.name;
+        pl.appendChild(o);
+      });
+      pl.value = state.currentPlotStyle || 'ISO';
+    }
+    const ts = $('dsTextStyle');
+    if (ts){
+      ts.innerHTML = '';
+      (state.textStyles || []).forEach(t => {
+        const o = document.createElement('option');
+        o.value = t.name; o.textContent = t.name + (t.widthFactor !== 1 ? ' (' + t.widthFactor + 'x)' : '');
+        ts.appendChild(o);
+      });
+      ts.value = state.currentTextStyle || 'STANDARD';
+    }
+    const box = $('dsStates');
+    if (box){
+      box.innerHTML = '';
+      const states = state.layerStates || [];
+      if (!states.length) box.innerHTML = '<div class="subtle">None saved yet</div>';
+      states.forEach(st => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:8px;align-items:center;margin:4px 0';
+        const name = document.createElement('span');
+        name.textContent = st.name; name.style.flex = '1';
+        const go = document.createElement('button'); go.textContent = 'Restore'; go.style.height = '34px';
+        go.addEventListener('click', () => { restoreLayerState(st.name); renderLayers(); draw(); });
+        const del = document.createElement('button'); del.textContent = 'x'; del.style.height = '34px';
+        del.addEventListener('click', () => { deleteLayerState(st.name); renderDraftSheet(); });
+        row.appendChild(name); row.appendChild(go); row.appendChild(del);
+        box.appendChild(row);
+      });
+    }
+    const cons = $('dsCons');
+    if (cons){
+      const ms = selMembers();
+      const ids = new Set(ms.map(e => e.id));
+      const ks = (state.constraints || []).filter(k => ids.has(k.a) || ids.has(k.b));
+      cons.textContent = ms.length
+        ? (ks.length ? ks.map(k => describeConstraint(k)).join(' · ') : 'No constraints on the selection')
+        : 'Nothing selected';
+    }
+  }
+  $('mDraft') && $('mDraft').addEventListener('click', () => { renderDraftSheet(); openSheet('sheetDraft'); });
+  $('dsScale') && $('dsScale').addEventListener('change', ev => { setAnnoScale(ev.target.value); draw(); });
+  $('dsPlot') && $('dsPlot').addEventListener('change', ev => { setPlotStyle(ev.target.value); });
+  $('dsTextStyle') && $('dsTextStyle').addEventListener('change', ev => { state.currentTextStyle = ev.target.value; toast('New text uses ' + ev.target.value); });
+  $('dsSaveState') && $('dsSaveState').addEventListener('click', () => {
+    const el = $('dsStateName');
+    saveLayerState(el ? el.value : '');
+    if (el) el.value = '';
+    renderDraftSheet();
+  });
+  $('dsSolve') && $('dsSolve').addEventListener('click', () => { solveConstraintsNow(); draw(); });
+  $('dsUnconstrain') && $('dsUnconstrain').addEventListener('click', () => { deleteConstraintsOnSelection(); renderDraftSheet(); draw(); });
+
   $('mSTL') && $('mSTL').addEventListener('click', async () => {
     closeSheets();
     const { meshToSTL, meshVolume, isWatertight } = await import('./core/mesh.js');

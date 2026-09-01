@@ -193,6 +193,34 @@ export function shellHTML(){
   <button class="primary" id="btnSaveSettings">Save settings</button>
   <div class="subtle">Grok is the default drafter and needs no key. An Anthropic key is stored only in this browser and sent only to api.anthropic.com if Grok is unavailable.</div>
 </div>
+<div class="sheet" id="sheetDraft">
+  <h3><i>Drafting standards</i></h3>
+  <h4>Working scale (annotative text)</h4>
+  <select id="dsScale" class="field" style="height:44px">
+    <option value="9">1/8" = 1'-0"</option>
+    <option value="13.5">3/16" = 1'-0"</option>
+    <option value="18">1/4" = 1'-0"</option>
+    <option value="27">3/8" = 1'-0"</option>
+    <option value="36">1/2" = 1'-0"</option>
+    <option value="72">1" = 1'-0"</option>
+  </select>
+  <h4>Plot style</h4>
+  <select id="dsPlot" class="field" style="height:44px"></select>
+  <h4>Text style</h4>
+  <select id="dsTextStyle" class="field" style="height:44px"></select>
+  <h4>Layer states</h4>
+  <div id="dsStates"></div>
+  <div style="display:flex;gap:8px;margin-top:6px">
+    <input id="dsStateName" type="text" class="field" placeholder="STRUCTURE ONLY" style="height:40px;flex:1">
+    <button class="primary" id="dsSaveState" style="height:40px">Save current</button>
+  </div>
+  <h4>Constraints on selection</h4>
+  <div id="dsCons" class="subtle">Nothing selected</div>
+  <div style="display:flex;gap:8px;margin-top:6px">
+    <button class="primary" id="dsSolve" style="height:40px;flex:1">Solve</button>
+    <button id="dsUnconstrain" style="height:40px;flex:1">Remove from selection</button>
+  </div>
+</div>
 <div class="sheet" id="sheetText">
   <h3><i>Text</i></h3>
   <input id="txtval" type="text" class="field" placeholder="KITCHEN" style="height:44px">
@@ -258,6 +286,7 @@ export function shellHTML(){
   <div class="subtle" style="margin-top:0;margin-bottom:10px">Stamped on every printed sheet — company, copyright, drawing title, sheet number.</div>
   <button class="mrow" id="mOpenDrawing"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Open drawing<small>DXF · DWG · JSON · drop a file</small></button>
   <button class="mrow" id="mImportDXF"><svg viewBox="0 0 24 24"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 3v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3"/></svg>Insert DXF<small>merge into this sheet</small></button>
+  <button class="mrow" id="mDraft"><svg viewBox="0 0 24 24"><path d="M4 20h16M6 16l4-8 4 8M8 12h4"/><circle cx="18" cy="8" r="2"/></svg>Drafting standards<small>scales · plot styles · layer states</small></button>
   <button class="mrow" id="mSTL"><svg viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M12 12l9-5M12 12v10M12 12L3 7"/></svg>Export STL<small>3D print · mesh solids</small></button>
   <button class="mrow" id="mOBJ"><svg viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5"/></svg>Export OBJ<small>3D model exchange</small></button>
   <button class="mrow" id="mFont"><svg viewBox="0 0 24 24"><path d="M5 20V5h9a4 4 0 0 1 0 8H5"/><path d="M12 13l5 7"/></svg>Embed a font<small>TrueType · plots any script</small></button>
