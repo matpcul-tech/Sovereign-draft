@@ -98,6 +98,18 @@ export function boot(root){
   else homeView();
   afterChange();
   wireUi();
+  /* First run: an empty sheet sells nothing. With no session to restore,
+   * no share link to open, and not embedded, load the sample cabin so the
+   * first paint is a drawing, and say what one command can do with it. */
+  const isEmbed = document.body && document.body.classList.contains('embed');
+  const hasShare = typeof location !== 'undefined' && tokenFromHash(location.hash || '');
+  if (!isEmbed && !hasShare && !(restored && restored.entities.length)){
+    const btn = $('mSample');
+    if (btn){
+      btn.click();
+      setTimeout(() => toast('Sample cabin loaded. Try DRAWINGS HIP 6 SHEETS, or the Build row below', 6000), 900);
+    }
+  }
   booted = true;
   window.__sovereign = { state, setTool, zoomFit, draw };
   loadShareFromLocation().catch(() => {});

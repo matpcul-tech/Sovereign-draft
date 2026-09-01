@@ -35,9 +35,10 @@ const cmd = async (t, w = 700) => {
 const S = (fn, arg) => page.evaluate(fn, arg);
 
 console.log('drawing set from one plan');
-await S(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Sample cabin'); if (b) b.click(); });
-await page.waitForTimeout(900);
+/* First run loads the sample cabin by itself; wait for it. */
+await page.waitForTimeout(2200);
 const baseline = await S(() => window.__sovereign.state.entities.length);
+check('first run opens the sample cabin, not an empty sheet', baseline > 30, baseline + ' entities');
 const depthAfterLoad = await S(() => window.__sovereign.state.undoStack.length);
 await cmd('MODEL', 1500);
 check('MODEL buckets the plan into solids', await S(() => window.__sovereign.state.solids.length >= 4),

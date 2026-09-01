@@ -139,15 +139,16 @@ export function shellHTML(){
       ${tool('finish','SF','Surface finish','<path d="M5 18 9 6l6 10"/>')}
       ${tool('view3d','3D','3D model (3D)','<ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M3 12c2 6 6 9 9 9s7-3 9-9"/>')}
     </div>
-    <div class="toolrow-label" id="label-3d">Model</div>
+    <div class="toolrow-label" id="label-3d">Build</div>
     <div id="toolrow-3d" class="toolrow">
+      ${tool('bmodel','MODEL','Plan becomes solids (MODEL)','<path d="M4 20V10l8-5 8 5v10z"/><path d="M4 10l8 5 8-5M12 15v5"/>')}
+      ${tool('bstack','STACK','Add storeys (STACK 2)','<rect x="5" y="14" width="14" height="5"/><rect x="5" y="8" width="14" height="5"/><path d="M12 2v4m-3-2 3 3 3-3"/>')}
+      ${tool('broof','ROOF','Hip roof with valleys (ROOF HIP 6)','<path d="M2 14 12 5l10 9"/><path d="M5 14v6h14v-6"/>')}
+      ${tool('bdormer','DORMER','Dormer on the slope (DORMER x y w)','<path d="M2 15 12 6l10 9"/><path d="M9 15v-3l3-2 3 2v3"/>')}
+      ${tool('bdwgs','DWGS','Whole drawing set on sheets (DRAWINGS)','<rect x="3" y="4" width="12" height="14"/><rect x="8" y="7" width="12" height="14"/><path d="M11 11h6M11 14h6M11 17h4"/>')}
+      ${tool('bqto','QTO','Model takeoff table (QTO)','<path d="M4 4h16v16H4zM4 9h16M10 9v11M16 9v11"/>')}
       ${tool('box3d','BOX','Box solid (BOX)','<path d="M4 8 12 4l8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/>')}
-      ${tool('cyl3d','CYL','Cylinder (CYL)','<ellipse cx="12" cy="7" rx="6" ry="3"/><path d="M6 7v10c0 1.7 2.7 3 6 3s6-1.3 6-3V7"/>')}
-      ${tool('sph3d','SPH','Sphere (SPH)','<circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="8" ry="3"/>')}
-      ${tool('cone3d','CONE','Cone','<path d="M12 4 4 19h16z"/><ellipse cx="12" cy="19" rx="8" ry="2"/>')}
       ${tool('extrude3d','EXT','Extrude closed sketch (EXTRUDE)','<path d="M7 16V6h10v10zM7 16l-3 4h16l-3-4"/>')}
-      ${tool('union3d','UNI','Union solids','<circle cx="9" cy="12" r="5"/><circle cx="15" cy="12" r="5"/>')}
-      ${tool('sub3d','SUB','Subtract solids','<circle cx="9" cy="12" r="5"/><path d="M14 8h6v8h-6"/>')}
     </div>
   </div>
 </div>
