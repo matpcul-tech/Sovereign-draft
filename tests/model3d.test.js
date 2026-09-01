@@ -290,3 +290,95 @@ describe('the commands are registered', () => {
 });
 
 void rotateMesh; void translateMesh; void scaleMesh; void extrudeRings;
+
+describe('vertical sections and elevations', () => {
+  beforeEach(reset);
+
+  const tower = () => {
+    const base = csgUnion(makeBox(0, 0, 0, 40, 30, 4), makeCylinder(20, 15, 4, 8, 30, 48));
+    return csgSubtract(base, makeBox(16, 11, -2, 8, 8, 40));
+  };
+
+  it('a vertical cut of a box is its cross section, in section coordinates', async () => {
+    const { sliceMeshAxis, sliceAreaAxis } = await import('../src/core/slice.js');
+    const box3 = makeBox(0, 0, 0, 40, 30, 10);
+    expect(sliceAreaAxis(box3, 'y', 15)).toBeCloseTo(400, 9);
+    expect(sliceAreaAxis(box3, 'x', 20)).toBeCloseTo(300, 9);
+    const s = sliceMeshAxis(box3, 'y', 15);
+    const xs = s.rings[0].map(p => p[0]), zs = s.rings[0].map(p => p[1]);
+    expect(Math.min(...xs)).toBeCloseTo(0, 9);
+    expect(Math.max(...xs)).toBeCloseTo(40, 9);
+    expect(Math.max(...zs)).toBeCloseTo(10, 9);
+  });
+
+  it('the tower section through the shaft is exact despite CSG seams', async () => {
+    const { sliceAreaAxis } = await import('../src/core/slice.js');
+    /* slab strip 40x4 minus 8x4, plus cylinder band 16x30 minus 8x30 */
+    expect(sliceAreaAxis(tower(), 'y', 15)).toBeCloseTo(128 + 240, 6);
+  });
+
+  it('the silhouette is the massing outline with interior voids hidden', async () => {
+    const { silhouette } = await import('../src/core/slice.js');
+    const { polyBoolean, ringsArea } = await import('../src/core/boolean.js');
+    const sil = silhouette(tower(), 'y', (A, B, op) => polyBoolean(A, B, op));
+    expect(sil.length).toBe(1);
+    expect(ringsArea(sil)).toBeCloseTo(40 * 4 + 16 * 30, 1);
+  });
+
+  it('sliceSolidToPlan lands a vertical section beside the drawing, not on it', () => {
+    addSolid(makeBox(0, 0, 0, 40, 30, 10), 'M');
+    state.entities.push({ id: state.idSeq++, type: 'poly', layer: 'WALLS', closed: true, pts: [[0, 0], [40, 0], [40, 30], [0, 30]] });
+    const r = sliceSolidToPlan('M', 15, undefined, 'y');
+    expect(r.made.length).toBe(1);
+    const xs = r.made[0].pts.map(p => p[0]);
+    expect(Math.min(...xs)).toBeGreaterThan(40);
+    expect(r.area).toBeCloseTo(400, 6);
+  });
+
+  it('elevationToPlan draws all four compass outlines', async () => {
+    const { elevationToPlan } = await import('../src/core/model3d.js');
+    addSolid(tower(), 'TOWER');
+    for (const d of ['N', 'S', 'E', 'W']){
+      const r = elevationToPlan(d);
+      expect(r.made.length).toBeGreaterThan(0);
+      expect(r.area).toBeGreaterThan(500);
+    }
+    expect(state.entities.filter(e => e.layer === 'SECTION').length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('the plan becomes solids and the solids reach DXF', () => {
+  beforeEach(reset);
+
+  it('planToSolids turns drawn walls into a named, cuttable solid', async () => {
+    const { planToSolids, solidByName: byName2 } = await import('../src/core/model3d.js');
+    /* a simple room of wall entities the extruder understands */
+    state.entities.push({ id: state.idSeq++, type: 'poly', layer: 'WALLS', closed: true, pts: [[0, 0], [20, 0], [20, 15], [0, 15]] });
+    state.storyHeight = 9;
+    state.heightAssumed = false;
+    const made = planToSolids();
+    expect(made.length).toBeGreaterThan(0);
+    const total = made.reduce((v, r) => v + Math.abs(meshVolume(r.mesh)), 0);
+    expect(total).toBeGreaterThan(0);
+    expect(byName2(made[0].name)).toBeTruthy();
+  });
+
+  it('solidsToFaceEntities emits 3DFACE records the DXF writer understands', async () => {
+    const { solidsToFaceEntities } = await import('../src/core/model3d.js');
+    const { buildDXF } = await import('../src/io/dxf.js');
+    addSolid(makeBox(0, 0, 0, 4, 4, 4), 'CUBE');
+    const faces = solidsToFaceEntities(state.solids);
+    expect(faces.length).toBe(12);
+    const dxf = buildDXF(faces, [{ name: 'SECTION', aci: 4, visible: true }], { ver: 'R2000' });
+    expect((dxf.match(/\n3DFACE\r?\n/g) || []).length).toBe(12);
+  });
+});
+
+describe('the new commands are registered', () => {
+  it('ELEV and MODEL reach the command line, SLICE takes an axis', () => {
+    expect(lookupCommand('ELEV').action).toBe('elev');
+    expect(lookupCommand('ELEVATION').action).toBe('elev');
+    expect(lookupCommand('MODEL').action).toBe('modelplan');
+    expect(lookupCommand('PLAN2SOLID').action).toBe('modelplan');
+  });
+});

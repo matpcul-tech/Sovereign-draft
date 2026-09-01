@@ -506,10 +506,12 @@ function wireUi(){
     download(fileSlug() + '.pdf', latin1ToBytes(pdf), 'application/pdf');
     toast('PDF exported at ' + scaleLabel(ppf));
   });
-  $('mExportDXF') && $('mExportDXF').addEventListener('click', () => {
+  $('mExportDXF') && $('mExportDXF').addEventListener('click', async () => {
     closeSheets();
     if (!state.entities.length){ toast('Nothing to export yet'); return; }
-    download(fileSlug() + '.dxf', buildDXF(state.entities, state.layers, { ver: state.dxfVer, userBlocks: state.userBlocks }), 'application/dxf');
+    const { solidsToFaceEntities } = await import('./core/model3d.js');
+    const withSolids = state.entities.concat(solidsToFaceEntities(state.solids));
+    download(fileSlug() + '.dxf', buildDXF(withSolids, state.layers, { ver: state.dxfVer, userBlocks: state.userBlocks }), 'application/dxf');
     toast('DXF ' + state.dxfVer + ' exported');
   });
   async function exportDwg(){

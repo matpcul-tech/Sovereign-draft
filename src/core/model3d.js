@@ -17,7 +17,9 @@ import {
   translateMesh, rotateMesh, scaleMesh, mergeMeshes
 } from './mesh.js';
 import { csg } from './csg.js';
-import { sliceMesh, sliceArea } from './slice.js';
+import { sliceMesh, sliceArea, sliceMeshAxis, sliceAreaAxis, silhouette } from './slice.js';
+import { polyBoolean, ringsArea } from './boolean.js';
+import { extrudeDrawing } from './solid.js';
 
 export function solidByName(name){
   const n = String(name || '').trim().toUpperCase();
@@ -90,24 +92,114 @@ export const moveSolid = (name, dx, dy, dz) => transformSolid(name, m => transla
 export const rotateSolid = (name, axis, cx, cy, cz, deg) => transformSolid(name, m => rotateMesh(m, axis, cx, cy, cz, deg));
 export const scaleSolid = (name, cx, cy, cz, k) => transformSolid(name, m => scaleMesh(m, cx, cy, cz, k));
 
-/* ---------- the slice back to the drawing ---------- */
-export function sliceSolidToPlan(name, z, layer){
-  const rec = solidByName(name);
-  if (!rec) throw new Error('No solid ' + name);
-  const { rings, open } = sliceMesh(rec.mesh, Number(z) || 0);
+/* ---------- cuts and elevations back into the drawing ---------- */
+function placeRings(rings, layer, offset){
   const made = [];
+  const ox = offset ? offset[0] : 0, oy = offset ? offset[1] : 0;
   for (const ring of rings){
     const e = {
       type: 'poly',
       layer: layer || 'SECTION',
       closed: true,
-      pts: ring.map(p => [round6(p[0]), round6(p[1])]),
+      pts: ring.map(p => [round6(p[0] + ox), round6(p[1] + oy)]),
       id: state.idSeq++
     };
     state.entities.push(e);
     made.push(e);
   }
-  return { made, openChains: open.length, area: sliceArea(rec.mesh, Number(z) || 0) };
+  return made;
+}
+
+/* Where a section or elevation lands: to the right of everything already
+ * drawn, so a generated view never sits on top of the plan. */
+function nextViewOffset(rings){
+  let maxX = -Infinity;
+  for (const e of state.entities){
+    if (e.type !== 'poly' || !e.pts) continue;
+    for (const p of e.pts) maxX = Math.max(maxX, p[0]);
+  }
+  for (const rec of state.solids || []){
+    const bb = meshBBox(rec.mesh);
+    maxX = Math.max(maxX, bb[3]);
+  }
+  if (!isFinite(maxX)) maxX = 0;
+  let minX = Infinity;
+  rings.forEach(r => r.forEach(p => { minX = Math.min(minX, p[0]); }));
+  if (!isFinite(minX)) minX = 0;
+  return [maxX + 10 - minX, 0];
+}
+
+export function sliceSolidToPlan(name, z, layer, axis){
+  const rec = solidByName(name);
+  if (!rec) throw new Error('No solid ' + name);
+  const a = axis === 'x' || axis === 'y' ? axis : 'z';
+  const { rings, open } = sliceMeshAxis(rec.mesh, a, Number(z) || 0);
+  /* A plan cut lands in place, where it is the plan. A vertical cut is a
+   * different drawing and lands beside everything else. */
+  const offset = a === 'z' ? [0, 0] : nextViewOffset(rings);
+  const made = placeRings(rings, layer, offset);
+  return { made, openChains: open.length, area: sliceAreaAxis(rec.mesh, a, Number(z) || 0), axis: a, offset };
+}
+
+/* The four elevations: the outline of everything modelled, seen from a
+ * compass side, drawn beside the plan. */
+export function elevationToPlan(dir, layer){
+  const mesh = allSolidsMesh();
+  if (!mesh.faces.length) throw new Error('Nothing modelled to take an elevation of');
+  const d = { N: 'y', S: 'y', E: 'x', W: 'x' }[String(dir || 'S').toUpperCase()];
+  if (!d) throw new Error('ELEV wants N, S, E or W');
+  let rings = silhouette(mesh, d, (A, B, op) => polyBoolean(A, B, op));
+  /* Seen from the south or the west the horizontal axis reads the other
+   * way, so mirror it: elevations read left to right the way you face them. */
+  const flip = String(dir).toUpperCase() === 'N' || String(dir).toUpperCase() === 'W';
+  if (flip) rings = rings.map(r => r.map(p => [-p[0], p[1]]).reverse());
+  const offset = nextViewOffset(rings);
+  const made = placeRings(rings, layer || 'SECTION', offset);
+  return { made, area: ringsArea(rings), offset };
+}
+
+/* ---------- the plan becomes solids ---------- */
+/* Convert the extruded drawing, the model the 3D view has always shown,
+ * into real named solids the booleans can cut. One solid per element kind,
+ * so WALLS can be drilled without touching FLOOR. */
+export function planToSolids(entities, opts){
+  const drawn = extrudeDrawing(entities || state.entities, opts || {
+    height: state.storyHeight,
+    assumed: state.heightAssumed,
+    layers: state.layers
+  });
+  const byKind = {};
+  (drawn.meshes || []).forEach(m => {
+    const kind = String(m.kind || 'mass').toUpperCase();
+    const bucket = byKind[kind] = byKind[kind] || { verts: [], faces: [] };
+    const base = bucket.verts.length;
+    const p = m.positions;
+    for (let i = 0; i + 2 < p.length; i += 3) bucket.verts.push([p[i], p[i + 1], p[i + 2]]);
+    const idx = m.indices;
+    for (let i = 0; i + 2 < idx.length; i += 3) bucket.faces.push([base + idx[i], base + idx[i + 1], base + idx[i + 2]]);
+  });
+  const made = [];
+  for (const kind of Object.keys(byKind)){
+    if (!byKind[kind].faces.length) continue;
+    made.push(addSolid(byKind[kind], kind));
+  }
+  return made;
+}
+
+/* ---------- solids out through DXF ---------- */
+/* Every face as a 3DFACE entity, which the writer already speaks, so the
+ * model reaches AutoCAD and not only slicers. */
+export function solidsToFaceEntities(list){
+  const out = [];
+  for (const rec of list || state.solids || []){
+    const m = rec.mesh;
+    for (const f of m.faces){
+      const a = m.verts[f[0]], b = m.verts[f[1]], c = m.verts[f[2]];
+      if (!a || !b || !c) continue;
+      out.push({ type: 'face', layer: 'SECTION', a, b, c, d: c });
+    }
+  }
+  return out;
 }
 
 function round6(v){ return Math.round(v * 1e6) / 1e6; }

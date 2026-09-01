@@ -109,6 +109,64 @@ export function sliceArea(mesh, h){
   return Math.max(0, area);
 }
 
+/* ---------- cuts along any axis ----------
+ * A vertical section reuses the horizontal engine by mapping the wanted
+ * plane onto z = h and mapping the results back. The section's own plane
+ * coordinates are what land in the drawing: for a cut at y = c looking
+ * north, that is (x, height); for x = c looking east, (y, height).
+ */
+function remapped(mesh, axis){
+  if (axis === 'z') return mesh;
+  const verts = mesh.verts.map(axis === 'y'
+    ? v => [v[0], v[2], v[1]]      /* cut plane y=c -> z=c; section reads (x, z) */
+    : v => [v[1], v[2], v[0]]);    /* cut plane x=c -> z=c; section reads (y, z) */
+  return { verts, faces: mesh.faces };
+}
+
+export function sliceMeshAxis(mesh, axis, at){
+  const a = axis === 'x' || axis === 'y' ? axis : 'z';
+  return sliceMesh(remapped(mesh, a), Number(at) || 0);
+}
+
+export function sliceAreaAxis(mesh, axis, at){
+  const a = axis === 'x' || axis === 'y' ? axis : 'z';
+  return sliceArea(remapped(mesh, a), Number(at) || 0);
+}
+
+/* ---------- the elevation silhouette ----------
+ * An elevation is the outline of everything the mesh occupies seen from one
+ * side: the union of every triangle's projection onto the view plane. The
+ * union runs through the 2D boolean engine in batches, so the accumulator
+ * stays small. No hidden line removal: this is the massing outline with its
+ * interior voids, which is the drawing an elevation starts from.
+ */
+export function silhouette(mesh, dir, boolean){
+  const proj = dir === 'x'
+    ? v => [v[1], v[2]]            /* looking along x: (y, height) */
+    : dir === 'y'
+      ? v => [v[0], v[2]]          /* looking along y: (x, height) */
+      : v => [v[0], v[1]];         /* looking down: the plan shadow */
+  const tris = [];
+  for (const f of mesh.faces){
+    const a = proj(mesh.verts[f[0]]), b = proj(mesh.verts[f[1]]), c = proj(mesh.verts[f[2]]);
+    const area2 = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+    if (Math.abs(area2) < 1e-9) continue;              /* edge-on to the view */
+    tris.push([a, b, c]);
+  }
+  /* Batched union: fold triangles in, merging pairwise up a tree so no
+   * single boolean sees hundreds of rings. */
+  let level = tris.map(t => [t]);
+  while (level.length > 1){
+    const next = [];
+    for (let i = 0; i < level.length; i += 2){
+      if (i + 1 >= level.length){ next.push(level[i]); break; }
+      next.push(boolean(level[i], level[i + 1], 'union'));
+    }
+    level = next;
+  }
+  return level[0] || [];
+}
+
 function contains(outer, inner){
   /* One interior test point is enough for section rings. */
   const p = inner[0];

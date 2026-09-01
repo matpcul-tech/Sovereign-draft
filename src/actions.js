@@ -23,7 +23,7 @@ import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, 
 import { plotStyleByName } from './io/plotstyle.js';
 import { modelToPaper, viewportRot } from './core/layout.js';
 import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight, sweepPath } from './core/mesh.js';
-import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary } from './core/model3d.js';
+import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids } from './core/model3d.js';
 import { toAnno, fromAnno, parseScaleToPpf } from './core/annoscale.js';
 import { runScript, scriptByName } from './core/script.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
@@ -225,18 +225,43 @@ export function boolean3d(op, rest){
 }
 
 export function sliceSolid(rest){
+  /* SLICE NAME 10 · SLICE NAME Y 15 · SLICE NAME X 20 · SLICE 10 */
   const parts = String(rest || '').trim().split(/[\s,]+/).filter(Boolean);
-  let name = parts[0], z = Number(parts[1]);
-  if (parts.length === 1 && Number.isFinite(Number(parts[0])) && solidNames().length === 1){
-    name = solidNames()[0]; z = Number(parts[0]);
+  let name = parts[0], axis = 'z', at;
+  if (parts.length >= 3 && /^[xyz]$/i.test(parts[1])){ axis = parts[1].toLowerCase(); at = Number(parts[2]); }
+  else if (parts.length >= 2){ at = Number(parts[1]); }
+  else if (parts.length === 1 && Number.isFinite(Number(parts[0])) && solidNames().length === 1){
+    name = solidNames()[0]; at = Number(parts[0]);
   }
-  if (!name || !Number.isFinite(z)){ toast('SLICE name z — have: ' + (solidNames().join(', ') || 'no solids')); return; }
+  if (!name || !Number.isFinite(at)){ toast('SLICE name [x|y|z] value — have: ' + (solidNames().join(', ') || 'no solids')); return; }
   pushUndo(undoScope([]));
   try {
-    const r = sliceSolidToPlan(name, z);
+    const r = sliceSolidToPlan(name, at, undefined, axis);
     afterChange();
-    toast('Section at z=' + z + ': ' + r.made.length + ' ring' + (r.made.length === 1 ? '' : 's') +
-      ', ' + r.area.toFixed(1) + ' SF' + (r.openChains ? ', ' + r.openChains + ' open chains' : ''), 4000);
+    toast((axis === 'z' ? 'Plan cut' : 'Section along ' + axis.toUpperCase()) + ' at ' + at + ': ' +
+      r.made.length + ' ring' + (r.made.length === 1 ? '' : 's') + ', ' + r.area.toFixed(1) + ' SF' +
+      (r.openChains ? ', ' + r.openChains + ' open chains' : ''), 4000);
+  } catch (e){ toast(e.message, 4000); }
+}
+
+export function makeElevation(rest){
+  const dir = String(rest || 'S').trim().toUpperCase() || 'S';
+  pushUndo(undoScope([]));
+  try {
+    const r = elevationToPlan(dir);
+    afterChange();
+    toast(dir + ' elevation: ' + r.made.length + ' ring' + (r.made.length === 1 ? '' : 's') + ', ' + r.area.toFixed(1) + ' SF outline', 4000);
+  } catch (e){ toast(e.message, 4000); }
+}
+
+export function modelPlan(){
+  if (!state.entities.length){ toast('Draw a plan first, then MODEL turns it into solids'); return; }
+  pushUndo(undoScope([]));
+  try {
+    const made = planToSolids();
+    if (!made.length){ toast('Nothing extrudable in the plan'); return; }
+    afterChange();
+    toast('Modelled: ' + made.map(r => r.name).join(', ') + ' — U3D and SUB3D can cut them now', 5000);
   } catch (e){ toast(e.message, 4000); }
 }
 

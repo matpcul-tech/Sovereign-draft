@@ -117,7 +117,9 @@ export const COMMANDS = {
   INT3D:   { aliases: ['INT3D', 'INTERSECT3D'],         tool: null,     action: 'bool3d:intersect' },
   SLICE:   { aliases: ['SLICE'],                        tool: null,     action: 'slice3d' },
   SOLIDS:  { aliases: ['SOLIDS'],                       tool: null,     action: 'solids' },
-  SOLIDDEL:{ aliases: ['SOLIDDEL'],                     tool: null,     action: 'soliddel' }
+  SOLIDDEL:{ aliases: ['SOLIDDEL'],                     tool: null,     action: 'soliddel' },
+  ELEV:    { aliases: ['ELEV', 'ELEVATION'],            tool: null,     action: 'elev' },
+  MODEL:   { aliases: ['MODEL', 'PLAN2SOLID'],          tool: null,     action: 'modelplan' }
 };
 
 const ALIAS = {};
