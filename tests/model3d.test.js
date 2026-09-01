@@ -413,6 +413,64 @@ describe('stacked stories', () => {
   });
 });
 
+describe('push-pull on the exact kernel', () => {
+  beforeEach(reset);
+
+  it('pull and push change the volume by patch area times distance, side faces too', async () => {
+    const { pushPullSolid, facePatch, solidByName: byName } = await import('../src/core/model3d.js');
+    addSolid(box(0, 0, 0, 10, 10, 10), 'B');
+    const m = byName('B').mesh;
+    const top = m.faces.findIndex(f => f.every(vi => m.verts[vi][2] === 10));
+    expect(facePatch(m, top).area).toBeCloseTo(100, 9);
+    pushPullSolid('B', top, 3);
+    expect(V(byName('B').mesh)).toBeCloseTo(1300, 6);
+    const m2 = byName('B').mesh;
+    const top2 = m2.faces.findIndex(f => f.every(vi => m2.verts[vi][2] >= 13 - 1e-9));
+    pushPullSolid('B', top2, -5);
+    expect(V(byName('B').mesh)).toBeCloseTo(800, 6);
+    const m3 = byName('B').mesh;
+    const side = m3.faces.findIndex(f => f.every(vi => m3.verts[vi][0] === 10));
+    pushPullSolid('B', side, 4);
+    expect(V(byName('B').mesh)).toBeCloseTo(800 + 4 * 80, 6);
+  });
+
+  it('a holed face pulls with its hole, straight through T-junctioned CSG output', async () => {
+    const { pushPullSolid, facePatch, solidByName: byName } = await import('../src/core/model3d.js');
+    const plate = csgSubtract(makeBox(0, 40, 0, 20, 20, 4), makeBox(8, 48, -1, 4, 4, 6));
+    addSolid(plate, 'P');
+    const m = byName('P').mesh;
+    const seed = m.faces.findIndex(f => f.every(vi => Math.abs(m.verts[vi][2] - 4) < 1e-9));
+    const p = facePatch(m, seed);
+    expect(p.rings.length).toBe(2);
+    expect(p.area).toBeCloseTo(384, 6);
+    pushPullSolid('P', seed, 2);
+    expect(V(byName('P').mesh)).toBeCloseTo(400 * 4 - 16 * 4 + 384 * 2, 6);
+  });
+
+  it('pushing the whole solid away is refused, not corrupted', async () => {
+    const { pushPullSolid, solidByName: byName } = await import('../src/core/model3d.js');
+    addSolid(box(0, 0, 0, 10, 10, 10), 'B');
+    expect(() => pushPullSolid('B', 0, -999)).toThrow();
+    expect(V(byName('B').mesh)).toBeCloseTo(1000, 6);
+  });
+});
+
+describe('model takeoff', () => {
+  beforeEach(reset);
+
+  it('QTO carries exact figures per solid with a total row', async () => {
+    const { takeoffSolids } = await import('../src/core/model3d.js');
+    addSolid(box(0, 0, 0, 10, 10, 10), 'A');
+    addSolid(makeCylinder(30, 0, 0, 3, 10, 256), 'C');
+    const r = takeoffSolids();
+    expect(r.rows.length).toBe(3);
+    expect(r.rows[0]).toEqual(['A', '100.0 SF', '600.0 SF', '1000.0 CF']);
+    expect(r.rows[2][0]).toBe('TOTAL');
+    expect(r.volume / (1000 + Math.PI * 90)).toBeCloseTo(1, 3);
+    expect(lookupCommand('QTO').action).toBe('takeoff3d');
+  });
+});
+
 describe('the roof plan', () => {
   beforeEach(reset);
 

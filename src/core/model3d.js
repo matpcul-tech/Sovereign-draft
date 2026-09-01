@@ -21,7 +21,7 @@ import {
 import { csg } from './csg.js';
 import {
   sliceMesh, sliceArea, sliceMeshAxis, sliceAreaAxis, silhouette,
-  makeDepthProbe, visibleMeshEdges, clipMeshBeyond
+  makeDepthProbe, visibleMeshEdges, clipMeshBeyond, chainSegments
 } from './slice.js';
 import { polyBoolean, ringsArea, differenceRings } from './boolean.js';
 import { extrudeDrawing } from './solid.js';
@@ -98,6 +98,148 @@ export function roofOverModel(kind, pitch, overhang){
   const rise = Math.min(w, d) / 2 * p / 12;
   const mk = kind === 'hip' ? makeHip : makeGable;
   return addSolid(mk(x, y, bb[5], w, d, rise), 'ROOF');
+}
+
+/* ---------- push-pull ----------
+ * The direct-modelling verb: grab a planar face, drag it along its normal.
+ * The face's coplanar patch is found from the seed triangle, its boundary
+ * chained into rings (holes included), a prism extruded along the normal by
+ * the distance, and the prism unioned on for a pull or subtracted for a
+ * push. Volumes are exact by construction: patch area times distance.
+ */
+function faceN(mesh, i){
+  const f = mesh.faces[i];
+  if (!f) return null;
+  const A = mesh.verts[f[0]], B = mesh.verts[f[1]], C = mesh.verts[f[2]];
+  const ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2];
+  const vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2];
+  const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+  const L = Math.hypot(nx, ny, nz);
+  return L > 1e-12 ? [nx / L, ny / L, nz / L] : null;
+}
+
+export function facePatch(mesh, seed){
+  const n = faceN(mesh, seed);
+  if (!n) throw new Error('Not a face to grab');
+  const K = 1e-6;
+  const pk = v => Math.round(v[0] / K) + ',' + Math.round(v[1] / K) + ',' + Math.round(v[2] / K);
+  const v0 = mesh.verts[mesh.faces[seed][0]];
+  const w = n[0] * v0[0] + n[1] * v0[1] + n[2] * v0[2];
+  const onPlane = i => {
+    const ni = faceN(mesh, i);
+    if (!ni || ni[0] * n[0] + ni[1] * n[1] + ni[2] * n[2] < 0.999) return false;
+    return mesh.faces[i].every(vi => {
+      const v = mesh.verts[vi];
+      return Math.abs(n[0] * v[0] + n[1] * v[1] + n[2] * v[2] - w) < 1e-6;
+    });
+  };
+  /* Adjacency by shared welded vertex, not edge: CSG output carries
+   * T-junctions where one side of a seam is subdivided and the other is
+   * not, and edge sharing cannot cross them. Coplanarity keeps the flood
+   * on the face. */
+  const byVert = new Map();
+  mesh.faces.forEach((f, i) => {
+    for (const vi of f){
+      const k = pk(mesh.verts[vi]);
+      if (!byVert.has(k)) byVert.set(k, []);
+      byVert.get(k).push(i);
+    }
+  });
+  const inPatch = new Set([seed]);
+  const queue = [seed];
+  while (queue.length){
+    const i = queue.pop();
+    for (const vi of mesh.faces[i]){
+      for (const j of byVert.get(pk(mesh.verts[vi])) || []){
+        if (!inPatch.has(j) && onPlane(j)){ inPatch.add(j); queue.push(j); }
+      }
+    }
+  }
+  /* Plane basis: n plus any perpendicular pair, right handed. */
+  const ref = Math.abs(n[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+  let ux = n[1] * ref[2] - n[2] * ref[1], uy = n[2] * ref[0] - n[0] * ref[2], uz = n[0] * ref[1] - n[1] * ref[0];
+  const uL = Math.hypot(ux, uy, uz); ux /= uL; uy /= uL; uz /= uL;
+  const vx = n[1] * uz - n[2] * uy, vy = n[2] * ux - n[0] * uz, vz = n[0] * uy - n[1] * ux;
+  const origin = v0;
+  const to2 = P => [
+    (P[0] - origin[0]) * ux + (P[1] - origin[1]) * uy + (P[2] - origin[2]) * uz,
+    (P[0] - origin[0]) * vx + (P[1] - origin[1]) * vy + (P[2] - origin[2]) * vz
+  ];
+  /* The outline through the 2D union, which shrugs at T-junctions where
+   * per-edge counting misreads them: the union of the projected patch
+   * triangles is the face region, holes and all. */
+  let level = [];
+  let area = 0;
+  for (const i of inPatch){
+    const f = mesh.faces[i];
+    const a = to2(mesh.verts[f[0]]), b = to2(mesh.verts[f[1]]), c = to2(mesh.verts[f[2]]);
+    const a2 = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+    if (Math.abs(a2) < 1e-9) continue;
+    area += Math.abs(a2) / 2;
+    level.push([[a, b, c]]);
+  }
+  while (level.length > 1){
+    const next = [];
+    for (let i = 0; i < level.length; i += 2){
+      if (i + 1 >= level.length){ next.push(level[i]); break; }
+      next.push(polyBoolean(level[i], level[i + 1], 'union'));
+    }
+    level = next;
+  }
+  const rings = level[0] || [];
+  if (!rings.length) throw new Error('The face has no closed boundary');
+  return { n, origin, u: [ux, uy, uz], v: [vx, vy, vz], rings, area, faces: inPatch.size };
+}
+
+export function pushPullPrism(mesh, seed, dist){
+  const d = Number(dist);
+  if (!Number.isFinite(d) || Math.abs(d) < 1e-9) return null;
+  const p = facePatch(mesh, seed);
+  const local = extrudeRings(p.rings, Math.abs(d));
+  if (!local.faces.length) return null;
+  const zoff = d < 0 ? d : 0;
+  const verts = local.verts.map(q => [
+    p.origin[0] + p.u[0] * q[0] + p.v[0] * q[1] + p.n[0] * (q[2] + zoff),
+    p.origin[1] + p.u[1] * q[0] + p.v[1] * q[1] + p.n[1] * (q[2] + zoff),
+    p.origin[2] + p.u[2] * q[0] + p.v[2] * q[1] + p.n[2] * (q[2] + zoff)
+  ]);
+  return { verts, faces: local.faces.map(f => f.slice()), area: p.area };
+}
+
+export function pushPullSolid(name, seed, dist){
+  const rec = solidByName(name);
+  if (!rec) throw new Error('No solid ' + name);
+  const prism = pushPullPrism(rec.mesh, seed, dist);
+  if (!prism) throw new Error('Nothing to push or pull');
+  const out = csg(Number(dist) > 0 ? 'union' : 'subtract', rec.mesh, prism);
+  if (!out.faces.length || Math.abs(meshVolume(out)) < 1e-6){
+    throw new Error('That push removes the whole solid: SOLIDDEL ' + rec.name + ' does that on purpose');
+  }
+  rec.mesh = out;
+  return { rec, area: prism.area, dist: Number(dist) };
+}
+
+/* ---------- quantity takeoff from the model ----------
+ * The model already knows every number an estimator asks for. TAKEOFF3D
+ * lands them as an ordinary table beside the drawing: name, footprint
+ * area, surface area, volume per solid, with totals, every figure straight
+ * from the meshes.
+ */
+export function takeoffSolids(){
+  const list = state.solids || [];
+  if (!list.length) throw new Error('Nothing modelled to take off');
+  const rows = [];
+  let tv = 0, ta = 0;
+  for (const s of list){
+    const bb = meshBBox(s.mesh);
+    const foot = (bb[3] - bb[0]) * (bb[4] - bb[1]);
+    const vol = Math.abs(meshVolume(s.mesh));
+    const surf = meshArea(s.mesh);
+    tv += vol; ta += surf;
+    rows.push([s.name, foot.toFixed(1) + ' SF', surf.toFixed(1) + ' SF', vol.toFixed(1) + ' CF']);
+  }
+  rows.push(['TOTAL', '', ta.toFixed(1) + ' SF', tv.toFixed(1) + ' CF']);
+  return { rows, volume: tv, surface: ta };
 }
 
 /* ---------- stacking stories ----------

@@ -191,6 +191,17 @@ function solidOpts(){
       syncOpen3d();
       return copy.name;
     },
+    onSolidFace: async (name, faceIndex, dist) => {
+      const { pushPullSolid, describeSolid } = await import('./core/model3d.js');
+      const { fmtFtIn: fmt } = await import('./core/format.js');
+      pushUndo();
+      try {
+        const r = pushPullSolid(name, faceIndex, dist);
+        afterChange();
+        toast((dist > 0 ? 'Pulled ' : 'Pushed ') + fmt(Math.abs(dist)) + ' · ' + describeSolid(r.rec), 3500);
+        syncOpen3d();
+      } catch (e){ toast(e.message, 3500); }
+    },
     onSolidRotate: async (name, deg) => {
       const { rotateSolid, describeSolid, solidByName } = await import('./core/model3d.js');
       const { meshBBox } = await import('./core/mesh.js');

@@ -23,7 +23,7 @@ import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, 
 import { plotStyleByName } from './io/plotstyle.js';
 import { modelToPaper, viewportRot } from './core/layout.js';
 import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight, sweepPath } from './core/mesh.js';
-import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, roofOverModel, generateDrawings, stackStories, storyPlans, roofPlanToPlan, sampleBracket } from './core/model3d.js';
+import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, roofOverModel, generateDrawings, stackStories, storyPlans, roofPlanToPlan, takeoffSolids, sampleBracket } from './core/model3d.js';
 import { toAnno, fromAnno, parseScaleToPpf } from './core/annoscale.js';
 import { runScript, scriptByName } from './core/script.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
@@ -34,7 +34,7 @@ import {
   makeInsert, locateInsert, clFromMembers, syncHostWall, snapWidth,
   expandInsert, flipInsert, detachInsert, paramOnCl
 } from './core/dynblock.js';
-import { tagInserts, buildSchedule, scheduleCSV, tableFrags } from './core/schedule.js';
+import { tagInserts, buildSchedule, scheduleCSV, tableFrags, makeTable } from './core/schedule.js';
 import { stretchEntities, boxFromScreen } from './core/stretch.js';
 import { areaOf, listEntity, idPoint } from './core/inquiry.js';
 import { healWalls } from './core/cleanup.js';
@@ -291,6 +291,32 @@ export function makeRoofPlan(){
     afterChange();
     toast('Roof plan: ' + r.edges + ' ridge and hip line' + (r.edges === 1 ? '' : 's') + ', ' +
       r.area.toFixed(1) + ' SF footprint, beside the drawing', 4000);
+  } catch (e){ toast(e.message, 4000); }
+}
+
+export function makeTakeoff3d(){
+  pushUndo(undoScope([]));
+  try {
+    const { rows, volume } = takeoffSolids();
+    let maxX = 0, maxY = 10;
+    state.entities.forEach(e => {
+      const bb = [1e9, 1e9, -1e9, -1e9];
+      entBBox(e, bb);
+      if (bb[2] > -1e8){ maxX = Math.max(maxX, bb[2]); maxY = Math.max(maxY, bb[3]); }
+    });
+    const t = makeTable({
+      title: 'MODEL TAKEOFF',
+      headers: ['SOLID', 'FOOTPRINT', 'SURFACE', 'VOLUME'],
+      rows,
+      colW: [3.4, 3, 3, 3],
+      layer: 'SCHEDULES',
+      x: maxX + 10,
+      y: maxY
+    });
+    t.id = state.idSeq++;
+    state.entities.push(t);
+    afterChange();
+    toast('Takeoff: ' + (rows.length - 1) + ' solids, ' + volume.toFixed(1) + ' CF total, table beside the drawing', 4000);
   } catch (e){ toast(e.message, 4000); }
 }
 
