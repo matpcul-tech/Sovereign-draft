@@ -391,6 +391,41 @@ export function elevationToPlan(dir, layer){
   };
 }
 
+/* ---------- the whole set, one command ----------
+ * DRAWINGS composes what already exists: model the plan into solids if
+ * that has not happened yet, optionally seat a roof, then take all four
+ * elevations and one section through the middle of the main mass, looking
+ * north. Every piece lands beside the last, titled and dimensioned, and
+ * the caller wraps the lot in a single undo step.
+ */
+export function generateDrawings(opts){
+  const o = opts || {};
+  const out = { modelled: 0, roof: null, elevations: [], section: null };
+  const massing = () => (state.solids || []).filter(s => s && !OPENING_NAME.test(s.name) && !/^ROOF/.test(s.name));
+  if (!massing().length){
+    if (!state.entities.length) throw new Error('Draw a plan or model a solid first');
+    out.modelled = planToSolids().length;
+    if (!massing().length) throw new Error('Nothing in the plan extrudes into a solid');
+  }
+  if (o.roof) out.roof = roofOverModel(o.roof, o.pitch, o.overhang).name;
+  for (const d of ['S', 'E', 'N', 'W']) out.elevations.push(elevationToPlan(d));
+  /* Section target: the WALL solid when the bridge made one, else the
+   * mass with the largest footprint. */
+  const cands = massing();
+  let target = cands.find(s => s.name === 'WALL');
+  if (!target){
+    let best = -Infinity;
+    for (const s of cands){
+      const b = meshBBox(s.mesh);
+      const a = (b[3] - b[0]) * (b[4] - b[1]);
+      if (a > best){ best = a; target = s; }
+    }
+  }
+  const bb = meshBBox(target.mesh);
+  out.section = sliceSolidToPlan(target.name, (bb[1] + bb[4]) / 2, undefined, 'y');
+  return out;
+}
+
 /* ---------- the plan becomes solids ---------- */
 /* Convert the extruded drawing, the model the 3D view has always shown,
  * into real named solids the booleans can cut. One solid per element kind,

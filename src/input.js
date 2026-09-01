@@ -23,7 +23,7 @@ import {
   twistViewport, clipViewport,
   extrudeSelection, revolveSelection, loftSelection, clearSolids,
   toggleAnnotative, setAnnoScale, openScriptSheet, runSavedScript,
-  makePrimitive, makeRoof, sweepSelection, boolean3d, sliceSolid, listSolids, deleteSolid,
+  makePrimitive, makeRoof, makeDrawings, sweepSelection, boolean3d, sliceSolid, listSolids, deleteSolid,
   makeElevation, modelPlan
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
@@ -359,6 +359,17 @@ function onKeyDown(ev){
   if (cmdFocused()){
     if (ev.key === 'Escape'){ ev.target.blur(); cancelLive(); return; }
     if (ev.key === 'Enter'){ ev.preventDefault(); handleCommand(ev.target.value); ev.target.value = ''; }
+    /* Undo and redo work with an empty command line focused. Running a
+     * command leaves the input focused, and swallowing ctrl-z there
+     * means the undo a user reaches for right after a command silently
+     * does nothing. With text in the box the browser's own text undo
+     * keeps the keys. */
+    const ck = ev.key.toLowerCase();
+    if ((ev.ctrlKey || ev.metaKey) && (ck === 'z' || ck === 'y') && !ev.target.value){
+      ev.preventDefault();
+      if (ck === 'z' && !ev.shiftKey) doUndo();
+      else doRedo();
+    }
     return;
   }
   const k = ev.key.toLowerCase();
@@ -488,6 +499,7 @@ export function handleCommand(text){
   if (res.action === 'runscript'){ runSavedScript(res.rest); return; }
   if (res.action && res.action.indexOf('prim:') === 0){ makePrimitive(res.action.slice(5), res.rest); return; }
   if (res.action === 'roof'){ makeRoof(res.rest); return; }
+  if (res.action === 'drawings'){ makeDrawings(res.rest); return; }
   if (res.action === 'sweep3d'){ sweepSelection(res.rest); return; }
   if (res.action && res.action.indexOf('bool3d:') === 0){ boolean3d(res.action.slice(7), res.rest); return; }
   if (res.action === 'slice3d'){ sliceSolid(res.rest); return; }

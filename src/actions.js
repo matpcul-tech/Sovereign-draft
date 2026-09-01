@@ -23,7 +23,7 @@ import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, 
 import { plotStyleByName } from './io/plotstyle.js';
 import { modelToPaper, viewportRot } from './core/layout.js';
 import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight, sweepPath } from './core/mesh.js';
-import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, roofOverModel, sampleBracket } from './core/model3d.js';
+import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, roofOverModel, generateDrawings, sampleBracket } from './core/model3d.js';
 import { toAnno, fromAnno, parseScaleToPpf } from './core/annoscale.js';
 import { runScript, scriptByName } from './core/script.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
@@ -215,6 +215,25 @@ export function makeRoof(rest){
     }
     afterChange();
     toast(describeSolid(rec), 4000);
+  } catch (e){ toast(e.message, 4000); }
+}
+
+export function makeDrawings(rest){
+  const toks = String(rest || '').trim().split(/\s+/).filter(Boolean);
+  const opts = {};
+  if (toks.length && /^(G|GABLE|H|HIP)$/i.test(toks[0])){
+    opts.roof = /^h/i.test(toks[0]) ? 'hip' : 'gable';
+    opts.pitch = Number(toks[1]) > 0 ? Number(toks[1]) : 6;
+  }
+  pushUndo(undoScope([]));
+  try {
+    const r = generateDrawings(opts);
+    afterChange();
+    const openings = r.elevations.reduce((s2, e) => s2 + (e.openings || 0), 0);
+    toast('Drawing set: ' +
+      (r.modelled ? r.modelled + ' solids modelled, ' : '') +
+      (r.roof ? r.roof + ' seated, ' : '') +
+      '4 elevations (' + openings + ' openings), 1 section, all beside the plan. F fits the view', 5000);
   } catch (e){ toast(e.message, 4000); }
 }
 

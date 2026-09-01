@@ -373,6 +373,38 @@ describe('pitched roofs', () => {
   });
 });
 
+describe('the whole set from one command', () => {
+  beforeEach(reset);
+
+  it('DRAWINGS models the plan, roofs it, elevates all four sides and cuts a section', async () => {
+    const { generateDrawings } = await import('../src/core/model3d.js');
+    /* A bare plan: one closed footprint. */
+    state.entities.push({
+      id: state.idSeq++, type: 'poly', layer: 'WALLS', closed: true,
+      pts: [[0, 0], [30, 0], [30, 20], [0, 20]]
+    });
+    const r = generateDrawings({ roof: 'hip', pitch: 6 });
+    expect(r.modelled).toBeGreaterThan(0);
+    expect(r.roof).toBe('ROOF');
+    expect(r.elevations.length).toBe(4);
+    const titles = state.entities.filter(e => e.type === 'text').map(e => e.content);
+    for (const t of ['SOUTH ELEVATION', 'EAST ELEVATION', 'NORTH ELEVATION', 'WEST ELEVATION']){
+      expect(titles).toContain(t);
+    }
+    expect(titles.some(t => /^SECTION Y AT /.test(t))).toBe(true);
+    /* The section cuts through the middle of the mass and carries poche. */
+    expect(r.section.hatches).toBeGreaterThan(0);
+    expect(lookupCommand('DRAWINGS').action).toBe('drawings');
+  });
+
+  it('DRAWINGS with nothing to draw refuses instead of littering', async () => {
+    const { generateDrawings } = await import('../src/core/model3d.js');
+    expect(() => generateDrawings({})).toThrow();
+    expect(state.entities.length).toBe(0);
+    expect(state.solids.length).toBe(0);
+  });
+});
+
 describe('vertical sections and elevations', () => {
   beforeEach(reset);
 

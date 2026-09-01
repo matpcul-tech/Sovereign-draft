@@ -112,6 +112,7 @@ export const COMMANDS = {
   CONE:    { aliases: ['CONE'],                         tool: null,     action: 'prim:cone' },
   WEDGE:   { aliases: ['WEDGE'],                        tool: null,     action: 'prim:wedge' },
   ROOF:    { aliases: ['ROOF'],                         tool: null,     action: 'roof' },
+  DRAWINGS:{ aliases: ['DRAWINGS', 'DWGSET'],           tool: null,     action: 'drawings' },
   SWEEP:   { aliases: ['SWEEP'],                        tool: null,     action: 'sweep3d' },
   U3D:     { aliases: ['U3D', 'UNION3D'],               tool: null,     action: 'bool3d:union' },
   SUB3D:   { aliases: ['SUB3D', 'SUBTRACT3D'],          tool: null,     action: 'bool3d:subtract' },
