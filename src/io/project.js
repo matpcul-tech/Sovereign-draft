@@ -7,6 +7,7 @@ import { setDisplayUnits } from '../core/format.js';
 import { defaultTextStyles, validateTextStyles } from '../core/textstyle.js';
 import { defaultPlotStyles, validatePlotStyles } from './plotstyle.js';
 import { validateLayerStates } from '../core/layerstate.js';
+import { validateScripts } from '../core/script.js';
 
 export const AUTOSAVE_KEY = 'sovereign-draft.autosave.v1';
 
@@ -40,6 +41,7 @@ export function serializeProject(state, pretty){
     currentPlotStyle: state.currentPlotStyle || 'ISO',
     layerStates: state.layerStates || [],
     annoPpf: state.annoPpf || 18,
+    scripts: state.scripts || [],
     layouts: state.layouts,
     currentLayout: state.currentLayout,
     space: state.space,
@@ -70,6 +72,7 @@ export function validateProject(o){
     currentPlotStyle: o.currentPlotStyle || 'ISO',
     layerStates: validateLayerStates(o.layerStates),
     annoPpf: Number(o.annoPpf) > 0 ? Number(o.annoPpf) : 18,
+    scripts: validateScripts(o.scripts),
     /* Structural migration only. Entities are already true size and are
      * passed through untouched. */
     schemaVersion: Number(o.v) || 1,
@@ -105,6 +108,7 @@ export function applyProject(state, p){
   if (p.currentPlotStyle) state.currentPlotStyle = p.currentPlotStyle;
   state.layerStates = p.layerStates || [];
   state.annoPpf = p.annoPpf || 18;
+  state.scripts = p.scripts || [];
   if (p.layouts) state.layouts = p.layouts;
   if (p.currentLayout) state.currentLayout = p.currentLayout;
   if (p.space) state.space = p.space;

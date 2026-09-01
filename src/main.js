@@ -34,6 +34,7 @@ import { encodeShare, decodeShare, shareUrl, tokenFromHash } from './io/share.js
 import { setDisplayUnits } from './core/format.js';
 import { makeMText } from './core/mtext.js';
 import { describeConstraint } from './core/constrain.js';
+import { runScript, saveScript, deleteScript, scriptByName, EXAMPLE_SCRIPTS } from './core/script.js';
 import { latin1ToBytes } from './io/pdffont.js';
 import { mergeMeshes } from './core/mesh.js';
 import { extrudeDrawing, meshesToFaces } from './core/solid.js';
@@ -760,6 +761,50 @@ function wireUi(){
         : 'Nothing selected';
     }
   }
+  function renderScriptSheet(){
+    const list = $('scList');
+    if (!list) return;
+    list.innerHTML = '<option value=\"\">— saved scripts —</option>';
+    (state.scripts || []).forEach(sc => {
+      const o = document.createElement('option');
+      o.value = sc.name; o.textContent = sc.name;
+      list.appendChild(o);
+    });
+    if (!(state.scripts || []).length){
+      EXAMPLE_SCRIPTS.forEach(sc => {
+        const o = document.createElement('option');
+        o.value = 'EX:' + sc.name; o.textContent = sc.name + ' (example)';
+        list.appendChild(o);
+      });
+    }
+  }
+  document.addEventListener('sd-open-sheet', ev => {
+    if (ev.detail === 'sheetScript'){ renderScriptSheet(); openSheet('sheetScript'); }
+  });
+  $('mScript') && $('mScript').addEventListener('click', () => { renderScriptSheet(); openSheet('sheetScript'); });
+  $('scList') && $('scList').addEventListener('change', ev => {
+    const v = ev.target.value;
+    if (!v) return;
+    const rec = v.startsWith('EX:') ? EXAMPLE_SCRIPTS.find(x => x.name === v.slice(3)) : scriptByName(v);
+    if (rec){ $('scName').value = rec.name; $('scCode').value = rec.code; }
+  });
+  $('scRun') && $('scRun').addEventListener('click', () => {
+    const r = runScript($('scCode').value);
+    const out = $('scOut');
+    if (out) out.textContent = (r.ok ? r.output.join('\n') : 'ERROR (rolled back): ' + r.error + '\n' + r.output.join('\n')) || (r.ok ? 'ok, ' + r.created.length + ' entities created' : '');
+    afterChange(); draw();
+  });
+  $('scSave') && $('scSave').addEventListener('click', () => {
+    try {
+      const n = saveScript($('scName').value, $('scCode').value);
+      renderScriptSheet(); $('scList').value = n;
+      toast('Saved. Run it any time with RUN ' + n);
+    } catch (e){ toast(e.message); }
+  });
+  $('scDelete') && $('scDelete').addEventListener('click', () => {
+    if (deleteScript($('scName').value)){ renderScriptSheet(); $('scCode').value = ''; toast('Deleted'); }
+  });
+
   $('mDraft') && $('mDraft').addEventListener('click', () => { renderDraftSheet(); openSheet('sheetDraft'); });
   $('dsScale') && $('dsScale').addEventListener('change', ev => { setAnnoScale(ev.target.value); draw(); });
   $('dsPlot') && $('dsPlot').addEventListener('change', ev => { setPlotStyle(ev.target.value); });

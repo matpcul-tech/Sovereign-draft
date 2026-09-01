@@ -55,6 +55,7 @@ export const state = {
   plotFont: null,
   solids: [],
   annoPpf: 18,
+  scripts: [],
   userBlocks: [],
   idSeq: 1,
   gSeq: 1,

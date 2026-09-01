@@ -22,7 +22,7 @@ import {
   saveLayerState, restoreLayerState, deleteLayerState, setPlotStyle,
   twistViewport, clipViewport,
   extrudeSelection, revolveSelection, loftSelection, clearSolids,
-  toggleAnnotative, setAnnoScale
+  toggleAnnotative, setAnnoScale, openScriptSheet, runSavedScript
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
 import { setTool } from './ui/tools.js';
@@ -482,6 +482,8 @@ export function handleCommand(text){
   if (res.action === 'clearsolids'){ clearSolids(); return; }
   if (res.action === 'anno'){ toggleAnnotative(); return; }
   if (res.action === 'annoscale'){ setAnnoScale(res.rest); return; }
+  if (res.action === 'script'){ openScriptSheet(); return; }
+  if (res.action === 'runscript'){ runSavedScript(res.rest); return; }
   if (res.action === 'zoomfit'){ zoomFit(); draw(); return; }
   if (res.action === 'explode'){ explodeSelection(); return; }
   if (res.action === 'flip'){ flipSelection(); return; }

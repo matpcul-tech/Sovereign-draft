@@ -24,6 +24,7 @@ import { plotStyleByName } from './io/plotstyle.js';
 import { modelToPaper, viewportRot } from './core/layout.js';
 import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight } from './core/mesh.js';
 import { toAnno, fromAnno, parseScaleToPpf } from './core/annoscale.js';
+import { runScript, scriptByName } from './core/script.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
 import { makeIndexCache, queryPoint, queryBox, worthIndexing } from './core/spatial.js';
 import { alignedDim, continueDim, baselineDim, applyStyleToDim, angularDim, radiusDim, diameterDim, makeLeader } from './core/dimStyle.js';
@@ -208,6 +209,33 @@ export function clearSolids(){
   state.solids = [];
   afterChange();
   toast(n + ' solid' + (n === 1 ? '' : 's') + ' cleared');
+}
+
+/* ---------- scripting ---------- */
+export function openScriptSheet(){
+  ix.scriptOpen = true;
+  openSheetById('sheetScript');
+}
+
+/* The sheet lives in the UI layer; asking for it by id here keeps this
+ * module free of a direct import while staying visible to the import
+ * guard, which a raw getElementById reach-through would not be. */
+function openSheetById(id){
+  const ev = new CustomEvent('sd-open-sheet', { detail: id });
+  if (typeof document !== 'undefined') document.dispatchEvent(ev);
+}
+
+export function runSavedScript(name){
+  const rec = scriptByName(name);
+  if (!rec){
+    const have = (state.scripts || []).map(x => x.name).join(', ');
+    toast(have ? 'No script ' + name + '. Have: ' + have : 'No scripts saved yet. Type SCRIPT to write one.', 4000);
+    return;
+  }
+  const r = runScript(rec.code);
+  if (r.ok) toast(rec.name + ': ' + (r.output.length ? r.output[r.output.length - 1] : r.created.length + ' entities created'), 4000);
+  else toast(rec.name + ' failed and was rolled back: ' + r.error, 5000);
+  afterChange();
 }
 
 /* ---------- annotative text ---------- */

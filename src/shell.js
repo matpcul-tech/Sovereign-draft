@@ -193,6 +193,21 @@ export function shellHTML(){
   <button class="primary" id="btnSaveSettings">Save settings</button>
   <div class="subtle">Grok is the default drafter and needs no key. An Anthropic key is stored only in this browser and sent only to api.anthropic.com if Grok is unavailable.</div>
 </div>
+<div class="sheet" id="sheetScript">
+  <h3><i>Script</i></h3>
+  <div style="display:flex;gap:8px">
+    <select id="scList" class="field" style="height:40px;flex:1"></select>
+    <input id="scName" type="text" class="field" placeholder="MY SCRIPT" style="height:40px;flex:1">
+  </div>
+  <textarea id="scCode" class="field" spellcheck="false" style="height:180px;font-family:ui-monospace,monospace;font-size:12px;margin-top:8px" placeholder="sd.add.line(0, 0, 20, 0);&#10;print('drew a line');"></textarea>
+  <div style="display:flex;gap:8px;margin-top:8px">
+    <button class="primary" id="scRun" style="flex:1;height:42px">Run</button>
+    <button id="scSave" style="flex:1;height:42px">Save</button>
+    <button id="scDelete" style="height:42px">x</button>
+  </div>
+  <pre id="scOut" class="cmdhist" style="max-height:120px;overflow:auto;margin-top:8px"></pre>
+  <div class="subtle">JavaScript against the sd API: sd.add.line/circle/poly/spline/text/note/hatch/dim, sd.query.byType/byLayer/where, sd.move/rotate/scale/mirror/copy/delete, sd.boolean, sd.measure, sd.layer, print(). A run is one undo step; a script that throws is rolled back completely.</div>
+</div>
 <div class="sheet" id="sheetDraft">
   <h3><i>Drafting standards</i></h3>
   <h4>Working scale (annotative text)</h4>
@@ -286,6 +301,7 @@ export function shellHTML(){
   <div class="subtle" style="margin-top:0;margin-bottom:10px">Stamped on every printed sheet — company, copyright, drawing title, sheet number.</div>
   <button class="mrow" id="mOpenDrawing"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Open drawing<small>DXF · DWG · JSON · drop a file</small></button>
   <button class="mrow" id="mImportDXF"><svg viewBox="0 0 24 24"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 3v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3"/></svg>Insert DXF<small>merge into this sheet</small></button>
+  <button class="mrow" id="mScript"><svg viewBox="0 0 24 24"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6"/></svg>Scripts<small>automate this drawing · JS</small></button>
   <button class="mrow" id="mDraft"><svg viewBox="0 0 24 24"><path d="M4 20h16M6 16l4-8 4 8M8 12h4"/><circle cx="18" cy="8" r="2"/></svg>Drafting standards<small>scales · plot styles · layer states</small></button>
   <button class="mrow" id="mSTL"><svg viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M12 12l9-5M12 12v10M12 12L3 7"/></svg>Export STL<small>3D print · mesh solids</small></button>
   <button class="mrow" id="mOBJ"><svg viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5"/></svg>Export OBJ<small>3D model exchange</small></button>

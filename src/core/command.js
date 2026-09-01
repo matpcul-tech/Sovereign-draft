@@ -103,7 +103,9 @@ export const COMMANDS = {
   LOFT:    { aliases: ['LOFT'],                         tool: null,     action: 'loft3d' },
   SOLIDCLR:{ aliases: ['SOLIDCLR', 'CLEARSOLIDS'],      tool: null,     action: 'clearsolids' },
   ANNO:    { aliases: ['ANNO', 'ANNOTATIVE'],           tool: null,     action: 'anno' },
-  ANNOSCALE:{ aliases: ['ANNOSCALE', 'ASCALE'],         tool: null,     action: 'annoscale' }
+  ANNOSCALE:{ aliases: ['ANNOSCALE', 'ASCALE'],         tool: null,     action: 'annoscale' },
+  SCRIPT:  { aliases: ['SCRIPT', 'JS'],                 tool: null,     action: 'script' },
+  RUN:     { aliases: ['RUN'],                          tool: null,     action: 'runscript' }
 };
 
 const ALIAS = {};
