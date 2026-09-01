@@ -417,6 +417,39 @@ describe('vertical sections and elevations', () => {
     expect(Math.max(...nxs) - Math.min(...nxs)).toBeCloseTo(3, 6);
   });
 
+  it('massing hidden line: the parapet of a lower front mass draws, and only from the front', async () => {
+    const { elevationToPlan } = await import('../src/core/model3d.js');
+    /* A lower mass in front of a taller one. From the south the front
+     * mass's roof line at 8 ft crosses the taller silhouette; from the
+     * north it is entirely hidden. */
+    addSolid(makeBox(0, 0, 0, 20, 10, 8), 'FRONT');
+    addSolid(makeBox(0, 10, 0, 20, 10, 14), 'BACK');
+    const s = elevationToPlan('S');
+    expect(s.edges).toBe(1);
+    const line = s.made.find(e => e.type === 'line');
+    expect(line.y1).toBeCloseTo(8, 6);
+    expect(line.y2).toBeCloseTo(8, 6);
+    /* The clip trims a hair where the line meets the outline. */
+    expect(Math.abs(line.x2 - line.x1)).toBeCloseTo(20, 0);
+    const n = elevationToPlan('N');
+    expect(n.edges).toBe(0);
+  });
+
+  it('massing hidden line: flush solids get no seam, a setback corner gets its line', async () => {
+    const { elevationToPlan } = await import('../src/core/model3d.js');
+    addSolid(makeBox(0, 0, 0, 10, 10, 8), 'A');
+    addSolid(makeBox(10, 0, 0, 10, 10, 8), 'B');
+    expect(elevationToPlan('S').edges).toBe(0);
+    reset();
+    addSolid(makeBox(0, 0, 0, 10, 10, 8), 'A');
+    addSolid(makeBox(10, 4, 0, 10, 6, 8), 'B');
+    const r = elevationToPlan('S');
+    expect(r.edges).toBe(1);
+    const line = r.made.find(e => e.type === 'line');
+    expect(line.x1).toBeCloseTo(line.x2, 6);
+    expect(Math.abs(line.y2 - line.y1)).toBeCloseTo(8, 0);
+  });
+
   it('hidden line reads east and west depths correctly too', async () => {
     const { elevationToPlan } = await import('../src/core/model3d.js');
     addSolid(makeBox(0, 0, 0, 0.5, 20, 10), 'WALL');

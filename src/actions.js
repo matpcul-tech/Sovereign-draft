@@ -274,6 +274,7 @@ export function makeElevation(rest){
     const rings = r.made.filter(e => e.type === 'poly' && e.layer !== 'OPENINGS').length;
     toast(dir + ' elevation: ' + rings + ' ring' + (rings === 1 ? '' : 's') +
       (r.openings ? ', ' + r.openings + ' opening' + (r.openings === 1 ? '' : 's') : '') +
+      (r.edges ? ', ' + r.edges + ' edge line' + (r.edges === 1 ? '' : 's') : '') +
       ', ' + r.area.toFixed(1) + ' SF outline', 4000);
   } catch (e){ toast(e.message, 4000); }
 }

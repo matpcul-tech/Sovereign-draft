@@ -195,6 +195,153 @@ export function depthAt(mesh, axis, sign, u, v){
   return best;
 }
 
+/* ---------- visible feature edges ----------
+ * The full hidden line pass for one orthographic elevation. An edge is
+ * worth drawing when it is a boundary edge, a silhouette edge (one face
+ * toward the viewer, one away) or a crease (the faces bend more than about
+ * twenty degrees, which is every parapet, roof step and corner and no
+ * triangulation diagonal). Each feature edge is then depth-tested along its
+ * length against the whole mesh, and only the visible runs survive, with
+ * the transitions refined by bisection so a line stops exactly where the
+ * occluder starts.
+ *
+ * Probes are nudged slightly to both sides of the edge in projection and
+ * the edge counts as visible where either side sees it: an edge on the rim
+ * of a face would otherwise be judged hidden by its own face, and a
+ * re-entrant corner by the wall that meets it. The depth comparison uses a
+ * fifth-of-an-inch tolerance, so coplanar faces never hide each other and
+ * gentle slopes survive the nudge.
+ */
+const EDGE_CREASE_DOT = 0.94;
+const EDGE_DEPTH_TOL = 0.02;
+const EDGE_STEP = 0.5;
+const EDGE_NUDGE = 0.002;
+
+function faceNormal(A, B, C){
+  const ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2];
+  const vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2];
+  const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+  const L = Math.hypot(nx, ny, nz);
+  return L > 1e-12 ? [nx / L, ny / L, nz / L] : null;
+}
+
+export function visibleMeshEdges(mesh, axis, sign){
+  const proj = axis === 'y' ? p => [p[0], p[2]] : p => [p[1], p[2]];
+  const dep = axis === 'y' ? p => sign * p[1] : p => sign * p[0];
+  const view = axis === 'y' ? [0, sign, 0] : [sign, 0, 0];
+  const K = 1e-6;
+  const pkey = v => Math.round(v[0] / K) + ',' + Math.round(v[1] / K) + ',' + Math.round(v[2] / K);
+
+  /* Collect every edge with the normals of the faces that share it, keyed
+   * by welded endpoint positions so merged meshes still share edges. */
+  const edges = new Map();
+  for (const f of mesh.faces){
+    const P = [mesh.verts[f[0]], mesh.verts[f[1]], mesh.verts[f[2]]];
+    if (!P[0] || !P[1] || !P[2]) continue;
+    const n = faceNormal(P[0], P[1], P[2]);
+    if (!n) continue;
+    for (let i = 0; i < 3; i++){
+      const A = P[i], B = P[(i + 1) % 3];
+      const ka = pkey(A), kb = pkey(B);
+      if (ka === kb) continue;
+      const key = ka < kb ? ka + '|' + kb : kb + '|' + ka;
+      let rec = edges.get(key);
+      if (!rec){ rec = { A, B, normals: [] }; edges.set(key, rec); }
+      rec.normals.push(n);
+    }
+  }
+
+  const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const segs = [];
+  for (const rec of edges.values()){
+    const ns = rec.normals;
+    let feature = ns.length === 1;
+    if (!feature){
+      for (let i = 0; i < ns.length && !feature; i++){
+        for (let j = i + 1; j < ns.length && !feature; j++){
+          const si = dot3(ns[i], view), sj = dot3(ns[j], view);
+          if ((si < -1e-9 && sj > 1e-9) || (si > 1e-9 && sj < -1e-9)) feature = true;
+          else if (dot3(ns[i], ns[j]) < EDGE_CREASE_DOT) feature = true;
+        }
+      }
+    }
+    if (!feature) continue;
+    /* An edge draws only if it borders a surface the viewer can see: a
+     * strictly front-facing face. This drops back-of-solid edges and the
+     * coincident twin an edge-on roof would otherwise contribute. */
+    if (!ns.some(n => dot3(n, view) < -1e-9)) continue;
+    /* Two coplanar front faces at the edge mean the visible surface
+     * continues smoothly across it: two flush solids do not get a seam
+     * line, and a flush-fronted setback keeps its facade unbroken while
+     * its roof step, where only one front face reaches, still draws. */
+    const fronts = ns.filter(n => dot3(n, view) < -1e-9);
+    let smooth = false;
+    for (let i = 0; i < fronts.length && !smooth; i++){
+      for (let j = i + 1; j < fronts.length && !smooth; j++){
+        if (dot3(fronts[i], fronts[j]) >= 0.999) smooth = true;
+      }
+    }
+    if (smooth) continue;
+
+    const a2 = proj(rec.A), b2 = proj(rec.B);
+    const len2 = Math.hypot(b2[0] - a2[0], b2[1] - a2[1]);
+    if (len2 < 1e-6) continue;
+    const nudge = [-(b2[1] - a2[1]) / len2 * EDGE_NUDGE, (b2[0] - a2[0]) / len2 * EDGE_NUDGE];
+
+    const at = t => [
+      rec.A[0] + (rec.B[0] - rec.A[0]) * t,
+      rec.A[1] + (rec.B[1] - rec.A[1]) * t,
+      rec.A[2] + (rec.B[2] - rec.A[2]) * t
+    ];
+    const vis = t => {
+      const P = at(t);
+      const [u, v] = proj(P);
+      const d = dep(P);
+      return depthAt(mesh, axis, sign, u + nudge[0], v + nudge[1]) >= d - EDGE_DEPTH_TOL
+        || depthAt(mesh, axis, sign, u - nudge[0], v - nudge[1]) >= d - EDGE_DEPTH_TOL;
+    };
+    const refine = (tHid, tVis) => {
+      for (let i = 0; i < 12; i++){
+        const m = (tHid + tVis) / 2;
+        if (vis(m)) tVis = m; else tHid = m;
+      }
+      return tVis;
+    };
+
+    const N = Math.max(1, Math.min(200, Math.ceil(len2 / EDGE_STEP)));
+    const ts = [];
+    for (let i = 0; i < N; i++) ts.push((i + 0.5) / N);
+    const flags = ts.map(vis);
+    let i = 0;
+    while (i < N){
+      if (!flags[i]){ i++; continue; }
+      let j = i;
+      while (j + 1 < N && flags[j + 1]) j++;
+      /* Ends of the edge count as visible when the first or last sample
+       * is, so a fully visible edge keeps its exact endpoints. */
+      const t0 = i === 0 ? 0 : refine(ts[i - 1], ts[i]);
+      const t1 = j === N - 1 ? 1 : refine(ts[j + 1], ts[j]);
+      const p0 = proj(at(t0)), p1 = proj(at(t1));
+      if (Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) > 0.05) segs.push([p0, p1]);
+      i = j + 1;
+    }
+  }
+  /* Distinct 3D edges can project onto the same 2D line: a re-entrant
+   * corner and the side edge it meets, for one. The drawing wants that
+   * line once. */
+  const seen = new Set();
+  const out = [];
+  for (const s of segs){
+    const k0 = Math.round(s[0][0] * 100) + ',' + Math.round(s[0][1] * 100);
+    const k1 = Math.round(s[1][0] * 100) + ',' + Math.round(s[1][1] * 100);
+    const key = k0 < k1 ? k0 + '|' + k1 : k1 + '|' + k0;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
+}
+
 function contains(outer, inner){
   /* One interior test point is enough for section rings. */
   const p = inner[0];

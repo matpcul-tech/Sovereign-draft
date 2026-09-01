@@ -18,7 +18,7 @@ import {
   translateMesh, rotateMesh, scaleMesh, mergeMeshes
 } from './mesh.js';
 import { csg } from './csg.js';
-import { sliceMesh, sliceArea, sliceMeshAxis, sliceAreaAxis, silhouette, depthAt } from './slice.js';
+import { sliceMesh, sliceArea, sliceMeshAxis, sliceAreaAxis, silhouette, depthAt, visibleMeshEdges } from './slice.js';
 import { polyBoolean, ringsArea, differenceRings } from './boolean.js';
 import { extrudeDrawing } from './solid.js';
 import { alignedDim } from './dimStyle.js';
@@ -206,6 +206,78 @@ function ringVisible(ring, axis, sign, ownMesh, occluder){
   return pass >= 3;
 }
 
+/* How close a projected edge must run to the outline to count as already
+ * drawn by it. */
+const ON_OUTLINE_TOL = 0.05;
+
+function distToRings(p, rings){
+  let best = Infinity;
+  for (const r of rings){
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++){
+      const ax = r[j][0], ay = r[j][1], bx = r[i][0], by = r[i][1];
+      const dx = bx - ax, dy = by - ay;
+      const L2 = dx * dx + dy * dy;
+      const t = L2 > 1e-12 ? Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - ay) * dy) / L2)) : 0;
+      best = Math.min(best, Math.hypot(p[0] - (ax + dx * t), p[1] - (ay + dy * t)));
+    }
+  }
+  return best;
+}
+
+/* Keep only the parts of each edge that run inside the outline, not along
+ * it: the outline poly already draws its own path. An edge partly on the
+ * outline, like a roof line whose flanks are the silhouette, survives only
+ * where it is interior. The clip can land distinct edges on the same line,
+ * a roof junction and the base of the mass above it for one, so the result
+ * is deduplicated: the drawing wants each line once. */
+function clipSegsToInterior(segs, rings){
+  const out = [];
+  for (const s of segs){
+    const L = Math.hypot(s[1][0] - s[0][0], s[1][1] - s[0][1]);
+    const N = Math.max(1, Math.min(200, Math.ceil(L / 0.25)));
+    const at = t => [s[0][0] + (s[1][0] - s[0][0]) * t, s[0][1] + (s[1][1] - s[0][1]) * t];
+    const interior = t => distToRings(at(t), rings) > ON_OUTLINE_TOL;
+    const refine = (tOn, tIn) => {
+      for (let k = 0; k < 10; k++){
+        const m = (tOn + tIn) / 2;
+        if (interior(m)) tIn = m; else tOn = m;
+      }
+      return tIn;
+    };
+    const ts = [];
+    for (let i = 0; i < N; i++) ts.push((i + 0.5) / N);
+    const flags = ts.map(interior);
+    let i = 0;
+    while (i < N){
+      if (!flags[i]){ i++; continue; }
+      let j = i;
+      while (j + 1 < N && flags[j + 1]) j++;
+      const t0 = i === 0 ? 0 : refine(ts[i - 1], ts[i]);
+      const t1 = j === N - 1 ? 1 : refine(ts[j + 1], ts[j]);
+      const p0 = at(t0), p1 = at(t1);
+      if (Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) > 0.1) out.push([p0, p1]);
+      i = j + 1;
+    }
+  }
+  /* Longest first; a segment whose both ends lie on an already kept one
+   * is the same drawn line and goes. The clip trims ends by up to the
+   * outline tolerance, so twins can differ by a few hundredths. */
+  const segLen = s => Math.hypot(s[1][0] - s[0][0], s[1][1] - s[0][1]);
+  const distPS = (p, s) => {
+    const dx = s[1][0] - s[0][0], dy = s[1][1] - s[0][1];
+    const L2 = dx * dx + dy * dy;
+    const t = L2 > 1e-12 ? Math.max(0, Math.min(1, ((p[0] - s[0][0]) * dx + (p[1] - s[0][1]) * dy) / L2)) : 0;
+    return Math.hypot(p[0] - (s[0][0] + dx * t), p[1] - (s[0][1] + dy * t));
+  };
+  out.sort((a, b) => segLen(b) - segLen(a));
+  const kept = [];
+  for (const s of out){
+    if (kept.some(k => distPS(s[0], k) < 0.08 && distPS(s[1], k) < 0.08)) continue;
+    kept.push(s);
+  }
+  return kept;
+}
+
 export function elevationToPlan(dir, layer){
   const mesh = allSolidsMesh();
   if (!mesh.faces.length) throw new Error('Nothing modelled to take an elevation of');
@@ -220,18 +292,30 @@ export function elevationToPlan(dir, layer){
     openRings = openRings.concat(
       silhouette(rec.mesh, d, boolean).filter(r => ringVisible(r, d, sign, rec.mesh, mesh)));
   }
+  /* The interior lines of the elevation: visible feature edges of the
+   * massing, clipped to where they run inside the outline. */
+  let edgeSegs = clipSegsToInterior(visibleMeshEdges(mesh, d, sign), rings);
   /* Seen from the south or the west the horizontal axis reads the other
    * way, so mirror it: elevations read left to right the way you face them.
-   * Openings mirror with the massing or they land on the wrong side. */
+   * Openings and edges mirror with the massing or they land on the wrong
+   * side. */
   const flip = String(dir).toUpperCase() === 'N' || String(dir).toUpperCase() === 'W';
   if (flip){
     const mirror = rs => rs.map(r => r.map(p => [-p[0], p[1]]).reverse());
     rings = mirror(rings);
     openRings = mirror(openRings);
+    edgeSegs = edgeSegs.map(s => s.map(p => [-p[0], p[1]]));
   }
   const offset = nextViewOffset(rings);
   const made = placeRings(rings, layer || 'SECTION', offset);
   const openings = placeRings(openRings, ensureLayer('OPENINGS'), offset);
+  for (const s of edgeSegs){
+    pushEnt({
+      type: 'line', layer: layer || 'SECTION',
+      x1: round6(s[0][0] + offset[0]), y1: round6(s[0][1] + offset[1]),
+      x2: round6(s[1][0] + offset[0]), y2: round6(s[1][1] + offset[1])
+    }, made);
+  }
   const NAMES = { S: 'SOUTH', N: 'NORTH', E: 'EAST', W: 'WEST' };
   const notes = annotateView(made, NAMES[String(dir || 'S').toUpperCase()] + ' ELEVATION');
   /* Each opening gets its own height dim at its right edge: sill to head,
@@ -240,7 +324,10 @@ export function elevationToPlan(dir, layer){
     const bb = viewBounds([o]);
     if (bb && bb[3] - bb[1] > 1e-9) pushEnt(alignedDim([bb[2], bb[1]], [bb[2], bb[3]], -0.8), notes);
   }
-  return { made: made.concat(openings, notes), openings: openings.length, area: ringsArea(rings), offset };
+  return {
+    made: made.concat(openings, notes), openings: openings.length,
+    edges: edgeSegs.length, area: ringsArea(rings), offset
+  };
 }
 
 /* ---------- the plan becomes solids ---------- */
