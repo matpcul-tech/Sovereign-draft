@@ -38,7 +38,8 @@
     "test:watch": "vitest",
     "draft": "node bin/sovereign-draft.js",
     "examples": "node scripts/write-examples.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "accept": "node scripts/acceptance.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",
