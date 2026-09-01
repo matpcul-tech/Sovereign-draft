@@ -408,11 +408,49 @@ function wireUi(){
     state.firm = {
       company: ($('firmCompany') && $('firmCompany').value.trim()) || '',
       copyright: ($('firmCopyright') && $('firmCopyright').value.trim()) || '',
-      drawnBy: ($('firmDrawn') && $('firmDrawn').value.trim()) || ''
+      drawnBy: ($('firmDrawn') && $('firmDrawn').value.trim()) || '',
+      /* Editing a text field must not throw the logo away. */
+      logo: (state.firm && state.firm.logo) || undefined
     };
     saveFirm(state.firm);
     autosave(state);
   }
+  $('firmLogoBtn') && $('firmLogoBtn').addEventListener('click', () => $('fileLogo').click());
+  $('fileLogo') && $('fileLogo').addEventListener('change', async ev => {
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!f) return;
+    try {
+      /* Any image the browser can decode becomes a small baseline JPEG, so
+       * the PDF path only ever sees the one format it embeds verbatim. */
+      const url = URL.createObjectURL(f);
+      const img = new Image();
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+      URL.revokeObjectURL(url);
+      const k = Math.min(1, 480 / img.width, 200 / img.height);
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(img.width * k));
+      cv.height = Math.max(1, Math.round(img.height * k));
+      const cx2 = cv.getContext('2d');
+      /* Transparent PNGs on white, the colour of the sheet they will sit on. */
+      cx2.fillStyle = '#ffffff';
+      cx2.fillRect(0, 0, cv.width, cv.height);
+      cx2.drawImage(img, 0, 0, cv.width, cv.height);
+      state.firm = Object.assign({}, state.firm, { logo: cv.toDataURL('image/jpeg', 0.85) });
+      saveFirm(state.firm);
+      autosave(state);
+      toast('Logo saved: stamps on every printed sheet');
+    } catch (e){
+      toast('Could not read that image');
+    }
+  });
+  $('firmLogoClear') && $('firmLogoClear').addEventListener('click', () => {
+    if (!state.firm || !state.firm.logo){ toast('No logo set'); return; }
+    state.firm = Object.assign({}, state.firm, { logo: undefined });
+    saveFirm(state.firm);
+    autosave(state);
+    toast('Logo removed');
+  });
   ['firmCompany', 'firmCopyright', 'firmDrawn'].forEach(id => {
     $(id) && $(id).addEventListener('change', commitFirm);
   });

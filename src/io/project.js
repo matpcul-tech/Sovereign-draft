@@ -87,7 +87,11 @@ export function validateProject(o){
     firm: {
       company: String(o.firm && o.firm.company || '').slice(0, 80),
       copyright: String(o.firm && o.firm.copyright || '').slice(0, 160),
-      drawnBy: String(o.firm && o.firm.drawnBy || '').slice(0, 40)
+      drawnBy: String(o.firm && o.firm.drawnBy || '').slice(0, 40),
+      /* A small JPEG as a data URL. Anything else, or anything huge, is
+       * dropped rather than carried blindly into every save. */
+      logo: /^data:image\/jpe?g;base64,/.test(String(o.firm && o.firm.logo || '')) && String(o.firm.logo).length < 400000
+        ? String(o.firm.logo) : undefined
     }
   };
 }

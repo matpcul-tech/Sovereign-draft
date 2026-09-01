@@ -15,7 +15,9 @@ import { sheetLabel } from '../core/document.js';
 import { tableFrags } from '../core/schedule.js';
 import { detailBubbleText, viewportClearOfAnnotations, annotationRect } from '../core/sheetspace.js';
 import { sheetOf, clipPoly, viewportRot } from '../core/layout.js';
-import { fontObjects, hexString, collectGlyphs } from './pdffont.js';
+import { resolveStamp } from '../core/titleblock.js';
+import { fontObjects, hexString, collectGlyphs, bytesToLatin1 } from './pdffont.js';
+import { jpegInfo, dataUrlToBytes } from './jpeg.js';
 import { missingGlyphs } from './ttf.js';
 import { titleBlockModel, drawingTitleOf, fitPaperText, viewportClearOfTitle } from '../core/titleblock.js';
 import { entsInBBox } from '../core/legend.js';
@@ -78,15 +80,23 @@ export function wrapPDFPages(pages, embed){
   const embedRef = embed ? fontB + 1 : 0;
   const fontRes = '/F1 ' + fontR + ' 0 R /F2 ' + fontB + ' 0 R' +
     (embed ? ' /F3 ' + embedRef + ' 0 R' : '');
+  const logo = logoPayload();
+  const logoRef = logo ? (embed ? embedRef + 5 : fontB + 1) : 0;
+  const xobjRes = logo ? ' /XObject << /Lg ' + logoRef + ' 0 R >>' : '';
   pages.forEach((pg, i) => {
     const pageNum = 3 + i * 2, contentNum = 4 + i * 2;
     objs.push(pageNum + ' 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pg.pageW + ' ' + pg.pageH +
-      '] /Contents ' + contentNum + ' 0 R /Resources << /Font << ' + fontRes + ' >> >> >>\nendobj');
+      '] /Contents ' + contentNum + ' 0 R /Resources << /Font << ' + fontRes + ' >>' + xobjRes + ' >> >>\nendobj');
     objs.push(contentNum + ' 0 obj\n<< /Length ' + pg.stream.length + ' >>\nstream\n' + pg.stream + '\nendstream\nendobj');
   });
   objs.push(fontR + ' 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj');
   objs.push(fontB + ' 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj');
   if (embed) fontObjects(embed.font, embed.glyphs, embedRef).objs.forEach(o => objs.push(o));
+  if (logo){
+    objs.push(logoRef + ' 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + logo.w + ' /Height ' + logo.h +
+      ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + logo.bytes.length +
+      ' >>\nstream\n' + bytesToLatin1(logo.bytes) + '\nendstream\nendobj');
+  }
   return assemblePDF(objs);
 }
 
@@ -107,6 +117,38 @@ function wrapPDF(stream, pageW, pageH){
  */
 let EMBED = null;
 const EMBED_SEEN = new Set();
+/* The firm's logo: raw JPEG bytes, passed to PDF verbatim under DCTDecode.
+ * Armed per build like the font; USED flips only when a page draws it, so a
+ * document with no stamp carries no image object. */
+let LOGO = null;
+let LOGO_USED = false;
+
+export function setLogo(dataUrl){
+  LOGO = null;
+  LOGO_USED = false;
+  const bytes = dataUrlToBytes(dataUrl);
+  if (!bytes) return;
+  const info = jpegInfo(bytes);
+  /* A progressive JPEG is legal DCTDecode but old viewers choke on it, and
+   * the browser re-encode that produces these logos is baseline anyway. */
+  if (!info || info.progressive || info.channels !== 3) return;
+  LOGO = { bytes, w: info.width, h: info.height };
+}
+
+/* Draw the logo fitted into a box, top aligned, keeping its aspect. Returns
+ * the drawn width in points so the caller can flow text beside it. */
+function drawLogo(P, f2, x, y, maxW, maxH){
+  if (!LOGO) return 0;
+  const k = Math.min(maxW / LOGO.w, maxH / LOGO.h);
+  const w = LOGO.w * k, h = LOGO.h * k;
+  P('q ' + f2(w) + ' 0 0 ' + f2(h) + ' ' + f2(x) + ' ' + f2(y) + ' cm /Lg Do Q');
+  LOGO_USED = true;
+  return w;
+}
+
+function logoPayload(){
+  return LOGO_USED && LOGO ? LOGO : null;
+}
 
 export function setEmbeddedFont(font){
   EMBED = font || null;
@@ -243,6 +285,7 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts,
 /* opts: { ppf: number | 'fit', layerVisible(name)=>bool, projectName, dateStr, layout } */
 export function buildPDF(entities, opts){
   setEmbeddedFont((opts && opts.font) || null);
+  setLogo(opts && opts.firm && opts.firm.logo);
   opts = opts || {};
   if (opts.layout) return buildLayoutPDF(entities, opts);
   const layerVisible = opts.layerVisible || (() => true);
@@ -312,8 +355,22 @@ export function buildPDF(entities, opts){
   P('0.08 G 1.2 w');
   P('36 92 m 756 92 l S');
   const name = (opts.projectName || 'SOVEREIGN DRAFT').toUpperCase();
-  textAt(42, 66, 17, name, 0, true, 0.05);
-  textAt(42, 48, 9, (opts.dateStr || new Date().toLocaleDateString()) + '   units: feet', 0, false, 0.35);
+  /* The firm stamp. The sheet-set path has always carried it; this quick
+   * export collected it from the caller and then never printed it, so a
+   * drawing left the studio without its copyright line. Emitted only when
+   * the firm has content, which leaves a stampless export byte for byte as
+   * it always was. The logo occupies the lower left band, and every line
+   * that shares that band starts to its right of it. */
+  const hasFirm = opts.firm && (String(opts.firm.company || '').trim() || String(opts.firm.copyright || '').trim());
+  const logoW = hasFirm ? drawLogo(P, f2, 42, 28, 66, 32) : 0;
+  const tx0 = logoW ? 42 + logoW + 10 : 42;
+  textAt(tx0, 66, 17, name, 0, true, 0.05);
+  textAt(tx0, 48, 9, (opts.dateStr || new Date().toLocaleDateString()) + '   units: feet', 0, false, 0.35);
+  if (hasFirm){
+    const stamp = resolveStamp(opts.firm, opts);
+    textAt(tx0, 80, 10, stamp.company + (stamp.drawnBy ? '   ·   DRAWN ' + stamp.drawnBy.toUpperCase() : ''), 0, true, 0.15);
+    textAt(tx0, 37, 7.5, stamp.copyright, 0, false, 0.45);
+  }
   textAt(430, 48, 10, 'SCALE: ' + scaleLabel(ppf) + (clipped ? '  (clipped to sheet)' : ''), 0, false, 0.15);
   /* With one sheet this is exactly 'SHEET A-1', which is what the
    * pre-refactor build emitted. The count only appears once a document
@@ -535,6 +592,14 @@ function paintTitleBlock(P, f2, textAt, model){
   (model.cells || []).forEach(c => {
     P(f2(IX(c.x)) + ' ' + f2(IY(c.y)) + ' ' + f2(IX(c.w)) + ' ' + f2(IY(c.h)) + ' re S');
   });
+  const firmCell = (model.cells || []).find(c => c.id === 'firm');
+  if (firmCell){
+    /* Right side of the firm cell, clear of its text. The box is generous
+     * because a letterhead logo is wide, and the fit keeps its aspect. */
+    const pad = 6;
+    const boxW = Math.min(120, IX(firmCell.w) * 0.3);
+    drawLogo(P, f2, IX(firmCell.x + firmCell.w) - boxW - pad, IY(firmCell.y) + pad, boxW, IX(firmCell.h) - 2 * pad);
+  }
   (model.labels || []).forEach(L => {
     const sz = L.size * 72;
     const str = fitPaperText(L.text, sz, L.maxW, L.bold);
@@ -555,6 +620,7 @@ export function buildLayoutPDF(entities, opts){
  * the sheet count in each title block come from the position in this list. */
 export function buildAllSheetsPDF(entities, opts){
   setEmbeddedFont((opts && opts.font) || null);
+  setLogo(opts && opts.firm && opts.firm.logo);
   const o = opts || {};
   const sheets = Array.isArray(o.sheets) ? o.sheets.filter(Boolean) : [];
   if (!sheets.length) return buildPDF(entities, o);

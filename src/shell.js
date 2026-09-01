@@ -298,6 +298,11 @@ export function shellHTML(){
   <input id="firmCompany" type="text" class="field" placeholder="Your company" style="height:44px;margin-bottom:6px">
   <input id="firmCopyright" type="text" class="field" placeholder="© 2026 Your Company. All rights reserved." style="height:44px;margin-bottom:6px">
   <input id="firmDrawn" type="text" class="field" placeholder="Drawn by" style="height:44px;margin-bottom:6px">
+  <div style="display:flex;gap:8px;margin-bottom:6px">
+    <button id="firmLogoBtn" class="field" style="height:40px;flex:1">Firm logo…</button>
+    <button id="firmLogoClear" class="field" style="height:40px">Remove</button>
+  </div>
+  <input type="file" id="fileLogo" accept="image/*" style="display:none">
   <div class="subtle" style="margin-top:0;margin-bottom:10px">Stamped on every printed sheet — company, copyright, drawing title, sheet number.</div>
   <button class="mrow" id="mOpenDrawing"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Open drawing<small>DXF · DWG · JSON · drop a file</small></button>
   <button class="mrow" id="mImportDXF"><svg viewBox="0 0 24 24"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 3v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3"/></svg>Insert DXF<small>merge into this sheet</small></button>
