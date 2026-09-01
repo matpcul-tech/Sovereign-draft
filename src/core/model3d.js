@@ -21,7 +21,7 @@ import {
 import { csg } from './csg.js';
 import {
   sliceMesh, sliceArea, sliceMeshAxis, sliceAreaAxis, silhouette,
-  depthAt, visibleMeshEdges, clipMeshBeyond
+  makeDepthProbe, visibleMeshEdges, clipMeshBeyond
 } from './slice.js';
 import { polyBoolean, ringsArea, differenceRings } from './boolean.js';
 import { extrudeDrawing } from './solid.js';
@@ -204,12 +204,13 @@ export function sliceSolidToPlan(name, z, layer, axis){
           x2: round6(s[1][0] + offset[0]), y2: round6(s[1][1] + offset[1])
         }, made);
       }
+      const beyondProbe = makeDepthProbe(beyond, a, 1);
       for (const or of state.solids || []){
         if (!OPENING_NAME.test(or.name)) continue;
         const clipped = clipMeshBeyond(or.mesh, a, c);
         if (!clipped.faces.length) continue;
         const orings = silhouette(clipped, a, (A, B, op) => polyBoolean(A, B, op))
-          .filter(r => ringVisible(r, a, 1, clipped, beyond));
+          .filter(r => ringVisible(r, makeDepthProbe(clipped, a, 1), beyondProbe));
         placeRings(orings, ensureLayer('OPENINGS'), offset).forEach(e => { made.push(e); beyondOpenings++; });
       }
     }
@@ -249,7 +250,7 @@ const VIEW_SIGN = { S: 1, N: -1, W: 1, E: -1 };
  * DOOR solid, so visibility has to be decided ring by ring: the opening's
  * own front surface at each sample comes from ray-casting its own mesh,
  * which reads the right door even inside a merged bucket. */
-function ringVisible(ring, axis, sign, ownMesh, occluder){
+function ringVisible(ring, ownProbe, occProbe){
   let u0 = Infinity, v0 = Infinity, u1 = -Infinity, v1 = -Infinity;
   for (const p of ring){
     u0 = Math.min(u0, p[0]); v0 = Math.min(v0, p[1]);
@@ -259,9 +260,9 @@ function ringVisible(ring, axis, sign, ownMesh, occluder){
   const samples = [at(0.5, 0.5), at(0.25, 0.25), at(0.75, 0.25), at(0.25, 0.75), at(0.75, 0.75)];
   let pass = 0;
   for (const [u, v] of samples){
-    const own = depthAt(ownMesh, axis, sign, u, v);
+    const own = ownProbe(u, v);
     if (!isFinite(own)) continue;
-    const occ = depthAt(occluder, axis, sign, u, v);
+    const occ = occProbe(u, v);
     if (own - occ <= OPENING_DEPTH_TOL) pass++;
   }
   return pass >= 3;
@@ -347,11 +348,13 @@ export function elevationToPlan(dir, layer){
   const boolean = (A, B, op) => polyBoolean(A, B, op);
   let rings = silhouette(mesh, d, boolean);
   const sign = VIEW_SIGN[String(dir || 'S').toUpperCase()];
+  const occProbe = makeDepthProbe(mesh, d, sign);
   let openRings = [];
   for (const rec of state.solids || []){
     if (!OPENING_NAME.test(rec.name)) continue;
+    const ownProbe = makeDepthProbe(rec.mesh, d, sign);
     openRings = openRings.concat(
-      silhouette(rec.mesh, d, boolean).filter(r => ringVisible(r, d, sign, rec.mesh, mesh)));
+      silhouette(rec.mesh, d, boolean).filter(r => ringVisible(r, ownProbe, occProbe)));
   }
   /* The interior lines of the elevation: visible feature edges of the
    * massing, clipped to where they run inside the outline. */

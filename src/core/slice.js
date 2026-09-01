@@ -175,6 +175,59 @@ export function silhouette(mesh, dir, boolean){
  * to nothing and occlude nothing, so they are skipped. Infinity means the
  * ray hits open air.
  */
+/* The accelerated form of depthAt: build once, query many. Triangles are
+ * bucketed into a uniform grid over their projected bounding boxes, so a
+ * query tests only the handful of candidates in its cell instead of every
+ * face. The arithmetic per candidate is identical to depthAt, and bbox
+ * pruning can never drop a triangle that contains the query point, so the
+ * probe returns exactly what the linear scan returns. The hidden line
+ * pass over a campus of buildings was quadratic without this. */
+export function makeDepthProbe(mesh, axis, sign){
+  const proj = axis === 'y' ? p => [p[0], p[2]] : p => [p[1], p[2]];
+  const dep = axis === 'y' ? p => sign * p[1] : p => sign * p[0];
+  const tris = [];
+  let u0 = Infinity, v0 = Infinity, u1 = -Infinity, v1 = -Infinity;
+  for (const f of mesh.faces){
+    const A = mesh.verts[f[0]], B = mesh.verts[f[1]], C = mesh.verts[f[2]];
+    if (!A || !B || !C) continue;
+    const a = proj(A), b = proj(B), c = proj(C);
+    const det = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+    if (Math.abs(det) < 1e-9) continue;
+    const t = {
+      a, b, c, det, da: dep(A), db: dep(B), dc: dep(C),
+      bx0: Math.min(a[0], b[0], c[0]), by0: Math.min(a[1], b[1], c[1]),
+      bx1: Math.max(a[0], b[0], c[0]), by1: Math.max(a[1], b[1], c[1])
+    };
+    tris.push(t);
+    u0 = Math.min(u0, t.bx0); v0 = Math.min(v0, t.by0);
+    u1 = Math.max(u1, t.bx1); v1 = Math.max(v1, t.by1);
+  }
+  if (!tris.length) return () => Infinity;
+  const N = Math.max(1, Math.min(64, Math.round(Math.sqrt(tris.length / 2)) || 1));
+  const cw = (u1 - u0) / N || 1, ch = (v1 - v0) / N || 1;
+  const cells = Array.from({ length: N * N }, () => []);
+  const ci = (x, lo, s) => Math.max(0, Math.min(N - 1, Math.floor((x - lo) / s)));
+  for (const t of tris){
+    const i0 = ci(t.bx0, u0, cw), i1 = ci(t.bx1, u0, cw);
+    const j0 = ci(t.by0, v0, ch), j1 = ci(t.by1, v0, ch);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) cells[j * N + i].push(t);
+  }
+  return (u, v) => {
+    if (u < u0 - 1e-9 || u > u1 + 1e-9 || v < v0 - 1e-9 || v > v1 + 1e-9) return Infinity;
+    let best = Infinity;
+    for (const t of cells[ci(v, v0, ch) * N + ci(u, u0, cw)]){
+      if (u < t.bx0 - 1e-9 || u > t.bx1 + 1e-9 || v < t.by0 - 1e-9 || v > t.by1 + 1e-9) continue;
+      const l1 = ((t.b[0] - u) * (t.c[1] - v) - (t.c[0] - u) * (t.b[1] - v)) / t.det;
+      const l2 = ((t.c[0] - u) * (t.a[1] - v) - (t.a[0] - u) * (t.c[1] - v)) / t.det;
+      const l3 = 1 - l1 - l2;
+      if (l1 < -1e-9 || l2 < -1e-9 || l3 < -1e-9) continue;
+      const d = l1 * t.da + l2 * t.db + l3 * t.dc;
+      if (d < best) best = d;
+    }
+    return best;
+  };
+}
+
 export function depthAt(mesh, axis, sign, u, v){
   const proj = axis === 'y' ? p => [p[0], p[2]] : p => [p[1], p[2]];
   const dep = axis === 'y' ? p => sign * p[1] : p => sign * p[0];
@@ -262,6 +315,7 @@ export function visibleMeshEdges(mesh, axis, sign){
   const proj = axis === 'y' ? p => [p[0], p[2]] : p => [p[1], p[2]];
   const dep = axis === 'y' ? p => sign * p[1] : p => sign * p[0];
   const view = axis === 'y' ? [0, sign, 0] : [sign, 0, 0];
+  const probe = makeDepthProbe(mesh, axis, sign);
   const K = 1e-6;
   const pkey = v => Math.round(v[0] / K) + ',' + Math.round(v[1] / K) + ',' + Math.round(v[2] / K);
 
@@ -330,8 +384,8 @@ export function visibleMeshEdges(mesh, axis, sign){
       const P = at(t);
       const [u, v] = proj(P);
       const d = dep(P);
-      return depthAt(mesh, axis, sign, u + nudge[0], v + nudge[1]) >= d - EDGE_DEPTH_TOL
-        || depthAt(mesh, axis, sign, u - nudge[0], v - nudge[1]) >= d - EDGE_DEPTH_TOL;
+      return probe(u + nudge[0], v + nudge[1]) >= d - EDGE_DEPTH_TOL
+        || probe(u - nudge[0], v - nudge[1]) >= d - EDGE_DEPTH_TOL;
     };
     const refine = (tHid, tVis) => {
       for (let i = 0; i < 12; i++){
