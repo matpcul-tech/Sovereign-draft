@@ -23,7 +23,7 @@ import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, 
 import { plotStyleByName } from './io/plotstyle.js';
 import { modelToPaper, viewportRot } from './core/layout.js';
 import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight, sweepPath } from './core/mesh.js';
-import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids } from './core/model3d.js';
+import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, sampleBracket } from './core/model3d.js';
 import { toAnno, fromAnno, parseScaleToPpf } from './core/annoscale.js';
 import { runScript, scriptByName } from './core/script.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
@@ -189,6 +189,25 @@ export function makePrimitive(kind, rest){
     afterChange();
     toast(describeSolid(rec), 4000);
   } catch (e){ toast(e.message); }
+}
+
+export function setTool3d(name){
+  state.tool3d = name || 'orbit';
+  try { document.dispatchEvent(new CustomEvent('sd-tool3d', { detail: { tool: state.tool3d } })); } catch (e){ /* node */ }
+}
+
+export function openSolidTool(name){
+  setTool3d(name);
+  try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ }
+}
+
+export function loadSamplePart(){
+  pushUndo();
+  state.solids = [];
+  const rec = sampleBracket();
+  afterChange();
+  toast(describeSolid(rec), 4000);
+  try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ }
 }
 
 export function sweepSelection(rest){

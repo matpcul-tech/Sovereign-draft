@@ -1,16 +1,25 @@
 import { state } from '../core/state.js';
-import { cancelPoly } from '../actions.js';
+import { cancelPoly, openSolidTool, extrudeSelection, revolveSelection, boolean3d } from '../actions.js';
 import { markActiveTool, syncCtx, setPrompt } from './chips.js';
 import { openSheet } from './sheets.js';
 import { renderSymbols } from './symbolsPanel.js';
 import { defaultPrompt } from '../core/command.js';
 import { ix } from '../interaction.js';
 
+const T3D = {
+  box3d: 'box', cyl3d: 'cyl', sph3d: 'sphere', cone3d: 'cone'
+};
+
 export function setTool(t){
   if (t === 'view3d'){
     try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ }
     return;
   }
+  if (T3D[t]){ openSolidTool(T3D[t]); return; }
+  if (t === 'extrude3d'){ extrudeSelection(''); try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ } return; }
+  if (t === 'revolve3d'){ revolveSelection(''); try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ } return; }
+  if (t === 'union3d'){ boolean3d('union', ''); try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ } return; }
+  if (t === 'sub3d'){ boolean3d('subtract', ''); try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ } return; }
   if ((state.tool === 'poly' || state.tool === 'hatch' || state.tool === 'cloud' || state.tool === 'leader' || state.tool === 'spline') && t !== state.tool) cancelPoly(true);
   if (t && t !== 'select' && t !== 'pan') state.lastTool = t;
   state.tool = t;

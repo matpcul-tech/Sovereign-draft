@@ -19,7 +19,7 @@ import {
 } from './mesh.js';
 import { csg } from './csg.js';
 import { sliceMesh, sliceArea, sliceMeshAxis, sliceAreaAxis, silhouette, depthAt } from './slice.js';
-import { polyBoolean, ringsArea } from './boolean.js';
+import { polyBoolean, ringsArea, differenceRings } from './boolean.js';
 import { extrudeDrawing } from './solid.js';
 
 export function solidByName(name){
@@ -289,6 +289,19 @@ export function solidsSummary(){
 
 export function allSolidsMesh(){
   return mergeMeshes((state.solids || []).map(s => s.mesh));
+}
+
+/* An L-plate with a hole so 3D is not an empty orbit of a floor plan. */
+export function sampleBracket(){
+  const L = [[0, 0], [2, 0], [2, 0.28], [0.28, 0.28], [0.28, 1.6], [0, 1.6]];
+  const hole = [];
+  for (let i = 0; i < 32; i++){
+    const t = (i / 32) * Math.PI * 2;
+    hole.push([1.25 + Math.cos(t) * 0.12, 0.14 + Math.sin(t) * 0.12]);
+  }
+  const rings = differenceRings([L], [hole]);
+  const mesh = extrudeRings(rings.length ? rings : [L], 1.2);
+  return addSolid(mesh, 'BRACKET');
 }
 
 /* ---------- persistence ---------- */

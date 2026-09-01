@@ -18,7 +18,7 @@ export function shellHTML(){
 <div id="hint" class="empty">
   <h2>CAD editor</h2>
   <p>Open a DXF or DWG, drop a file, or tap <span class="k">AI</span> to describe a plan.<br>
-  Type <span class="k">SHEETSET</span> to break a build into pages with a legend on each sheet.</p>
+  Type <span class="k">3D</span> to model, <span class="k">SHEETSET</span> to issue pages.</p>
   <div class="hint-actions">
     <button type="button" id="hintOpen">Open drawing</button>
     <button type="button" id="hintSample">Sample cabin</button>
@@ -39,7 +39,7 @@ export function shellHTML(){
   </div>
   <button class="tb-btn" id="btnUndo" aria-label="Undo">${SVG.undo}</button>
   <button class="tb-btn" id="btnRedo" aria-label="Redo">${SVG.redo}</button>
-  <button class="tb-btn" id="btn3d" aria-label="3D orbit">
+  <button class="tb-btn" id="btn3d" aria-label="3D model">
     <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M3 12c2 6 6 9 9 9s7-3 9-9"/><path d="M3 12c2-6 6-9 9-9s7 3 9 9"/></svg>
   </button>
   <button class="tb-btn" id="btnFit" aria-label="Zoom to fit">${SVG.fit}</button>
@@ -137,7 +137,17 @@ export function shellHTML(){
       ${tool('fcf','FCF','Feature control frame','<rect x="3" y="8" width="6" height="8"/><rect x="9" y="8" width="7" height="8"/><rect x="16" y="8" width="5" height="8"/>')}
       ${tool('datum','DATUM','Datum feature','<rect x="8" y="6" width="8" height="8"/><path d="m8 14 4 5 4-5"/>')}
       ${tool('finish','SF','Surface finish','<path d="M5 18 9 6l6 10"/>')}
-      ${tool('view3d','3D','Orbit 3D (3D)','<ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M3 12c2 6 6 9 9 9s7-3 9-9"/>')}
+      ${tool('view3d','3D','3D model (3D)','<ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M3 12c2 6 6 9 9 9s7-3 9-9"/>')}
+    </div>
+    <div class="toolrow-label" id="label-3d">Model</div>
+    <div id="toolrow-3d" class="toolrow">
+      ${tool('box3d','BOX','Box solid (BOX)','<path d="M4 8 12 4l8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/>')}
+      ${tool('cyl3d','CYL','Cylinder (CYL)','<ellipse cx="12" cy="7" rx="6" ry="3"/><path d="M6 7v10c0 1.7 2.7 3 6 3s6-1.3 6-3V7"/>')}
+      ${tool('sph3d','SPH','Sphere (SPH)','<circle cx="12" cy="12" r="8"/><ellipse cx="12" cy="12" rx="8" ry="3"/>')}
+      ${tool('cone3d','CONE','Cone','<path d="M12 4 4 19h16z"/><ellipse cx="12" cy="19" rx="8" ry="2"/>')}
+      ${tool('extrude3d','EXT','Extrude closed sketch (EXTRUDE)','<path d="M7 16V6h10v10zM7 16l-3 4h16l-3-4"/>')}
+      ${tool('union3d','UNI','Union solids','<circle cx="9" cy="12" r="5"/><circle cx="15" cy="12" r="5"/>')}
+      ${tool('sub3d','SUB','Subtract solids','<circle cx="9" cy="12" r="5"/><path d="M14 8h6v8h-6"/>')}
     </div>
   </div>
 </div>
@@ -340,6 +350,7 @@ export function shellHTML(){
   </div>
   <button class="mrow" id="mSample"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M9 6v12"/></svg>Sample 24×36 cabin<small>walls, doors, hatch, dims</small></button>
   <button class="mrow" id="mSamplePart"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="8" rx="1"/><circle cx="8" cy="12" r="1"/><circle cx="16" cy="12" r="1"/></svg>Sample plate<small>12" × 8" · GD&T</small></button>
+  <button class="mrow" id="mSamplePart3d"><svg viewBox="0 0 24 24"><path d="M4 18V8h12v10zM16 10h4v8h-4"/><circle cx="10" cy="13" r="1.5"/></svg>Sample 3D bracket<small>mesh solid · hole · STL</small></button>
   <button class="mrow" id="mSampleGA"><svg viewBox="0 0 24 24"><path d="M12 3 6 9v12h12V9z"/></svg>Sample GA<small>arrangement — not a spec</small></button>
   <button class="mrow" id="mNew"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg><span id="mNewLabel">New drawing</span></button>
   <div class="subtle" id="menuFooter">Issued 2D, free, DXF/DWG out. Open a DXF from AutoCAD, LibreCAD or DraftSight — units follow $INSUNITS. Drawing stays on this device until you export.</div>

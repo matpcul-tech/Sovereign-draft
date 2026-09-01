@@ -11,7 +11,7 @@ import { syncCtx, renderHistory, renderProps, cycleCurrentLt, cycleCurrentLw, cy
 import { openSheet, closeSheets } from './ui/sheets.js';
 import { renderLayers } from './ui/layersPanel.js';
 import { toast } from './ui/toast.js';
-import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90, placeAllSchedules, exportScheduleCSV, applyCleanup, applyOverkill, applyRooms, applyTakeoff, applySheetSet, applyAttachXref , restoreLayerState, deleteLayerState, setAnnoScale, setPlotStyle, saveLayerState, solveConstraintsNow, deleteConstraintsOnSelection} from './actions.js';
+import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90, placeAllSchedules, exportScheduleCSV, applyCleanup, applyOverkill, applyRooms, applyTakeoff, applySheetSet, applyAttachXref , restoreLayerState, deleteLayerState, setAnnoScale, setPlotStyle, saveLayerState, solveConstraintsNow, deleteConstraintsOnSelection, loadSamplePart, boolean3d } from './actions.js';
 import { buildDXF, sniffDrawing, openDXF } from './io/dxf.js';
 import { isDwgBuffer, parseDwg } from './io/dwg.js';
 import { buildPDF, buildAllSheetsPDF, scaleLabel } from './io/pdf.js';
@@ -148,6 +148,19 @@ function solidOpts(){
     entities: state.entities,
     layers: state.layers,
     solids: state.solids,
+    solidHeight: 1,
+    onPlaceMesh: async (mesh, kind) => {
+      const { addSolid, describeSolid } = await import('./core/model3d.js');
+      pushUndo();
+      const rec = addSolid(mesh, kind);
+      afterChange();
+      toast(describeSolid(rec), 3000);
+      syncOpen3d();
+    },
+    onBool: (op) => boolean3d(op, ''),
+    onSample: () => loadSamplePart(),
+    onStl: () => { try { document.dispatchEvent(new Event('sd-export-stl')); } catch (e){ /* node */ } },
+    onObj: () => { try { document.dispatchEvent(new Event('sd-export-obj')); } catch (e){ /* node */ } },
     onSolidMove: async (name, dx, dy, dz) => {
       const { moveSolid, describeSolid, solidByName } = await import('./core/model3d.js');
       pushUndo();
@@ -207,7 +220,6 @@ function solidOpts(){
 }
 
 async function openView3d(){
-  if (!state.entities.length && !(state.solids || []).length){ toast('Nothing to view in 3D yet'); return; }
   try {
     const m = await loadView3d();
     if (m.isView3dOpen()){
@@ -220,7 +232,9 @@ async function openView3d(){
     state.view3d = true;
     state.space = 'model';
     syncCtx();
-    toast('3D · ' + (state.heightAssumed ? (fmtFtIn(state.storyHeight || 8) + ' ASSUMED') : fmtFtIn(state.storyHeight || 8)));
+    toast((state.solids && state.solids.length)
+      ? '3D modelling · mesh solids'
+      : ('3D · ' + (state.heightAssumed ? (fmtFtIn(state.storyHeight || 8) + ' ASSUMED') : fmtFtIn(state.storyHeight || 8))));
   } catch (err){
     toast((err && err.message) || '3D view failed');
   }
@@ -1037,6 +1051,10 @@ function wireUi(){
     afterChange(); zoomFit(); draw();
     renderLayouts(); renderSpaceTabs();
   }
+  $('mSamplePart3d') && $('mSamplePart3d').addEventListener('click', () => {
+    closeSheets();
+    loadSamplePart();
+  });
   $('mSamplePart') && $('mSamplePart').addEventListener('click', () => {
     loadSample('12x8 Plate', partPlate(), { id: 'D1', name: 'D-1 Plate', sheet: 'letter', ppf: 864 });
     toast('Plate · 1:1 · GD&T with a named tolerance');
@@ -1266,6 +1284,14 @@ function wireUi(){
     toast('Something went wrong: ' + (ev.message || 'unknown error'), 4000);
   });
   document.addEventListener('sd-view3d', () => openView3d());
+  document.addEventListener('sd-export-stl', () => { const b = $('mSTL'); if (b) b.click(); });
+  document.addEventListener('sd-export-obj', () => { const b = $('mOBJ'); if (b) b.click(); });
+  document.addEventListener('sd-tool3d', async (ev) => {
+    try {
+      const m = await loadView3d();
+      if (m.setTool3dView) m.setTool3dView(ev.detail && ev.detail.tool);
+    } catch (e){ /* ignore */ }
+  });
   document.addEventListener('sd-view2d', () => closeView3d());
   document.addEventListener('sd-height', () => { syncCtx(); if (state.view3d) syncOpen3d(); });
 }

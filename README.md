@@ -46,7 +46,7 @@ Starters in `examples/`:
 | Associative dims that follow stretch / move | |
 | R2000 DXF AutoCAD Open path + DWG this app reopens | ODA-grade DWG every AutoCAD opens without Recover |
 | Cutting planes (`SE`) that hatch a true section + a sheet | Pretending 8'-0" is a known story height |
-| 3D orbit (`3D`) of the extruded plan | B-rep solids, NURBS, or a second 3D model |
+| 3D modelling: `BOX` `CYL` `EXTRUDE` `REVOLVE` `LOFT` `SWEEP`, CSG, STL/OBJ/glTF | B-rep, NURBS, Parasolid, STEP, or a PE stamp |
 | Feature control frames, datums, ± tolerances (`FCF` / `DATUM`) | A frame without a number |
 | Isolated detail sheets (`DET`) — a tighter viewport, not a copy | |
 | Grok drafts for free (optional Anthropic fallback) | |
@@ -83,10 +83,12 @@ Copy share link (Sheet menu) puts a gzipped drawing in the URL hash. No server. 
 | `DXFIN` | Insert DXF (merge) | `XREF` | Attach xref |
 | `BIND` | Bind xref | `SHEETSET` | Generate sheet set |
 | `SE` | Section cut | `DET` | Isolated detail |
-| `3D` | Orbit the extruded plan | `HT` | Story height |
-| `DWGOUT` | Export DWG | `2D` | Back to plan |
-| `FCF` | Feature control frame | `DATUM` | Datum feature |
-| `SF` | Surface finish | | |
+| `3D` | Model in 3D | `HT` | Story height |
+| `BOX` | Box solid | `CYL` | Cylinder |
+| `EXTRUDE` | Extrude sketch | `REVOLVE` | Revolve profile |
+| `U3D` / `SUB3D` | Union / subtract | `DWGOUT` | Export DWG |
+| `2D` | Back to plan | `FCF` | Feature control frame |
+| `DATUM` | Datum feature | `SF` | Surface finish |
 
 **Wall mode** draws two parallel faces + caps. Thickness chip: 4″ / 6″ / 8″. Walls **heal as you draw** — L-corners miter and T-junctions recut automatically. Doors and windows are **dynamic INSERT blocks**: stretch the width grip, tap the diamond to flip swing, type `2'6"` with the door selected. They recut the host wall. **Explode** (`XP`) yields ordinary lines and arcs. Fixtures (stove, bed, …) are the same INSERT type with rotate + flip grips.
 
@@ -244,7 +246,13 @@ The project JSON is the source of truth — plain objects, diffable in git, next
 
 ## 3D
 
-`3D` (toolbar or command) extrudes the **same** 2D model: walls to story height, doors 6'-8", window sills 3'-0". Type `HEIGHT 9` (or `9'`) to set the story; until you do, the view is stamped **ASSUMED**. This is not a second model and not Fusion. Escape or `2D` returns to the plan. GLB is on the 3D HUD.
+`3D` is a modelling view. Drag `BOX` / `CYL` / `SPHERE` / `CONE` on the workplane, or `EXTRUDE` / `REVOLVE` / `LOFT` / `SWEEP` a closed 2D sketch. Pick two solids and `U3D` / `SUB3D`. Click a solid to move it (shift lifts, ctrl copies, R rotates). `STL` / `OBJ` / GLB out. Sample 3D bracket is in the Sheet menu.
+
+The plan is still the issued print. A floor plan with no solids extrudes to story height and is stamped **ASSUMED** until you set `HEIGHT`. Solids you placed do not carry that stamp.
+
+This is a mesh modeler, not Fusion. Not B-rep, not STEP, not a PE stamp. Faces are triangles. Punch a hole by overlapping the cutter past both caps, or use two same-height extrusions so the 2D boolean path can do it cleanly.
+
+Esc once returns to orbit. Esc again returns to plan.
 
 ## AI drafting
 
@@ -283,7 +291,7 @@ Autosave to `localStorage`. No account, no backend. Grok drafting uses the app o
 
 **v1.7.0** — Issued 2D, free, DXF/DWG out.
 
-Shipped: kernel + CLI + embed, honest AI, Grok drafting with no key, R2000 DXF AutoCAD Open path, DWG this app reopens, paperspace kept on open, associative dims that follow a stretch, issued 24×36 PDF with ISO lineweights, cutting-plane sections, isolated details, feature control frames, ± tolerances, 3D orbit of the extruded plan. Starters: cabin, plate, GA.
+Shipped: kernel + CLI + embed, honest AI, Grok drafting with no key, R2000 DXF AutoCAD Open path, DWG this app reopens, paperspace kept on open, associative dims that follow a stretch, issued 24×36 PDF with ISO lineweights, cutting-plane sections, isolated details, feature control frames, ± tolerances, mesh 3D (extrude / revolve / loft / sweep / primitives / CSG, STL/OBJ/glTF). Starters: cabin, plate, GA, 3D bracket.
 
 Still ahead: ODA-grade DWG that every AutoCAD build opens without Recover, B-rep solids, a hosted share link (maybe). Floor-plan sheets will keep getting tighter. Collaboration only after the kernel is something you can import — it already is.
 

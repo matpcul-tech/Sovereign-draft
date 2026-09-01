@@ -6,7 +6,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { extrudeDrawing, heightStamp, resolveHeight } from '../core/solid.js';
 import { fmtFtIn } from '../core/format.js';
-import { meshBBox } from '../core/mesh.js';
+import {
+  meshBBox, meshVolume, isWatertight, mergeMeshes,
+  makeBox, makeCylinder, makeSphere, makeCone
+} from '../core/mesh.js';
 
 let renderer = null;
 let scene = null;
@@ -145,9 +148,19 @@ function addMeshes(solid){
   }
   if (hud){
     const stamp = hud.querySelector('.v3d-stamp');
-    if (stamp) stamp.textContent = heightStamp(solid);
+    if (stamp){
+      if (lastSolidsList && lastSolidsList.length){
+        const m = mergeMeshes(lastSolidsList.map(s => s.mesh).filter(Boolean));
+        const n = lastSolidsList.length;
+        stamp.textContent = n + ' solid' + (n === 1 ? '' : 's')
+          + ' · ' + Math.abs(meshVolume(m)).toFixed(2) + ' CF'
+          + (isWatertight(m) ? ' · closed' : ' · NOT closed');
+      } else {
+        stamp.textContent = heightStamp(solid);
+      }
+    }
     const ht = hud.querySelector('#v3dHeightVal');
-    if (ht) ht.textContent = fmtFtIn(solid.height);
+    if (ht) ht.textContent = fmtFtIn(placeH);
   }
   void _color;
 }
@@ -195,17 +208,38 @@ function ensureDom(){
     hud = document.createElement('div');
     hud.id = 'v3dHud';
     hud.innerHTML = `
-      <div class="v3d-stamp">8'-0" story ASSUMED</div>
+      <div class="v3d-stamp">Mesh solids · not B-rep</div>
       <div class="v3d-actions">
         <button type="button" id="v3dPlan">Plan</button>
-        <button type="button" id="v3dHminus" title="Lower story">−</button>
-        <button type="button" id="v3dHeightVal">8'-0"</button>
-        <button type="button" id="v3dHplus" title="Raise story">+</button>
+        <button type="button" id="v3dIso">ISO</button>
+        <button type="button" id="v3dTop">TOP</button>
+        <button type="button" id="v3dFront">FRONT</button>
+        <button type="button" id="v3dRight">RIGHT</button>
+        <button type="button" id="v3dHminus" title="Lower">−</button>
+        <button type="button" id="v3dHeightVal">1'-0"</button>
+        <button type="button" id="v3dHplus" title="Raise">+</button>
+        <button type="button" id="v3dStl">STL</button>
+        <button type="button" id="v3dObj">OBJ</button>
         <button type="button" id="v3dGlb">GLB</button>
       </div>
-      <div class="v3d-hint">Drag to orbit · scroll to zoom · click a solid to select · M measures</div>
+      <div class="v3d-hint">BOX on the rail · drag a footprint · click a solid to move it · M measures</div>
       <div class="v3d-sel" style="display:none;color:#d4a843;font-weight:600;margin-top:4px"></div>`;
     root.appendChild(hud);
+  }
+  if (!document.getElementById('v3dRail')){
+    const rail = document.createElement('div');
+    rail.id = 'v3dRail';
+    rail.innerHTML = `
+      <button type="button" data-tool3d="orbit">ORBIT</button>
+      <button type="button" data-tool3d="box">BOX</button>
+      <button type="button" data-tool3d="cyl">CYL</button>
+      <button type="button" data-tool3d="sphere">SPH</button>
+      <button type="button" data-tool3d="cone">CONE</button>
+      <button type="button" data-act="union">UNI</button>
+      <button type="button" data-act="subtract">SUB</button>
+      <button type="button" data-act="sample">PART</button>
+      <button type="button" data-act="stl">STL</button>`;
+    root.appendChild(rail);
   }
   root.style.display = 'block';
   document.body.classList.add('view3d');
@@ -216,11 +250,45 @@ function wireHud(hooks){
   const plus = document.getElementById('v3dHplus');
   const minus = document.getElementById('v3dHminus');
   const glb = document.getElementById('v3dGlb');
+  const stl = document.getElementById('v3dStl');
+  const obj = document.getElementById('v3dObj');
   if (plan) plan.onclick = () => hideView3d();
-  const step = 1;
-  if (plus) plus.onclick = () => hooks.onHeight && hooks.onHeight((lastSolid && lastSolid.height || 8) + step);
-  if (minus) minus.onclick = () => hooks.onHeight && hooks.onHeight(Math.max(6, (lastSolid && lastSolid.height || 8) - step));
+  const step = 0.5;
+  if (plus) plus.onclick = () => {
+    placeH = Math.min(40, placeH + step);
+    const el = document.getElementById('v3dHeightVal');
+    if (el) el.textContent = fmtFtIn(placeH);
+    if (hooks.onSolidHeight) hooks.onSolidHeight(placeH);
+  };
+  if (minus) minus.onclick = () => {
+    placeH = Math.max(0.25, placeH - step);
+    const el = document.getElementById('v3dHeightVal');
+    if (el) el.textContent = fmtFtIn(placeH);
+    if (hooks.onSolidHeight) hooks.onSolidHeight(placeH);
+  };
   if (glb) glb.onclick = () => exportGlb(hooks.download);
+  if (stl) stl.onclick = () => hooks.onStl && hooks.onStl();
+  if (obj) obj.onclick = () => hooks.onObj && hooks.onObj();
+  ['v3dIso', 'v3dTop', 'v3dFront', 'v3dRight'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.onclick = () => frameStandard(id.replace('v3d', '').toLowerCase());
+  });
+  const rail = document.getElementById('v3dRail');
+  if (rail && !rail._wired){
+    rail._wired = 1;
+    rail.addEventListener('click', ev => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      if (b.dataset.tool3d){ setTool3dView(b.dataset.tool3d); return; }
+      const act = b.dataset.act;
+      if (act === 'union' && hooks.onBool) hooks.onBool('union');
+      else if (act === 'subtract' && hooks.onBool) hooks.onBool('subtract');
+      else if (act === 'sample' && hooks.onSample) hooks.onSample();
+      else if (act === 'stl' && hooks.onStl) hooks.onStl();
+    });
+  }
+  const hv = document.getElementById('v3dHeightVal');
+  if (hv) hv.textContent = fmtFtIn(placeH);
 }
 
 function exportGlb(download){
@@ -278,6 +346,120 @@ const pick = {
 };
 
 let lastSolidsList = [];
+let viewHooks = {};
+let placeH = 1;
+
+const PLACING = { box: 1, cyl: 1, sphere: 1, cone: 1 };
+const place = {
+  tool: 'orbit',
+  a: null,
+  preview: null
+};
+
+function hitWorkplane(ev){
+  if (!pick.raycaster) pick.raycaster = new THREE.Raycaster();
+  const ndc = ndcFromEvent(ev);
+  pick.raycaster.setFromCamera(ndc, camera);
+  const out = new THREE.Vector3();
+  if (!pick.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), out)) return null;
+  return [out.x, out.z, out.y];
+}
+
+function snapCad(p){
+  const g = 0.5;
+  return [Math.round(p[0] / g) * g, Math.round(p[1] / g) * g, p[2]];
+}
+
+function clearPlacePreview(){
+  if (place.preview && scene){
+    scene.remove(place.preview);
+    if (place.preview.geometry) place.preview.geometry.dispose();
+    if (place.preview.material) place.preview.material.dispose();
+  }
+  place.preview = null;
+}
+
+function cadMeshToThree(mesh, color){
+  if (!mesh || !mesh.faces.length) return null;
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(mesh.faces.length * 9);
+  let p = 0;
+  for (const f of mesh.faces){
+    for (const vi of f){
+      const v = mesh.verts[vi];
+      pos[p++] = v[0]; pos[p++] = v[2]; pos[p++] = v[1];
+    }
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({
+    color: color || 0xd4a843, transparent: true, opacity: 0.55, roughness: 0.5, side: THREE.DoubleSide
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+function primitiveAt(kind, a, b){
+  const h = placeH > 0 ? placeH : 1;
+  if (kind === 'box'){
+    const x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1]);
+    const w = Math.abs(b[0] - a[0]) || 0.5, d = Math.abs(b[1] - a[1]) || 0.5;
+    return makeBox(x, y, 0, w, d, h);
+  }
+  if (kind === 'cyl'){
+    const r = Math.max(0.25, Math.hypot(b[0] - a[0], b[1] - a[1]));
+    return makeCylinder(a[0], a[1], 0, r, h, 32);
+  }
+  if (kind === 'sphere'){
+    const r = Math.max(0.25, Math.hypot(b[0] - a[0], b[1] - a[1]));
+    return makeSphere(a[0], a[1], r, r, 24);
+  }
+  if (kind === 'cone'){
+    const r = Math.max(0.25, Math.hypot(b[0] - a[0], b[1] - a[1]));
+    return makeCone(a[0], a[1], 0, r, h, 32);
+  }
+  return null;
+}
+
+function commitPlace(a, b){
+  const mesh = primitiveAt(place.tool, a, b);
+  place.a = null;
+  clearPlacePreview();
+  if (!mesh || !mesh.faces.length) return;
+  if (viewHooks.onPlaceMesh) viewHooks.onPlaceMesh(mesh, place.tool);
+}
+
+export function setTool3dView(name){
+  place.tool = name || 'orbit';
+  place.a = null;
+  clearPlacePreview();
+  if (controls) controls.enabled = !PLACING[place.tool];
+  document.querySelectorAll('#v3dRail button[data-tool3d]').forEach(b => {
+    b.classList.toggle('on', b.dataset.tool3d === place.tool);
+  });
+  const hint = hud && hud.querySelector('.v3d-hint');
+  if (hint){
+    hint.textContent = place.tool === 'box' ? 'Drag a footprint on the workplane'
+      : place.tool === 'cyl' ? 'Click center, drag radius'
+      : place.tool === 'sphere' ? 'Click center, drag radius'
+      : place.tool === 'cone' ? 'Click center, drag radius'
+      : 'Drag to orbit · click a solid to select · M measures';
+  }
+}
+
+function frameStandard(kind){
+  const bb = lastSolid && lastSolid.bbox ? lastSolid.bbox : [-4, -4, 0, 4, 4, 8];
+  const cx = (bb[0] + bb[3]) / 2, cz = (bb[1] + bb[4]) / 2;
+  const h = lastSolid && lastSolid.height || 8;
+  const span = Math.max(bb[3] - bb[0], bb[4] - bb[1], h, 4);
+  if (!camera || !controls) return;
+  if (kind === 'top') camera.position.set(cx, span * 2.2, cz + 0.01);
+  else if (kind === 'front') camera.position.set(cx, h * 0.45, cz + span * 2);
+  else if (kind === 'right') camera.position.set(cx + span * 2, h * 0.45, cz);
+  else camera.position.set(cx + span * 0.85, h * 1.7, cz + span * 0.95);
+  controls.target.set(cx, h * 0.35, cz);
+  controls.update();
+  render();
+}
 
 /* Face snap first, grid snap second. The moving box offers its low edge,
  * centre and high edge; the smallest correction inside tolerance wins. */
@@ -536,6 +718,14 @@ function wirePicking(){
   canvas.addEventListener('pointerdown', ev => {
     if (ev.button !== 0) return;
     pick.down = { x: ev.clientX, y: ev.clientY };
+    if (PLACING[place.tool]){
+      const p = hitWorkplane(ev);
+      if (!p) return;
+      place.a = snapCad(p);
+      if (controls) controls.enabled = false;
+      canvas.setPointerCapture(ev.pointerId);
+      return;
+    }
     if (meas.on) return;
     const hit = raycastSolid(ev);
     if (hit && hit.object.userData.solidName === pick.selected){
@@ -554,6 +744,16 @@ function wirePicking(){
   });
 
   canvas.addEventListener('pointermove', ev => {
+    if (PLACING[place.tool] && place.a){
+      const p = hitWorkplane(ev);
+      if (!p) return;
+      const b = snapCad(p);
+      const mesh = primitiveAt(place.tool, place.a, b);
+      clearPlacePreview();
+      const obj = cadMeshToThree(mesh);
+      if (obj){ place.preview = obj; scene.add(obj); render(); }
+      return;
+    }
     if (!pick.dragging || !pick.grab) return;
     if (pick.mode === 'rotate'){
       const snap = ev.shiftKey ? 1 : 15;
@@ -598,6 +798,12 @@ function wirePicking(){
   });
 
   canvas.addEventListener('pointerup', ev => {
+    if (PLACING[place.tool] && place.a){
+      const p = hitWorkplane(ev) || place.a;
+      commitPlace(place.a, snapCad(p));
+      if (controls) controls.enabled = false;
+      return;
+    }
     if (pick.dragging){
       if (pick.mode === 'rotate') commitRotate(pick.rotDeg);
       else commitMove(pick.moved);
@@ -624,7 +830,8 @@ function wirePicking(){
     const t = ev.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
     if (ev.key === 'Escape'){
-      if (meas.on){ setMeasureMode(false); ev.preventDefault(); ev.stopPropagation(); }
+      if (PLACING[place.tool]){ setTool3dView('orbit'); ev.preventDefault(); ev.stopPropagation(); }
+      else if (meas.on){ setMeasureMode(false); ev.preventDefault(); ev.stopPropagation(); }
       else if (pick.dragging){ cancelDrag(); ev.preventDefault(); ev.stopPropagation(); }
       else if (pick.selected && pick.mode === 'rotate'){
         pick.mode = 'move'; setSelected(pick.selected);
@@ -689,6 +896,8 @@ export function isView3dOpen(){
 export function showView3d(opts){
   const o = opts || {};
   onClose = o.onClose || null;
+  viewHooks = o;
+  if (o.solidHeight > 0) placeH = o.solidHeight;
   ensureDom();
   if (!renderer){
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -733,6 +942,7 @@ export function showView3d(opts){
   appendSolidRecords(solid, o.solids);
   addMeshes(solid);
   reapplySelection();
+  setTool3dView(place.tool || 'orbit');
   running = true;
   onResize();
   renderer.setAnimationLoop(tick);
@@ -743,6 +953,8 @@ export function showView3d(opts){
 export function syncView3d(opts){
   if (!running) return null;
   const o = opts || {};
+  viewHooks = Object.assign(viewHooks, o);
+  if (o.solidHeight > 0) placeH = o.solidHeight;
   lastSolidsList = o.solids || [];
   const solid = extrudeDrawing(o.entities || [], {
     height: o.height,
