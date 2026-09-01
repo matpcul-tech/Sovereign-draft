@@ -32,7 +32,7 @@ import { makeMText } from './mtext.js';
 import { makeHatch, closedLoops, hatchWithIslands } from './hatch.js';
 import { polyBoolean, ringsArea } from './boolean.js';
 import { solveConstraints, makeConstraint, CONSTRAINT_TYPES } from './constrain.js';
-import { createSolid, addSolid, booleanSolids, moveSolid, rotateSolid, scaleSolid, sliceSolidToPlan, solidByName, solidNames, removeSolid } from './model3d.js';
+import { createSolid, addSolid, booleanSolids, moveSolid, rotateSolid, scaleSolid, sliceSolidToPlan, solidByName, solidNames, removeSolid, roofOverModel } from './model3d.js';
 import { extrudeRings, meshVolume } from './mesh.js';
 
 const NUMERIC = v => {
@@ -202,6 +202,9 @@ export function makeSd(println){
       sphere: (cx, cy, z, r, name) => createSolid('sphere', [cx, cy, z, r], name).name,
       cone: (cx, cy, z, r, h, name) => createSolid('cone', [cx, cy, z, r, h], name).name,
       wedge: (x, y, z, w, d, h, name) => createSolid('wedge', [x, y, z, w, d, h], name).name,
+      gable: (x, y, z, w, d, rise, name) => createSolid('gable', [x, y, z, w, d, rise], name).name,
+      hip: (x, y, z, w, d, rise, name) => createSolid('hip', [x, y, z, w, d, rise], name).name,
+      roof: (kind, pitch, overhang) => roofOverModel(kind, pitch, overhang).name,
       extrude: (rings, h, name) => addSolid(extrudeRings(rings, NUMERIC(h)), name || 'EXTRUDE').name,
       union: (a, b, name) => { const r = booleanSolids('union', a, b, name); return r ? r.name : null; },
       subtract: (a, b, name) => { const r = booleanSolids('subtract', a, b, name); return r ? r.name : null; },

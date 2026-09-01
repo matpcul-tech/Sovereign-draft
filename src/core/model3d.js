@@ -13,6 +13,7 @@ import { state, ensureLayer } from './state.js';
 import { hatchWithIslands } from './hatch.js';
 import {
   makeBox, makeCylinder, makeSphere, makeCone, makeWedge, sweepPath,
+  makeGable, makeHip,
   extrudeRings, revolveProfile, loftRings,
   meshVolume, meshArea, meshBBox, isWatertight,
   translateMesh, rotateMesh, scaleMesh, mergeMeshes
@@ -65,8 +66,38 @@ export const MAKERS = {
   cylinder: (a) => makeCylinder(a[0], a[1], a[2] || 0, a[3], a[4], a[5] || 48),
   sphere: (a) => makeSphere(a[0], a[1], a[2] || 0, a[3], a[4] || 32),
   cone: (a) => makeCone(a[0], a[1], a[2] || 0, a[3], a[4], a[5] || 48),
-  wedge: (a) => makeWedge(a[0], a[1], a[2] || 0, a[3], a[4], a[5])
+  wedge: (a) => makeWedge(a[0], a[1], a[2] || 0, a[3], a[4], a[5]),
+  gable: (a) => makeGable(a[0], a[1], a[2] || 0, a[3], a[4], a[5]),
+  hip: (a) => makeHip(a[0], a[1], a[2] || 0, a[3], a[4], a[5])
 };
+
+/* ---------- a roof over what is modelled ----------
+ * The architectural form of the command: MODEL the walls, then ROOF puts a
+ * gable or hip over the whole massing, sized from its bounding box plus an
+ * overhang, seated on its top, with the rise computed from a pitch in
+ * inches per foot of half the shorter span. Existing ROOF solids are
+ * ignored when measuring, so re-roofing replaces the idea rather than
+ * stacking hats on hats.
+ */
+export function roofOverModel(kind, pitch, overhang){
+  const list = (state.solids || []).filter(s => s && !/^ROOF/.test(s.name));
+  if (!list.length) throw new Error('Nothing to roof: MODEL first, or make a solid');
+  let bb = null;
+  for (const s of list){
+    const b = meshBBox(s.mesh);
+    bb = bb ? [
+      Math.min(bb[0], b[0]), Math.min(bb[1], b[1]), Math.min(bb[2], b[2]),
+      Math.max(bb[3], b[3]), Math.max(bb[4], b[4]), Math.max(bb[5], b[5])
+    ] : b;
+  }
+  const o = overhang == null ? 1 : Math.max(0, Number(overhang));
+  const x = bb[0] - o, y = bb[1] - o;
+  const w = bb[3] - bb[0] + 2 * o, d = bb[4] - bb[1] + 2 * o;
+  const p = Number(pitch) > 0 ? Number(pitch) : 6;
+  const rise = Math.min(w, d) / 2 * p / 12;
+  const mk = kind === 'hip' ? makeHip : makeGable;
+  return addSolid(mk(x, y, bb[5], w, d, rise), 'ROOF');
+}
 
 export function createSolid(kind, args, name){
   const mk = MAKERS[kind];

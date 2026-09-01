@@ -23,7 +23,7 @@ import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, 
 import { plotStyleByName } from './io/plotstyle.js';
 import { modelToPaper, viewportRot } from './core/layout.js';
 import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight, sweepPath } from './core/mesh.js';
-import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, sampleBracket } from './core/model3d.js';
+import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, roofOverModel, sampleBracket } from './core/model3d.js';
 import { toAnno, fromAnno, parseScaleToPpf } from './core/annoscale.js';
 import { runScript, scriptByName } from './core/script.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
@@ -189,6 +189,33 @@ export function makePrimitive(kind, rest){
     afterChange();
     toast(describeSolid(rec), 4000);
   } catch (e){ toast(e.message); }
+}
+
+export function makeRoof(rest){
+  const toks = String(rest || '').trim().split(/\s+/).filter(Boolean);
+  let kind = 'gable';
+  if (toks.length && /^(G|GABLE|H|HIP)$/i.test(toks[0])){
+    kind = /^h/i.test(toks[0]) ? 'hip' : 'gable';
+    toks.shift();
+  }
+  const nums = toks.map(Number);
+  if (nums.some(n => !Number.isFinite(n))){
+    toast('ROOF [GABLE|HIP] [pitch] [overhang] fits the model; ROOF kind x y w d z pitch places one');
+    return;
+  }
+  pushUndo(undoScope([]));
+  try {
+    let rec;
+    if (nums.length >= 6){
+      const [x, y, w, d, z, p] = nums;
+      const rise = Math.min(w, d) / 2 * ((p > 0 ? p : 6) / 12);
+      rec = createSolid(kind, [x, y, z, w, d, rise], 'ROOF');
+    } else {
+      rec = roofOverModel(kind, nums[0], nums[1]);
+    }
+    afterChange();
+    toast(describeSolid(rec), 4000);
+  } catch (e){ toast(e.message, 4000); }
 }
 
 export function setTool3d(name){

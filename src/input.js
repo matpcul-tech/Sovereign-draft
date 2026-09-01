@@ -23,7 +23,7 @@ import {
   twistViewport, clipViewport,
   extrudeSelection, revolveSelection, loftSelection, clearSolids,
   toggleAnnotative, setAnnoScale, openScriptSheet, runSavedScript,
-  makePrimitive, sweepSelection, boolean3d, sliceSolid, listSolids, deleteSolid,
+  makePrimitive, makeRoof, sweepSelection, boolean3d, sliceSolid, listSolids, deleteSolid,
   makeElevation, modelPlan
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
@@ -487,6 +487,7 @@ export function handleCommand(text){
   if (res.action === 'script'){ openScriptSheet(); return; }
   if (res.action === 'runscript'){ runSavedScript(res.rest); return; }
   if (res.action && res.action.indexOf('prim:') === 0){ makePrimitive(res.action.slice(5), res.rest); return; }
+  if (res.action === 'roof'){ makeRoof(res.rest); return; }
   if (res.action === 'sweep3d'){ sweepSelection(res.rest); return; }
   if (res.action && res.action.indexOf('bool3d:') === 0){ boolean3d(res.action.slice(7), res.rest); return; }
   if (res.action === 'slice3d'){ sliceSolid(res.rest); return; }

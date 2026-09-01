@@ -280,6 +280,10 @@ export function extrudeDrawing(entities, opts){
     if (SKIP[e.type]) return;
     if (!layerPlot(layers, e.layer)) return;
     if (e.kind === 'wall') return;
+    /* Generated views are drawings OF the model, not model: an elevation
+     * ring extruded into a prism would put a building-shaped ghost beside
+     * the building. */
+    if (e.layer === 'SECTION' || e.layer === 'OPENINGS') return;
 
     if (e.type === 'insert' && (e.def === 'door' || e.def === 'window')){
       const rot = (e.rot || 0) * Math.PI / 180;

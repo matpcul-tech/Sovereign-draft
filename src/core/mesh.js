@@ -535,6 +535,65 @@ export function makeWedge(x, y, z, w, d, h){
   return makeMesh(verts, faces);
 }
 
+/* Pitched roofs, the two classic forms, watertight by construction and
+ * exact by closed form. The ridge runs along the longer footprint side; a
+ * footprint deeper than wide is built transposed so the ridge follows it.
+ * Volumes: a gable is a triangular prism, span * rise / 2 * length; a hip
+ * is that prism over the shortened ridge plus one square pyramid,
+ * span^2 * rise / 3, made of its two ends. */
+function roofVerts(x, y, z, w, d, rise, hip){
+  /* Built with the ridge along x for w >= d; transposed otherwise. */
+  const T = d > w;
+  const [W, D] = T ? [d, w] : [w, d];
+  const inset = hip ? Math.min(D / 2, W / 2) : 0;
+  const pts = [
+    [0, 0, 0], [W, 0, 0], [W, D, 0], [0, D, 0],
+    [inset, D / 2, rise], [W - inset, D / 2, rise]
+  ];
+  return pts.map(p => T
+    ? [x + p[1], y + p[0], z + p[2]]
+    : [x + p[0], y + p[1], z + p[2]]);
+}
+
+export function makeGable(x, y, z, w, d, rise){
+  const verts = roofVerts(x, y, z, w, d, rise, false);
+  const faces = [
+    [0, 3, 2], [0, 2, 1],          /* base, facing down */
+    [0, 1, 5], [0, 5, 4],          /* near slope */
+    [2, 3, 4], [2, 4, 5],          /* far slope */
+    [0, 4, 3],                     /* ridge-end triangle */
+    [1, 2, 5]                      /* ridge-end triangle */
+  ];
+  const m = makeMesh(verts, faces);
+  /* Transposition mirrors the winding; volume sign says which way. */
+  return meshVolume(m) < 0 ? makeMesh(verts, faces.map(f => [f[0], f[2], f[1]])) : m;
+}
+
+export function makeHip(x, y, z, w, d, rise){
+  /* A square footprint collapses the ridge to a point: a clean pyramid,
+   * not a mesh with degenerate faces. */
+  if (Math.abs(w - d) < 1e-9){
+    const verts = [
+      [x, y, z], [x + w, y, z], [x + w, y + d, z], [x, y + d, z],
+      [x + w / 2, y + d / 2, z + rise]
+    ];
+    return makeMesh(verts, [
+      [0, 3, 2], [0, 2, 1],
+      [0, 1, 4], [1, 2, 4], [2, 3, 4], [3, 0, 4]
+    ]);
+  }
+  const verts = roofVerts(x, y, z, w, d, rise, true);
+  const faces = [
+    [0, 3, 2], [0, 2, 1],          /* base, facing down */
+    [0, 1, 5], [0, 5, 4],          /* near slope trapezoid */
+    [2, 3, 4], [2, 4, 5],          /* far slope trapezoid */
+    [0, 4, 3],                     /* hip end */
+    [1, 2, 5]                      /* hip end */
+  ];
+  const m = makeMesh(verts, faces);
+  return meshVolume(m) < 0 ? makeMesh(verts, faces.map(f => [f[0], f[2], f[1]])) : m;
+}
+
 /* Sweep a section along a polyline path in plan. The section is [right, up]
  * pairs in the plane perpendicular to travel; joints are mitred on the
  * angle bisector, the way a thick polyline mitres, so the sweep of a closed

@@ -312,6 +312,67 @@ describe('the commands are registered', () => {
 
 void rotateMesh; void translateMesh; void scaleMesh; void extrudeRings;
 
+describe('pitched roofs', () => {
+  beforeEach(reset);
+
+  it('gable and hip match their closed forms and are watertight, transposed too', async () => {
+    const { makeGable, makeHip } = await import('../src/core/mesh.js');
+    const g = makeGable(0, 0, 8, 30, 20, 5);
+    expect(V(g)).toBeCloseTo(20 * 5 / 2 * 30, 9);
+    expect(isWatertight(g)).toBe(true);
+    /* Deep footprint: the ridge follows the long side. */
+    expect(V(makeGable(4, 7, 0, 20, 30, 5))).toBeCloseTo(1500, 9);
+    const h = makeHip(0, 0, 8, 30, 20, 5);
+    expect(V(h)).toBeCloseTo(10 * (20 * 5 / 2) + 20 * 20 * 5 / 3, 9);
+    expect(isWatertight(h)).toBe(true);
+    /* A square hip is a pyramid. */
+    const pyr = makeHip(0, 0, 0, 20, 20, 5);
+    expect(V(pyr)).toBeCloseTo(20 * 20 * 5 / 3, 9);
+    expect(isWatertight(pyr)).toBe(true);
+  });
+
+  it('ROOF fits the modelled massing: overhang, pitch, seated on top, re-roof ignores old roofs', async () => {
+    const { roofOverModel } = await import('../src/core/model3d.js');
+    const { meshBBox: bbOf } = await import('../src/core/mesh.js');
+    addSolid(box(0, 0, 0, 30, 20, 8), 'WALL');
+    const rec = roofOverModel('gable', 6, 1);
+    expect(rec.name).toBe('ROOF');
+    const bb = bbOf(rec.mesh);
+    /* Footprint 32 x 22 at z 8; rise = 11 * 6/12 = 5.5. */
+    expect(bb).toEqual([-1, -1, 8, 31, 21, 13.5]);
+    expect(V(rec.mesh)).toBeCloseTo(22 * 5.5 / 2 * 32, 9);
+    /* Re-roofing measures the massing, not the old hat. */
+    const rec2 = roofOverModel('hip', 6, 1);
+    expect(bbOf(rec2.mesh)[2]).toBe(8);
+    expect(lookupCommand('ROOF').action).toBe('roof');
+  });
+
+  it('generated views never extrude back into the 3D model', async () => {
+    const { extrudeDrawing } = await import('../src/core/solid.js');
+    const drawn = extrudeDrawing([
+      { type: 'poly', layer: 'SECTION', closed: true, pts: [[0, 0], [10, 0], [10, 8], [0, 8]] },
+      { type: 'poly', layer: 'OPENINGS', closed: true, pts: [[2, 2], [5, 2], [5, 6], [2, 6]] },
+      { type: 'hatch', layer: 'SECTION', pts: [[0, 0], [10, 0], [10, 8], [0, 8]] }
+    ], { height: 8, layers: defaultLayers() });
+    expect((drawn.meshes || []).length).toBe(0);
+  });
+
+  it('a gable roof draws its eave line across the elevation', async () => {
+    const { roofOverModel, elevationToPlan } = await import('../src/core/model3d.js');
+    addSolid(box(0, 0, 0, 30, 20, 8), 'WALL');
+    roofOverModel('gable', 6, 1);
+    const r = elevationToPlan('S');
+    /* The one interior line is the eave at the wall head, the roof's
+     * bottom edge and the wall top drawn once. */
+    expect(r.edges).toBe(1);
+    const line = r.made.find(e => e.type === 'line');
+    expect(line.y1).toBeCloseTo(8, 6);
+    expect(line.y2).toBeCloseTo(8, 6);
+    /* Outline: 30x8 of wall plus the 32 wide slope face to the ridge. */
+    expect(r.area).toBeCloseTo(30 * 8 + 32 * 5.5, 1);
+  });
+});
+
 describe('vertical sections and elevations', () => {
   beforeEach(reset);
 
