@@ -18,7 +18,10 @@ import {
   translateMesh, rotateMesh, scaleMesh, mergeMeshes
 } from './mesh.js';
 import { csg } from './csg.js';
-import { sliceMesh, sliceArea, sliceMeshAxis, sliceAreaAxis, silhouette, depthAt, visibleMeshEdges } from './slice.js';
+import {
+  sliceMesh, sliceArea, sliceMeshAxis, sliceAreaAxis, silhouette,
+  depthAt, visibleMeshEdges, clipMeshBeyond
+} from './slice.js';
 import { polyBoolean, ringsArea, differenceRings } from './boolean.js';
 import { extrudeDrawing } from './solid.js';
 import { alignedDim } from './dimStyle.js';
@@ -150,14 +153,41 @@ export function sliceSolidToPlan(name, z, layer, axis){
     state.entities.push(h);
     made.push(h);
   }
-  /* A vertical cut is a drawing of its own and gets a title and overall
-   * dims; a plan cut lands inside the plan and stays bare. */
+  /* A vertical cut is a drawing of its own: what the section SEES beyond
+   * the cut plane, looking along the positive axis, joins the poche. The
+   * whole model, not just the sliced solid, is clipped to the far
+   * half-space and run through the hidden line pass; far openings draw as
+   * rings the way an elevation draws them. Then a title and overall dims.
+   * A plan cut lands inside the plan and stays bare. */
+  let beyondSegs = [];
+  let beyondOpenings = 0;
   if (a !== 'z'){
-    const title = 'SECTION ' + a.toUpperCase() + ' AT ' + fmtFtIn(Number(z) || 0);
-    annotateView(made.filter(e => e.type === 'poly'), title).forEach(e => made.push(e));
+    const c = Number(z) || 0;
+    const beyond = clipMeshBeyond(allSolidsMesh(), a, c);
+    if (beyond.faces.length){
+      beyondSegs = clipSegsToInterior(visibleMeshEdges(beyond, a, 1), rings);
+      for (const s of beyondSegs){
+        pushEnt({
+          type: 'line', layer: layer || 'SECTION',
+          x1: round6(s[0][0] + offset[0]), y1: round6(s[0][1] + offset[1]),
+          x2: round6(s[1][0] + offset[0]), y2: round6(s[1][1] + offset[1])
+        }, made);
+      }
+      for (const or of state.solids || []){
+        if (!OPENING_NAME.test(or.name)) continue;
+        const clipped = clipMeshBeyond(or.mesh, a, c);
+        if (!clipped.faces.length) continue;
+        const orings = silhouette(clipped, a, (A, B, op) => polyBoolean(A, B, op))
+          .filter(r => ringVisible(r, a, 1, clipped, beyond));
+        placeRings(orings, ensureLayer('OPENINGS'), offset).forEach(e => { made.push(e); beyondOpenings++; });
+      }
+    }
+    const title = 'SECTION ' + a.toUpperCase() + ' AT ' + fmtFtIn(c);
+    annotateView(made.filter(e => e.type === 'poly' && e.layer !== 'OPENINGS'), title).forEach(e => made.push(e));
   }
   return {
     made, openChains: open.length, hatches: hatches.length,
+    beyond: beyondSegs.length, openings: beyondOpenings,
     area: sliceAreaAxis(rec.mesh, a, Number(z) || 0), axis: a, offset
   };
 }

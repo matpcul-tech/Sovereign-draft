@@ -459,6 +459,27 @@ describe('vertical sections and elevations', () => {
     expect(elevationToPlan('E').openings).toBe(0);
   });
 
+  it('a section sees beyond the cut: the tower behind rises above the cut mass', async () => {
+    addSolid(makeBox(0, 0, 0, 40, 30, 10), 'M');
+    addSolid(makeBox(10, 35, 0, 8, 8, 20), 'TOWER');
+    const r = sliceSolidToPlan('M', 15, undefined, 'y');
+    expect(r.beyond).toBe(3);
+    const lines = r.made.filter(e => e.type === 'line');
+    const horiz = lines.filter(l => Math.abs(l.y1 - l.y2) < 1e-6);
+    const verts = lines.filter(l => Math.abs(l.x1 - l.x2) < 1e-6);
+    /* The tower's roof line, exactly its 8 ft width at 20 ft. */
+    expect(horiz.length).toBe(1);
+    expect(horiz[0].y1).toBeCloseTo(20, 6);
+    expect(Math.abs(horiz[0].x2 - horiz[0].x1)).toBeCloseTo(8, 6);
+    /* Its two verticals, visible only where the tower rises above the
+     * 10 ft mass in front of it. */
+    expect(verts.length).toBe(2);
+    verts.forEach(l => {
+      expect(Math.min(l.y1, l.y2)).toBeCloseTo(10, 0);
+      expect(Math.max(l.y1, l.y2)).toBeCloseTo(20, 6);
+    });
+  });
+
   it('elevationToPlan draws all four compass outlines', async () => {
     const { elevationToPlan } = await import('../src/core/model3d.js');
     addSolid(tower(), 'TOWER');

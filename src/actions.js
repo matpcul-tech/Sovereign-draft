@@ -257,9 +257,11 @@ export function sliceSolid(rest){
   try {
     const r = sliceSolidToPlan(name, at, undefined, axis);
     afterChange();
-    const rings = r.made.filter(e => e.type === 'poly').length;
+    const rings = r.made.filter(e => e.type === 'poly' && e.layer !== 'OPENINGS').length;
     toast((axis === 'z' ? 'Plan cut' : 'Section along ' + axis.toUpperCase()) + ' at ' + at + ': ' +
       rings + ' ring' + (rings === 1 ? '' : 's') + (r.hatches ? ', ' + r.hatches + ' poche' : '') +
+      (r.beyond ? ', ' + r.beyond + ' beyond' : '') +
+      (r.openings ? ', ' + r.openings + ' opening' + (r.openings === 1 ? '' : 's') : '') +
       ', ' + r.area.toFixed(1) + ' SF' +
       (r.openChains ? ', ' + r.openChains + ' open chains' : ''), 4000);
   } catch (e){ toast(e.message, 4000); }

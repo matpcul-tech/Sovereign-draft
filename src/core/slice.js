@@ -195,6 +195,39 @@ export function depthAt(mesh, axis, sign, u, v){
   return best;
 }
 
+/* ---------- clipping to a half-space ----------
+ * Keep the part of a mesh past a plane, for the beyond-the-cut half of a
+ * section. Each triangle is clipped Sutherland-Hodgman style into a
+ * triangle or quad and fanned. The cut is left uncapped on purpose: the
+ * section's own poche is the cap, and an uncapped rim means the rim edges
+ * arrive as boundary edges that coincide with the cut rings and get
+ * filtered rather than drawn twice.
+ */
+export function clipMeshBeyond(mesh, axis, at){
+  const ai = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
+  const verts = [];
+  const faces = [];
+  for (const f of mesh.faces){
+    const tri = [mesh.verts[f[0]], mesh.verts[f[1]], mesh.verts[f[2]]];
+    if (tri.some(v => !v)) continue;
+    const out = [];
+    for (let i = 0; i < 3; i++){
+      const P = tri[i], Q = tri[(i + 1) % 3];
+      const dp = P[ai] - at, dq = Q[ai] - at;
+      if (dp >= -1e-9) out.push(P);
+      if ((dp > 1e-9 && dq < -1e-9) || (dp < -1e-9 && dq > 1e-9)){
+        const t = dp / (dp - dq);
+        out.push([P[0] + (Q[0] - P[0]) * t, P[1] + (Q[1] - P[1]) * t, P[2] + (Q[2] - P[2]) * t]);
+      }
+    }
+    if (out.length < 3) continue;
+    const base = verts.length;
+    out.forEach(p => verts.push([p[0], p[1], p[2]]));
+    for (let i = 2; i < out.length; i++) faces.push([base, base + i - 1, base + i]);
+  }
+  return { verts, faces };
+}
+
 /* ---------- visible feature edges ----------
  * The full hidden line pass for one orthographic elevation. An edge is
  * worth drawing when it is a boundary edge, a silhouette edge (one face
