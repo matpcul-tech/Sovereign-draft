@@ -30,6 +30,7 @@ import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
 import { makeIndexCache, queryPoint, queryBox, worthIndexing } from './core/spatial.js';
 import { alignedDim, continueDim, baselineDim, applyStyleToDim, angularDim, radiusDim, diameterDim, makeLeader } from './core/dimStyle.js';
 import { lookupCommand } from './core/command.js';
+import { parseSun, sunPosition } from './core/sun.js';
 import {
   makeInsert, locateInsert, clFromMembers, syncHostWall, snapWidth,
   expandInsert, flipInsert, detachInsert, paramOnCl
@@ -334,6 +335,62 @@ export function makeDormer(rest){
     toast('Dormer on the ' + (r.axis === 'y' ? 'north-south' : 'east-west') + ' slope, ' +
       r.added.toFixed(1) + ' CF added to the roof', 4000);
   } catch (e){ toast(e.message, 4000); }
+}
+
+export function setSunStudy(rest){
+  let sun;
+  try { sun = parseSun(rest); } catch (e){ toast(e.message); return; }
+  /* Appearance lives in the full snapshot, not the sparse scope. */
+  pushUndo();
+  state.sun = sun;
+  afterChange();
+  if (!sun){ toast('Sun off'); return; }
+  const p = sunPosition(sun);
+  if (p.elevation <= 0){
+    toast('Sun set: below the horizon at that hour (elevation ' + p.elevation.toFixed(1) + ' deg)', 4000);
+  } else {
+    toast('Sun: azimuth ' + p.azimuth.toFixed(1) + ' deg, elevation ' + p.elevation.toFixed(1) + ' deg. Open 3D for the shadow study', 4500);
+  }
+}
+
+export function setMaterial(rest){
+  const toks = String(rest || '').trim().split(/\s+/).filter(Boolean);
+  if (toks.length < 2){
+    const keys = Object.keys(state.materials || {});
+    toast('MAT NAME #color [roughness] [metalness]' + (keys.length ? '. Set: ' + keys.join(', ') : ''), 4500);
+    return;
+  }
+  const key = toks[0].toUpperCase().slice(0, 32);
+  pushUndo();
+  if (/^OFF$/i.test(toks[1])){
+    const m = { ...(state.materials || {}) };
+    delete m[key];
+    state.materials = m;
+    afterChange();
+    toast(key + ' back to its layer colour');
+    return;
+  }
+  if (!/^#[0-9a-fA-F]{3,8}$/.test(toks[1])){ toast('MAT wants a #hex colour'); return; }
+  const clamp01 = x => Math.max(0, Math.min(1, Number(x)));
+  state.materials = {
+    ...(state.materials || {}),
+    [key]: {
+      color: toks[1],
+      rough: Number.isFinite(Number(toks[2])) ? clamp01(toks[2]) : 0.7,
+      metal: Number.isFinite(Number(toks[3])) ? clamp01(toks[3]) : 0
+    }
+  };
+  afterChange();
+  toast(key + ' ' + toks[1] + '. Applies to solids, levels of them, layers and kinds in 3D', 4000);
+}
+
+export function requestRender(rest){
+  const toks = String(rest || '').trim().split(/\s+/).filter(Boolean);
+  const place = toks.some(t => /^PLACE$/i.test(t));
+  const w = Number(toks.find(t => Number.isFinite(Number(t)))) || 1920;
+  try {
+    document.dispatchEvent(new CustomEvent('sd-render', { detail: { width: Math.max(320, Math.min(4096, w)), place } }));
+  } catch (e){ toast('RENDER needs the browser'); }
 }
 
 export function setTool3d(name){

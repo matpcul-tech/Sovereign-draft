@@ -23,7 +23,8 @@ import {
   twistViewport, clipViewport,
   extrudeSelection, revolveSelection, loftSelection, clearSolids,
   toggleAnnotative, setAnnoScale, openScriptSheet, runSavedScript,
-  makePrimitive, makeRoof, makeDrawings, makeStack, makePlans, makeRoofPlan, makeTakeoff3d, makeDormer, sweepSelection, boolean3d, sliceSolid, listSolids, deleteSolid,
+  makePrimitive, makeRoof, makeDrawings, makeStack, makePlans, makeRoofPlan, makeTakeoff3d, makeDormer,
+  setSunStudy, setMaterial, requestRender, sweepSelection, boolean3d, sliceSolid, listSolids, deleteSolid,
   makeElevation, modelPlan
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
@@ -505,6 +506,9 @@ export function handleCommand(text){
   if (res.action === 'roofplan'){ makeRoofPlan(); return; }
   if (res.action === 'takeoff3d'){ makeTakeoff3d(); return; }
   if (res.action === 'dormer'){ makeDormer(res.rest); return; }
+  if (res.action === 'sun'){ setSunStudy(res.rest); return; }
+  if (res.action === 'mat'){ setMaterial(res.rest); return; }
+  if (res.action === 'render'){ requestRender(res.rest); return; }
   if (res.action === 'sweep3d'){ sweepSelection(res.rest); return; }
   if (res.action && res.action.indexOf('bool3d:') === 0){ boolean3d(res.action.slice(7), res.rest); return; }
   if (res.action === 'slice3d'){ sliceSolid(res.rest); return; }

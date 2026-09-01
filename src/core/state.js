@@ -53,6 +53,8 @@ export const state = {
   currentPlotStyle: 'ISO',
   layerStates: [],
   plotFont: null,
+  materials: {},
+  sun: null,
   solids: [],
   tool3d: 'orbit',
   annoPpf: 18,
@@ -162,6 +164,8 @@ function snapshot(){
     layerStates: deep(state.layerStates || []),
     currentPlotStyle: state.currentPlotStyle,
     annoPpf: state.annoPpf,
+    materials: deep(state.materials || {}),
+    sun: state.sun ? { ...state.sun } : null,
     layouts: deep(state.layouts),
     currentDimStyle: state.currentDimStyle,
     currentLayout: state.currentLayout,
@@ -179,6 +183,8 @@ function restore(s){
   if (s.layerStates) state.layerStates = s.layerStates;
   if (s.currentPlotStyle) state.currentPlotStyle = s.currentPlotStyle;
   if (s.annoPpf) state.annoPpf = s.annoPpf;
+  if (s.materials) state.materials = s.materials;
+  if ('sun' in s) state.sun = s.sun;
   if (s.layouts) state.layouts = s.layouts;
   if (s.currentDimStyle) state.currentDimStyle = s.currentDimStyle;
   if (s.currentLayout) state.currentLayout = s.currentLayout;

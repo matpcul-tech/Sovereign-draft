@@ -11,6 +11,7 @@ import {
   makeBox, makeCylinder, makeSphere, makeCone
 } from '../core/mesh.js';
 import { pushPullPrism } from '../core/model3d.js';
+import { sunVector } from '../core/sun.js';
 
 let renderer = null;
 let scene = null;
@@ -22,6 +23,10 @@ let canvas = null;
 let running = false;
 let onClose = null;
 let lastSolid = null;
+let lastSun = null;
+let lastMaterials = {};
+let sunLight = null;
+let hemiLight = null;
 const _color = new THREE.Color();
 
 function disposeObject(obj){
@@ -87,6 +92,79 @@ function appendSolidRecords(solid, records){
   });
 }
 
+function materialFor(m){
+  const mats = lastMaterials || {};
+  const keys = [];
+  if (m.solidName){
+    keys.push(String(m.solidName).toUpperCase());
+    keys.push(String(m.solidName).toUpperCase().replace(/-L?\d+$/, ''));
+  }
+  if (m.layer) keys.push(String(m.layer).toUpperCase());
+  if (m.kind) keys.push(String(m.kind).toUpperCase());
+  for (const k of keys){ if (mats[k]) return mats[k]; }
+  return null;
+}
+
+/* The study sun: real azimuth and elevation drive the light, the shadow
+ * camera hugs the model, and a shadow-only ground plane catches what the
+ * building throws. Below the horizon the scene says night rather than
+ * lighting from underground. */
+function applySun(solid){
+  if (!sunLight) return;
+  const bb = solid.bbox;
+  const cx = (bb[0] + bb[3]) / 2, cz = (bb[1] + bb[4]) / 2;
+  const span = Math.max(bb[3] - bb[0], bb[4] - bb[1], solid.height || 8, 4);
+  if (lastSun){
+    const v = sunVector(lastSun);
+    const up = Math.max(0.02, v.z);
+    /* CAD (x, y, z) is three (x, z, y). */
+    sunLight.position.set(cx + v.x * span * 2, up * span * 2, cz + v.y * span * 2);
+    sunLight.target.position.set(cx, 0, cz);
+    sunLight.intensity = v.z > 0 ? 1.5 : 0.05;
+    sunLight.color.setHex(v.elevation < 15 ? 0xffc890 : 0xfff4e0);
+    if (hemiLight) hemiLight.intensity = v.z > 0 ? 0.35 : 0.15;
+    const cam = sunLight.shadow.camera;
+    cam.left = -span; cam.right = span; cam.top = span; cam.bottom = -span;
+    cam.near = 0.5; cam.far = span * 6;
+    cam.updateProjectionMatrix();
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(span * 6, span * 6),
+      new THREE.ShadowMaterial({ opacity: 0.35 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set(cx, -0.02, cz);
+    ground.receiveShadow = true;
+    scene.add(ground);
+  } else {
+    sunLight.position.set(cx + span, span * 1.6, cz + span * 0.6);
+    sunLight.target.position.set(cx, 0, cz);
+    sunLight.intensity = 1.05;
+    sunLight.color.setHex(0xfff1d6);
+    if (hemiLight) hemiLight.intensity = 0.7;
+  }
+}
+
+/* A still frame at print resolution: the same scene through an offscreen
+ * renderer, returned as a PNG data URL. */
+export function renderStill(width){
+  if (!scene || !camera) return null;
+  const w = Math.max(320, Math.min(4096, Math.round(Number(width) || 1920)));
+  const h = Math.round(w * 9 / 16);
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const r = new THREE.WebGLRenderer({ canvas: cv, antialias: true, preserveDrawingBuffer: true });
+  r.setClearColor(lastSun ? 0x18304a : 0x07101f, 1);
+  r.shadowMap.enabled = true;
+  r.shadowMap.type = THREE.PCFSoftShadowMap;
+  const cam = camera.clone();
+  cam.aspect = w / h;
+  cam.updateProjectionMatrix();
+  r.render(scene, cam);
+  const url = cv.toDataURL('image/png');
+  r.dispose();
+  return { url, w, h };
+}
+
 function addMeshes(solid){
   clearScene();
   /* The scene rebuild took the measure marks with it. */
@@ -108,16 +186,20 @@ function addMeshes(solid){
     geo.setAttribute('position', new THREE.BufferAttribute(threePos, 3));
     geo.setIndex(new THREE.BufferAttribute(m.indices, 1));
     geo.computeVertexNormals();
+    /* Document materials override the layer colour: by solid name, then
+     * the name with its level or copy suffix stripped, then layer, then
+     * kind, so MAT ROOF paints ROOF, ROOF-2 and every level of it. */
+    const ov = materialFor(m);
     const mat = new THREE.MeshStandardMaterial({
-      color: hexToInt(m.color),
-      roughness: m.kind === 'floor' ? 0.92 : 0.55,
-      metalness: 0.04,
+      color: hexToInt(ov ? ov.color : m.color),
+      roughness: ov ? ov.rough : (m.kind === 'floor' ? 0.92 : 0.55),
+      metalness: ov ? ov.metal : 0.04,
       transparent: m.opacity != null && m.opacity < 1,
       opacity: m.opacity == null ? 1 : m.opacity,
       side: THREE.DoubleSide
     });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.castShadow = m.kind === 'wall' || m.kind === 'door';
+    mesh.castShadow = true;
     mesh.receiveShadow = true;
     if (m.solidName) mesh.userData.solidName = m.solidName;
     group.add(mesh);
@@ -163,6 +245,7 @@ function addMeshes(solid){
     const ht = hud.querySelector('#v3dHeightVal');
     if (ht) ht.textContent = fmtFtIn(placeH);
   }
+  applySun(solid);
   void _color;
 }
 
@@ -998,18 +1081,21 @@ export function showView3d(opts){
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setClearColor(0x07101f, 1);
     renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     scene = new THREE.Scene();
     scene.fog = new THREE.Fog(0x07101f, 80, 220);
     camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
-    const hemi = new THREE.HemisphereLight(0xc8d8f0, 0x1a140c, 0.7);
-    hemi.userData.keep = 1;
-    scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xfff1d6, 1.05);
-    sun.position.set(40, 70, 25);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    sun.userData.keep = 1;
-    scene.add(sun);
+    hemiLight = new THREE.HemisphereLight(0xc8d8f0, 0x1a140c, 0.7);
+    hemiLight.userData.keep = 1;
+    scene.add(hemiLight);
+    sunLight = new THREE.DirectionalLight(0xfff1d6, 1.05);
+    sunLight.position.set(40, 70, 25);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.set(2048, 2048);
+    sunLight.userData.keep = 1;
+    scene.add(sunLight);
+    scene.add(sunLight.target);
+    sunLight.target.userData.keep = 1;
     const fill = new THREE.DirectionalLight(0x88a0c0, 0.25);
     fill.position.set(-30, 20, -40);
     fill.userData.keep = 1;
@@ -1029,6 +1115,8 @@ export function showView3d(opts){
   pick.onSolidFace = o.onSolidFace || null;
   wirePicking();
   lastSolidsList = o.solids || [];
+  lastSun = o.sun || null;
+  lastMaterials = o.materials || {};
   const solid = extrudeDrawing(o.entities || [], {
     height: o.height,
     assumed: o.assumed,

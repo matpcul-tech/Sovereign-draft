@@ -97,6 +97,8 @@ Copy share link (Sheet menu) puts a gzipped drawing in the URL hash. No server. 
 | `DRAWINGS HIP 6 SHEETS` | The whole set on numbered sheets | `PLANS` | A cut plan per storey |
 | `ELEV S` | Hidden-line elevation | `SLICE NAME y 12` | Section, poche and beyond |
 | `ROOFPLAN` | Ridges, hips, valleys from above | `QTO` | Model takeoff table |
+| `SUN JUN 21 14 40.7` | Real solar position, shadow study | `MAT ROOF #7a3b2a` | Material per solid / layer / kind |
+| `RENDER 1920 [PLACE]` | High-res PNG, or placed on the drawing | | |
 | `2D` | Back to plan | `FCF` | Feature control frame |
 | `DATUM` | Datum feature | `SF` | Surface finish |
 | `JS` | Script sheet (`sd.*` API) | `RUN` | Run a saved script |
@@ -290,6 +292,8 @@ The plan is still the issued print. A floor plan with no solids extrudes to stor
 
 This is a mesh modeler, not Fusion. Not B-rep, not STEP, not a PE stamp. Faces are triangles; CSG booleans are held to vol(A)+vol(B) = vol(A∪B)+vol(A∩B) in the test suite rather than eyeballed. `scripts/csgbench.mjs` publishes the measured performance ceiling.
 
+**Sun, materials, renders.** `SUN JUN 21 14 40.7` puts the real sun in the sky: azimuth and elevation from the standard declination and hour-angle formulas, held to almanac values in the tests (solstice noon at 40N, due south at solar noon, exactly on the horizon at equinox six o'clock). The model throws true shadows on itself and the ground, which makes the 3D view a shadow study, the thing planning boards ask for. `MAT ROOF #7a3b2a 0.85` paints a solid, its stacked levels, a layer or a kind with PBR colour, roughness and metalness; materials and the sun are document data, saved with the project and one undo away. `RENDER 1920` draws the scene offscreen at print resolution and downloads a PNG; `RENDER 1920 PLACE` sets the rendering beside the drawing as an image entity, the perspective a real set opens with. This is a raster study renderer, not Cycles: no path tracing, no textures, stated plainly.
+
 Esc once returns to orbit. Esc again returns to plan.
 
 ## AI drafting
@@ -329,7 +333,7 @@ Autosave to `localStorage`. No account, no backend. Grok drafting uses the app o
 
 **v1.8.0** — Issued 2D, touchable 3D, one plan becomes a documented building.
 
-Shipped: kernel + CLI + embed, honest AI, Grok drafting with no key, R2000 DXF AutoCAD Open path (island hatches round-trip both ways), DWG this app reopens, paperspace kept on open, associative dims that follow a stretch, issued 24×36 PDF with ISO lineweights and embedded fonts, cutting-plane sections, isolated details, feature control frames, ± tolerances. Mesh 3D on an exact CSG kernel: primitives, extrude / revolve / loft / sweep, push-pull face editing, precision touch (snap, typed distances, rotate, copy), measure, STL both ways, OBJ/glTF out. The building pipeline: MODEL, STACK, wing roofs with valleys, dormers, per-storey plans, roof plan, hidden-line elevations, sections that see beyond the cut, DRAWINGS SHEETS, QTO. Starters: cabin, plate, GA, 3D bracket.
+Shipped: kernel + CLI + embed, honest AI, Grok drafting with no key, R2000 DXF AutoCAD Open path (island hatches round-trip both ways), DWG this app reopens, paperspace kept on open, associative dims that follow a stretch, issued 24×36 PDF with ISO lineweights and embedded fonts, cutting-plane sections, isolated details, feature control frames, ± tolerances. Mesh 3D on an exact CSG kernel: primitives, extrude / revolve / loft / sweep, push-pull face editing, precision touch (snap, typed distances, rotate, copy), measure, STL both ways, OBJ/glTF out. The building pipeline: MODEL, STACK, wing roofs with valleys, dormers, per-storey plans, roof plan, hidden-line elevations, sections that see beyond the cut, DRAWINGS SHEETS, QTO. The archviz layer: almanac-tested SUN with true shadows, MAT materials, RENDER to print-resolution PNG or placed on the drawing. Starters: cabin, plate, GA, 3D bracket.
 
 Three layers of proof, all in the repo: unit tests against closed forms (`npm test`), a headless smoke check that the built app paints (`npm run smoke` equivalent via `scripts/smoke.mjs`), and a full acceptance run that drives every feature in one continuous session with real pointer events (`npm run accept`). Performance claims are reproducible: `scripts/csgbench.mjs` and `scripts/drawbench.mjs`.
 

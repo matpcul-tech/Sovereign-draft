@@ -22,7 +22,7 @@ import { generateDraft, realizeResponse, realizeDocument, serializeForAI } from 
 import { loadAISettings, saveAISettings } from './ai/settings.js';
 import { shellHTML } from './shell.js';
 import { makeLayout, makeViewport, fitViewport, SHEETS, TITLE_BLOCK_H } from './core/layout.js';
-import { membersBBox } from './core/entities.js';
+import { membersBBox, entBBox } from './core/entities.js';
 import { addSheet, addViewToSheet, normalizeSheets, findSheet } from './core/document.js';
 import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, scheduleColumns, markScheduleCSV, paperKeynoteColW, paperScheduleColW } from './core/keynote.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation, makeDetailCallout, danglingDetails, detailBubbleText } from './core/sheetspace.js';
@@ -160,6 +160,8 @@ function solidOpts(){
     entities: state.entities,
     layers: state.layers,
     solids: state.solids,
+    sun: state.sun,
+    materials: state.materials,
     solidHeight: 1,
     onPlaceMesh: async (mesh, kind) => {
       const { addSolid, describeSolid } = await import('./core/model3d.js');
@@ -1316,6 +1318,39 @@ function wireUi(){
     } catch (e){ /* ignore */ }
   });
   document.addEventListener('sd-view2d', () => closeView3d());
+  document.addEventListener('sd-render', async ev => {
+    try {
+      const m = await loadView3d();
+      if (!m.isView3dOpen()) await openView3d();
+      if (!m.isView3dOpen()){ toast('Nothing to render: model something first'); return; }
+      const res = m.renderStill(ev.detail && ev.detail.width);
+      if (!res){ toast('Render failed'); return; }
+      if (ev.detail && ev.detail.place){
+        /* The rendering joins the drawing as an image beside everything
+         * else, on a plotting layer, 40 ft wide at the render's aspect. */
+        let maxX = 0, maxY = 20;
+        state.entities.forEach(e2 => {
+          const bb = [1e9, 1e9, -1e9, -1e9];
+          entBBox(e2, bb);
+          if (bb[2] > -1e8){ maxX = Math.max(maxX, bb[2]); maxY = Math.max(maxY, bb[3]); }
+        });
+        pushUndo();
+        ensureLayer('RENDER');
+        const w = 40, h = w * res.h / res.w;
+        addEntity({ type: 'image', layer: 'RENDER', x: maxX + 10, y: maxY - h, w, h, rot: 0, src: res.url });
+        afterChange();
+        closeView3d();
+        zoomFit(); draw();
+        toast('Rendering placed beside the drawing, ' + res.w + 'x' + res.h);
+      } else {
+        const bin = atob(res.url.split(',')[1]);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        download((fileSlug() + '-render.png'), bytes, 'image/png');
+        toast('Rendered ' + res.w + 'x' + res.h + ' PNG');
+      }
+    } catch (err){ toast((err && err.message) || 'Render failed'); }
+  });
   document.addEventListener('sd-height', () => { syncCtx(); if (state.view3d) syncOpen3d(); });
 }
 

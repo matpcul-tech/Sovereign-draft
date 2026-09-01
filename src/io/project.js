@@ -43,6 +43,8 @@ export function serializeProject(state, pretty){
     layerStates: state.layerStates || [],
     annoPpf: state.annoPpf || 18,
     scripts: state.scripts || [],
+    materials: state.materials || {},
+    sun: state.sun || null,
     solids: serializeSolids(state.solids),
     layouts: state.layouts,
     currentLayout: state.currentLayout,
@@ -75,6 +77,8 @@ export function validateProject(o){
     layerStates: validateLayerStates(o.layerStates),
     annoPpf: Number(o.annoPpf) > 0 ? Number(o.annoPpf) : 18,
     scripts: validateScripts(o.scripts),
+    materials: validateMaterials(o.materials),
+    sun: validateSun(o.sun),
     solids: validateSolids(o.solids),
     /* Structural migration only. Entities are already true size and are
      * passed through untouched. */
@@ -115,6 +119,8 @@ export function applyProject(state, p){
   if (p.currentPlotStyle) state.currentPlotStyle = p.currentPlotStyle;
   state.layerStates = p.layerStates || [];
   state.annoPpf = p.annoPpf || 18;
+  state.materials = p.materials || {};
+  state.sun = p.sun || null;
   state.scripts = p.scripts || [];
   state.solids = p.solids || [];
   if (p.layouts) state.layouts = p.layouts;
@@ -155,4 +161,35 @@ export function loadAutosave(){
 
 export function clearAutosave(){
   try { localStorage.removeItem(AUTOSAVE_KEY); } catch (e){ /* ignore */ }
+}
+
+/* ---------- appearance ---------- */
+export function validateMaterials(m){
+  const out = {};
+  if (!m || typeof m !== 'object') return out;
+  for (const k of Object.keys(m).slice(0, 200)){
+    const v = m[k];
+    if (!v || typeof v !== 'object') continue;
+    const color = typeof v.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v.color) ? v.color : null;
+    if (!color) continue;
+    const clamp01 = x => Math.max(0, Math.min(1, Number(x)));
+    out[String(k).toUpperCase().slice(0, 32)] = {
+      color,
+      rough: Number.isFinite(Number(v.rough)) ? clamp01(v.rough) : 0.7,
+      metal: Number.isFinite(Number(v.metal)) ? clamp01(v.metal) : 0
+    };
+  }
+  return out;
+}
+
+export function validateSun(sun){
+  if (!sun || typeof sun !== 'object') return null;
+  const m = Number(sun.month), d = Number(sun.day), h = Number(sun.hour), lat = Number(sun.lat);
+  if (!Number.isFinite(m) || m < 1 || m > 12) return null;
+  return {
+    month: Math.round(m),
+    day: Number.isFinite(d) ? Math.max(1, Math.min(31, Math.round(d))) : 21,
+    hour: Number.isFinite(h) ? Math.max(0, Math.min(24, h)) : 12,
+    lat: Number.isFinite(lat) ? Math.max(-90, Math.min(90, lat)) : 40
+  };
 }
