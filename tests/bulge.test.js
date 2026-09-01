@@ -259,6 +259,25 @@ describe('DXF carries the arcs both ways', () => {
   });
 });
 
+describe('a bulged polyline is its curve to booleans, hatching and extrusion', () => {
+  it('closedLoops follows the arcs, not the chords', async () => {
+    const { closedLoops } = await import('../src/core/hatch.js');
+    const { ringsArea } = await import('../src/core/boolean.js');
+    const loops = closedLoops([SLOT()]);
+    expect(loops[0].length).toBeGreaterThan(8);
+    /* The tessellation slightly under reports the outward arcs; the point is
+     * it is the arc area, not the 120 the chord polygon gives. */
+    expect(ringsArea(loops)).toBeCloseTo(entityArea(SLOT()), 0);
+    expect(Math.abs(ringsArea(loops) - 120)).toBeGreaterThan(20);
+  });
+
+  it('a straight polyline is passed through untouched', async () => {
+    const { closedLoops } = await import('../src/core/hatch.js');
+    const loops = closedLoops([STRAIGHT()]);
+    expect(loops[0].length).toBe(4);
+  });
+});
+
 describe('the arc segment editor reaches the command line', () => {
   it('registers ARCSEG and its alias', () => {
     expect(lookupCommand('ARCSEG').tool).toBe('arcseg');

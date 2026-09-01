@@ -4,6 +4,7 @@
  */
 import { dist, pointInPoly, polyArea } from './geometry.js';
 import { splineToPoly } from './spline.js';
+import { polyOutline } from './bulge.js';
 
 /* `paper` is the spacing as it prints, in inches, and is the real definition.
  * `spacing` is the model-space value it works out to at the reference scale
@@ -220,7 +221,10 @@ export function closedLoops(entities){
   const out = [];
   for (const e of entities || []){
     if (!e) continue;
-    if (e.type === 'poly' && e.closed && e.pts && e.pts.length >= 3) out.push(e.pts.map(p => [p[0], p[1]]));
+    /* polyOutline returns the tessellated arcs when the polyline has bulges
+     * and the points untouched when it does not, so a curved slot booleans
+     * and hatches as the shape it draws, not as its chord polygon. */
+    if (e.type === 'poly' && e.closed && e.pts && e.pts.length >= 3) out.push(polyOutline(e).map(p => [p[0], p[1]]));
     else if (e.type === 'circle' && e.r > 0) out.push(circlePoly(e));
     else if (e.type === 'spline' && e.closed && e.ctrl && e.ctrl.length >= 3) out.push(splineToPoly(e).pts.map(p => [p[0], p[1]]));
     else if (e.type === 'hatch' && e.pts && e.pts.length >= 3) out.push(e.pts.map(p => [p[0], p[1]]));
@@ -232,7 +236,7 @@ export function boundaryContaining(entities, x, y){
   let best = null, bestArea = Infinity;
   for (const e of entities || []){
     let pts = null;
-    if (e.type === 'poly' && e.closed && e.pts && e.pts.length >= 3 && pointInPoly(x, y, e.pts)) pts = e.pts;
+    if (e.type === 'poly' && e.closed && e.pts && e.pts.length >= 3){ const op = polyOutline(e); if (pointInPoly(x, y, op)) pts = op; }
     else if (e.type === 'circle' && e.r > 0 && dist(x, y, e.cx, e.cy) <= e.r) pts = circlePoly(e);
     if (!pts) continue;
     const a = Math.abs(polyArea(pts));
