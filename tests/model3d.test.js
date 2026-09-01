@@ -456,3 +456,16 @@ describe('the new commands are registered', () => {
     expect(lookupCommand('PLAN2SOLID').action).toBe('modelplan');
   });
 });
+
+describe('sample bracket', () => {
+  beforeEach(reset);
+  it('is a closed L with a hole', async () => {
+    const { sampleBracket } = await import('../src/core/model3d.js');
+    const rec = sampleBracket();
+    expect(rec.name).toBe('BRACKET');
+    expect(isWatertight(rec.mesh)).toBe(true);
+    const v = Math.abs(meshVolume(rec.mesh));
+    expect(v).toBeGreaterThan(0.4);
+    expect(v).toBeLessThan(3);
+  });
+});

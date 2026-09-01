@@ -54,6 +54,7 @@ export const state = {
   layerStates: [],
   plotFont: null,
   solids: [],
+  tool3d: 'orbit',
   annoPpf: 18,
   scripts: [],
   userBlocks: [],
