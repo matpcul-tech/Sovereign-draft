@@ -21,6 +21,8 @@ import { csg } from './csg.js';
 import { sliceMesh, sliceArea, sliceMeshAxis, sliceAreaAxis, silhouette, depthAt } from './slice.js';
 import { polyBoolean, ringsArea, differenceRings } from './boolean.js';
 import { extrudeDrawing } from './solid.js';
+import { alignedDim } from './dimStyle.js';
+import { fmtFtIn } from './format.js';
 
 export function solidByName(name){
   const n = String(name || '').trim().toUpperCase();
@@ -148,6 +150,12 @@ export function sliceSolidToPlan(name, z, layer, axis){
     state.entities.push(h);
     made.push(h);
   }
+  /* A vertical cut is a drawing of its own and gets a title and overall
+   * dims; a plan cut lands inside the plan and stays bare. */
+  if (a !== 'z'){
+    const title = 'SECTION ' + a.toUpperCase() + ' AT ' + fmtFtIn(Number(z) || 0);
+    annotateView(made.filter(e => e.type === 'poly'), title).forEach(e => made.push(e));
+  }
   return {
     made, openChains: open.length, hatches: hatches.length,
     area: sliceAreaAxis(rec.mesh, a, Number(z) || 0), axis: a, offset
@@ -224,7 +232,15 @@ export function elevationToPlan(dir, layer){
   const offset = nextViewOffset(rings);
   const made = placeRings(rings, layer || 'SECTION', offset);
   const openings = placeRings(openRings, ensureLayer('OPENINGS'), offset);
-  return { made: made.concat(openings), openings: openings.length, area: ringsArea(rings), offset };
+  const NAMES = { S: 'SOUTH', N: 'NORTH', E: 'EAST', W: 'WEST' };
+  const notes = annotateView(made, NAMES[String(dir || 'S').toUpperCase()] + ' ELEVATION');
+  /* Each opening gets its own height dim at its right edge: sill to head,
+   * the number a builder reads off an elevation. */
+  for (const o of openings){
+    const bb = viewBounds([o]);
+    if (bb && bb[3] - bb[1] > 1e-9) pushEnt(alignedDim([bb[2], bb[1]], [bb[2], bb[3]], -0.8), notes);
+  }
+  return { made: made.concat(openings, notes), openings: openings.length, area: ringsArea(rings), offset };
 }
 
 /* ---------- the plan becomes solids ---------- */
@@ -272,6 +288,42 @@ export function solidsToFaceEntities(list){
 }
 
 function round6(v){ return Math.round(v * 1e6) / 1e6; }
+
+/* ---------- annotating generated views ----------
+ * A view the model generates should arrive as a drawing, not bare
+ * geometry: a title beneath it, an overall width dim below and an overall
+ * height dim on the left, real dim entities the user can restyle or erase
+ * like any others.
+ */
+function viewBounds(polys){
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const e of polys){
+    if (!e.pts) continue;
+    for (const p of e.pts){
+      x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]);
+      x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]);
+    }
+  }
+  return isFinite(x0) ? [x0, y0, x1, y1] : null;
+}
+
+function pushEnt(ent, made){
+  ent.id = state.idSeq++;
+  state.entities.push(ent);
+  made.push(ent);
+  return ent;
+}
+
+function annotateView(polys, title){
+  const bb = viewBounds(polys);
+  const made = [];
+  if (!bb) return made;
+  const [x0, y0, x1, y1] = bb;
+  pushEnt({ type: 'text', layer: 'SECTION', x: (x0 + x1) / 2, y: y0 - 2.4, size: 1.0, content: title }, made);
+  if (x1 - x0 > 1e-9) pushEnt(alignedDim([x0, y0], [x1, y0], -1.2), made);
+  if (y1 - y0 > 1e-9) pushEnt(alignedDim([x0, y0], [x0, y1], 1.2), made);
+  return made;
+}
 
 /* ---------- reporting ---------- */
 export function describeSolid(rec){

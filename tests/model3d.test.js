@@ -350,11 +350,19 @@ describe('vertical sections and elevations', () => {
     addSolid(makeBox(0, 0, 0, 40, 30, 10), 'M');
     state.entities.push({ id: state.idSeq++, type: 'poly', layer: 'WALLS', closed: true, pts: [[0, 0], [40, 0], [40, 30], [0, 30]] });
     const r = sliceSolidToPlan('M', 15, undefined, 'y');
-    expect(r.made.length).toBe(2);
-    expect(r.made[1].type).toBe('hatch');
+    expect(r.made.filter(e => e.type === 'poly').length).toBe(1);
+    expect(r.made.some(e => e.type === 'hatch')).toBe(true);
     const xs = r.made[0].pts.map(p => p[0]);
     expect(Math.min(...xs)).toBeGreaterThan(40);
     expect(r.area).toBeCloseTo(400, 6);
+    /* The section arrives as a drawing: titled and dimensioned. */
+    const title = r.made.find(e => e.type === 'text');
+    expect(title.content).toBe('SECTION Y AT 15\'-0"');
+    const lens = r.made.filter(e => e.type === 'dim')
+      .map(d => Math.hypot(d.x2 - d.x1, d.y2 - d.y1)).sort((a, b) => a - b);
+    expect(lens.length).toBe(2);
+    expect(lens[0]).toBeCloseTo(10, 6);
+    expect(lens[1]).toBeCloseTo(40, 6);
   });
 
   it('elevations show door and window openings inside the massing', async () => {
@@ -373,6 +381,15 @@ describe('vertical sections and elevations', () => {
     expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(4, 6);
     /* The massing outline is untouched by the opening. */
     expect(r.area).toBeCloseTo(200, 1);
+    /* Title and dims arrive with the view: overall 20 wide and 10 tall,
+     * and the window's own height, sill 4 to head 7. */
+    expect(r.made.find(e => e.type === 'text').content).toBe('SOUTH ELEVATION');
+    const lens = r.made.filter(e => e.type === 'dim')
+      .map(d => Math.hypot(d.x2 - d.x1, d.y2 - d.y1)).sort((a, b) => a - b);
+    expect(lens.length).toBe(3);
+    expect(lens[0]).toBeCloseTo(3, 6);
+    expect(lens[1]).toBeCloseTo(10, 6);
+    expect(lens[2]).toBeCloseTo(20, 6);
   });
 
   it('hidden line: only openings facing the viewer are drawn', async () => {

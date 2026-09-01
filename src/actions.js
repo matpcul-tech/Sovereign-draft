@@ -257,7 +257,7 @@ export function sliceSolid(rest){
   try {
     const r = sliceSolidToPlan(name, at, undefined, axis);
     afterChange();
-    const rings = r.made.length - (r.hatches || 0);
+    const rings = r.made.filter(e => e.type === 'poly').length;
     toast((axis === 'z' ? 'Plan cut' : 'Section along ' + axis.toUpperCase()) + ' at ' + at + ': ' +
       rings + ' ring' + (rings === 1 ? '' : 's') + (r.hatches ? ', ' + r.hatches + ' poche' : '') +
       ', ' + r.area.toFixed(1) + ' SF' +
@@ -271,7 +271,7 @@ export function makeElevation(rest){
   try {
     const r = elevationToPlan(dir);
     afterChange();
-    const rings = r.made.length - (r.openings || 0);
+    const rings = r.made.filter(e => e.type === 'poly' && e.layer !== 'OPENINGS').length;
     toast(dir + ' elevation: ' + rings + ' ring' + (rings === 1 ? '' : 's') +
       (r.openings ? ', ' + r.openings + ' opening' + (r.openings === 1 ? '' : 's') : '') +
       ', ' + r.area.toFixed(1) + ' SF outline', 4000);
