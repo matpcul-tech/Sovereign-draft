@@ -163,6 +163,33 @@ function solidOpts(){
       const rec = solidByName(name);
       if (rec) toast(describeSolid(rec), 3000);
     },
+    onSolidCopy: async (name, dx, dy, dz) => {
+      const { solidByName, addSolid, moveSolid, describeSolid } = await import('./core/model3d.js');
+      const src = solidByName(name);
+      if (!src) return null;
+      pushUndo();
+      const copy = addSolid({
+        verts: src.mesh.verts.map(v => v.slice()),
+        faces: src.mesh.faces.map(f => f.slice())
+      }, name);
+      moveSolid(copy.name, dx, dy, dz || 0);
+      afterChange();
+      toast(describeSolid(copy), 3000);
+      syncOpen3d();
+      return copy.name;
+    },
+    onSolidRotate: async (name, deg) => {
+      const { rotateSolid, describeSolid, solidByName } = await import('./core/model3d.js');
+      const { meshBBox } = await import('./core/mesh.js');
+      const rec = solidByName(name);
+      if (!rec || !deg) return;
+      const bb = meshBBox(rec.mesh);
+      pushUndo();
+      rotateSolid(name, 'z', (bb[0] + bb[3]) / 2, (bb[1] + bb[4]) / 2, 0, deg);
+      afterChange();
+      toast(name + ' rotated ' + deg + '°', 3000);
+      syncOpen3d();
+    },
     height: state.storyHeight,
     assumed: state.heightAssumed,
     onHeight: (h) => {

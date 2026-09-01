@@ -6,6 +6,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { extrudeDrawing, heightStamp, resolveHeight } from '../core/solid.js';
 import { fmtFtIn } from '../core/format.js';
+import { meshBBox } from '../core/mesh.js';
 
 let renderer = null;
 let scene = null;
@@ -235,18 +236,76 @@ function exportGlb(download){
  * face orbits, so the camera never fights the hand. The live drag moves the
  * three.js meshes only; the document move commits once on release through
  * the onSolidMove hook, so the whole drag is one undo step.
+ *
+ * Precision is what separates the drag from a demo:
+ * - the delta snaps to a half-foot grid, and to the faces and centres of
+ *   every other solid when it comes within tolerance, so a box lands flush
+ *   against its neighbour exactly (hold alt to move free);
+ * - the live delta reads out in the HUD while dragging;
+ * - typing a number mid-drag and pressing Enter sets the distance exactly,
+ *   along whichever axis the drag was going (a leading minus reverses it);
+ * - ctrl-drag commits a copy instead of a move;
+ * - R toggles rotate mode: dragging turns the solid about its own plan
+ *   centre in 15 degree steps (shift for 1 degree), typed degrees exact.
  */
+const GRID_STEP = 0.5;
+const FACE_TOL = 0.45;
+
 const pick = {
   raycaster: null,
   selected: null,        /* solid name */
   meshes: [],            /* three meshes of the selected solid */
+  mode: 'move',          /* or 'rotate' */
   dragging: false,
+  copying: false,
+  copyMeshes: [],
   moved: [0, 0, 0],
+  rotDeg: 0,
+  typed: '',
+  snapFace: false,
   grab: null,            /* three-space point where the drag took hold */
   down: null,
+  bboxSelf: null,        /* CAD bbox of the grabbed solid, at grab time */
+  edges: null,           /* face and centre positions of every other solid */
+  pivot: null,           /* three-space plan centre for rotation */
   onSolidMove: null,
-  onSolidInfo: null
+  onSolidInfo: null,
+  onSolidCopy: null,
+  onSolidRotate: null
 };
+
+let lastSolidsList = [];
+
+/* Face snap first, grid snap second. The moving box offers its low edge,
+ * centre and high edge; the smallest correction inside tolerance wins. */
+function snapAxis(d, lo, hi, edges){
+  const mid = (lo + hi) / 2;
+  let best = null;
+  for (const m of [lo, mid, hi]){
+    for (const e of edges){
+      const corr = e - (m + d);
+      if (Math.abs(corr) < FACE_TOL && (best == null || Math.abs(corr) < Math.abs(best))) best = corr;
+    }
+  }
+  if (best != null) return { d: d + best, face: true };
+  return { d: Math.round(d / GRID_STEP) * GRID_STEP, face: false };
+}
+
+function collectSnapData(name){
+  const self = lastSolidsList.find(s => s && s.name === name);
+  pick.bboxSelf = self ? meshBBox(self.mesh) : null;
+  pick.edges = { x: [], y: [], z: [] };
+  for (const s of lastSolidsList){
+    if (!s || s.name === name) continue;
+    const bb = meshBBox(s.mesh);
+    pick.edges.x.push(bb[0], bb[3], (bb[0] + bb[3]) / 2);
+    pick.edges.y.push(bb[1], bb[4], (bb[1] + bb[4]) / 2);
+    pick.edges.z.push(bb[2], bb[5]);
+  }
+  pick.pivot = pick.bboxSelf
+    ? { x: (pick.bboxSelf[0] + pick.bboxSelf[3]) / 2, z: (pick.bboxSelf[1] + pick.bboxSelf[4]) / 2 }
+    : null;
+}
 
 function solidMeshesByName(name){
   const out = [];
@@ -261,13 +320,34 @@ function setSelected(name){
   pick.selected = name || null;
   pick.meshes = name ? solidMeshesByName(name) : [];
   pick.meshes.forEach(m => { if (m.material && m.material.emissive) m.material.emissive.setHex(0x8a6a1a); });
+  if (!name) pick.mode = 'move';
   const el = hud && hud.querySelector('.v3d-sel');
   if (el){
-    el.textContent = name ? name + ' — drag to move · shift-drag to lift · esc to deselect' : '';
+    el.textContent = !name ? ''
+      : pick.mode === 'rotate'
+        ? name + ' · rotate: drag turns in 15° steps (shift 1°) · type degrees, Enter · R back to move · esc'
+        : name + ' · drag moves · shift lifts · ctrl copies · R rotates · type a distance, Enter · esc';
     el.style.display = name ? 'block' : 'none';
   }
   if (pick.onSolidInfo) pick.onSolidInfo(name);
   render();
+}
+
+/* The live readout while a drag is in flight. */
+function dragHud(){
+  const el = hud && hud.querySelector('.v3d-sel');
+  if (!el || !pick.dragging) return;
+  if (pick.mode === 'rotate'){
+    el.textContent = pick.selected + ' · ' + pick.rotDeg + '°' +
+      (pick.typed ? ' · type: ' + pick.typed + '° Enter' : '');
+  } else {
+    const [dx, dy, dz] = pick.moved;
+    el.textContent = pick.selected + (pick.copying ? ' copy' : '') +
+      ' · dx ' + fmtFtIn(dx) + ' · dy ' + fmtFtIn(dy) +
+      (dz ? ' · dz ' + fmtFtIn(dz) : '') +
+      (pick.snapFace ? ' · face' : '') +
+      (pick.typed ? ' · type: ' + pick.typed + ' Enter' : '');
+  }
 }
 
 function ndcFromEvent(ev){
@@ -301,6 +381,69 @@ function dragPoint(ev, vertical){
   return pick.raycaster.ray.intersectPlane(plane, out) ? out : null;
 }
 
+/* A copy drags a translucent ghost; the originals stay put. The ghost
+ * shares geometry with the source and owns only its cloned material. */
+function makeCopyPreview(){
+  pick.copyMeshes = pick.meshes.map(m => {
+    const c = new THREE.Mesh(m.geometry, m.material.clone());
+    c.material.transparent = true;
+    c.material.opacity = 0.7;
+    scene.add(c);
+    return c;
+  });
+}
+
+function removeCopyPreview(){
+  pick.copyMeshes.forEach(c => { scene.remove(c); c.material.dispose(); });
+  pick.copyMeshes = [];
+}
+
+function movingMeshes(){
+  return pick.copying ? pick.copyMeshes : pick.meshes;
+}
+
+function resetPreview(){
+  pick.meshes.forEach(m => { m.position.set(0, 0, 0); m.rotation.y = 0; });
+  removeCopyPreview();
+}
+
+function endDrag(){
+  pick.dragging = false;
+  pick.typed = '';
+  pick.snapFace = false;
+  if (controls) controls.enabled = true;
+}
+
+function cancelDrag(){
+  endDrag();
+  pick.copying = false;
+  resetPreview();
+  setSelected(pick.selected);
+}
+
+function commitMove(delta){
+  const wasCopy = pick.copying;
+  endDrag();
+  pick.copying = false;
+  resetPreview();
+  const [dx, dy, dz] = delta;
+  if (!(dx || dy || dz)){ setSelected(pick.selected); return; }
+  if (wasCopy && pick.onSolidCopy){
+    Promise.resolve(pick.onSolidCopy(pick.selected, dx, dy, dz))
+      .then(n => { if (n) setSelected(n); });
+  } else if (!wasCopy && pick.onSolidMove){
+    pick.onSolidMove(pick.selected, dx, dy, dz);
+  } else render();
+}
+
+function commitRotate(deg){
+  endDrag();
+  pick.copying = false;
+  resetPreview();
+  if (deg && pick.onSolidRotate) pick.onSolidRotate(pick.selected, deg);
+  else setSelected(pick.selected);
+}
+
 function wirePicking(){
   if (canvas._pickWired) return;
   canvas._pickWired = true;
@@ -312,8 +455,13 @@ function wirePicking(){
     if (hit && hit.object.userData.solidName === pick.selected){
       /* Grabbing the selected solid starts a move; the camera stays put. */
       pick.dragging = true;
+      pick.typed = '';
       pick.moved = [0, 0, 0];
+      pick.rotDeg = 0;
       pick.grab = hit.point.clone();
+      collectSnapData(pick.selected);
+      pick.copying = pick.mode === 'move' && (ev.ctrlKey || ev.metaKey);
+      if (pick.copying) makeCopyPreview();
       if (controls) controls.enabled = false;
       canvas.setPointerCapture(ev.pointerId);
     }
@@ -321,29 +469,55 @@ function wirePicking(){
 
   canvas.addEventListener('pointermove', ev => {
     if (!pick.dragging || !pick.grab) return;
+    if (pick.mode === 'rotate'){
+      const snap = ev.shiftKey ? 1 : 15;
+      pick.rotDeg = Math.round(((ev.clientX - pick.down.x) * 0.4) / snap) * snap;
+      /* CAD rotates counterclockwise about +z; in three's Y-up frame that
+       * is a negative Y rotation. World transform T(pos) R means the
+       * pivot stays put when pos = P - R P. */
+      const rad = -pick.rotDeg * Math.PI / 180;
+      const p = pick.pivot || { x: 0, z: 0 };
+      const c = Math.cos(rad), s = Math.sin(rad);
+      const rx = p.x * c + p.z * s;
+      const rz = -p.x * s + p.z * c;
+      pick.meshes.forEach(m => { m.rotation.y = rad; m.position.set(p.x - rx, 0, p.z - rz); });
+      dragHud();
+      render();
+      return;
+    }
     const at = dragPoint(ev, ev.shiftKey);
     if (!at) return;
     const d3 = at.clone().sub(pick.grab);
     /* three (x, y, z) is CAD (x, height, y). */
     const delta = ev.shiftKey ? [0, 0, d3.y] : [d3.x, d3.z, 0];
-    const shift = [delta[0] - pick.moved[0], delta[2] - pick.moved[2], delta[1] - pick.moved[1]];
-    pick.meshes.forEach(m => { m.position.x += shift[0]; m.position.y += shift[1]; m.position.z += shift[2]; });
+    pick.snapFace = false;
+    if (!ev.altKey && pick.bboxSelf){
+      const bb = pick.bboxSelf;
+      if (ev.shiftKey){
+        const sz = snapAxis(delta[2], bb[2], bb[5], pick.edges.z);
+        delta[2] = sz.d;
+        pick.snapFace = sz.face;
+      } else {
+        const sx = snapAxis(delta[0], bb[0], bb[3], pick.edges.x);
+        const sy = snapAxis(delta[1], bb[1], bb[4], pick.edges.y);
+        delta[0] = sx.d;
+        delta[1] = sy.d;
+        pick.snapFace = sx.face || sy.face;
+      }
+    }
     pick.moved = delta;
+    movingMeshes().forEach(m => { m.position.set(delta[0], delta[2], delta[1]); });
+    dragHud();
     render();
   });
 
   canvas.addEventListener('pointerup', ev => {
-    const wasDrag = pick.dragging;
-    pick.dragging = false;
-    if (controls) controls.enabled = true;
-    if (wasDrag){
-      const [dx, dy, dz] = pick.moved;
-      /* Reset the preview offset; the document move re-meshes the scene. */
-      pick.meshes.forEach(m => { m.position.set(0, 0, 0); });
-      if ((dx || dy || dz) && pick.onSolidMove) pick.onSolidMove(pick.selected, dx, dy, dz);
-      else render();
+    if (pick.dragging){
+      if (pick.mode === 'rotate') commitRotate(pick.rotDeg);
+      else commitMove(pick.moved);
       return;
     }
+    if (controls) controls.enabled = true;
     /* No drag: a small click selects what it hit, or clears. */
     if (pick.down && Math.hypot(ev.clientX - pick.down.x, ev.clientY - pick.down.y) < 5){
       const hit = raycastSolid(ev);
@@ -351,9 +525,62 @@ function wirePicking(){
     }
   });
 
+  /* Capture phase, because the app's own document-level key handler runs
+   * first otherwise and does the wrong thing mid-interaction: Escape would
+   * close the whole 3D view under a drag, and a plain letter would focus
+   * the command line, which then swallows ctrl-z for good. Keys the 3D
+   * interaction owns stop here; everything else falls through, so Escape
+   * with nothing selected still returns to the plan. */
   window.addEventListener('keydown', ev => {
-    if (ev.key === 'Escape' && running && pick.selected) setSelected(null);
-  });
+    if (!running) return;
+    const t = ev.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+    if (ev.key === 'Escape'){
+      if (pick.dragging){ cancelDrag(); ev.preventDefault(); ev.stopPropagation(); }
+      else if (pick.selected && pick.mode === 'rotate'){
+        pick.mode = 'move'; setSelected(pick.selected);
+        ev.preventDefault(); ev.stopPropagation();
+      } else if (pick.selected){
+        setSelected(null);
+        ev.preventDefault(); ev.stopPropagation();
+      }
+      return;
+    }
+    if (pick.dragging){
+      /* While a drag is in flight the 2D command line gets nothing. */
+      ev.stopPropagation();
+      if (/^[0-9.\-]$/.test(ev.key)){
+        pick.typed += ev.key;
+        dragHud(); render(); ev.preventDefault();
+      } else if (ev.key === 'Backspace'){
+        pick.typed = pick.typed.slice(0, -1);
+        dragHud(); render(); ev.preventDefault();
+      } else if (ev.key === 'Enter' && pick.typed){
+        const n = parseFloat(pick.typed);
+        if (isFinite(n)){
+          if (pick.mode === 'rotate') commitRotate(n);
+          else {
+            /* The typed number sets the distance along whichever axis the
+             * drag was going; a leading minus reverses the direction. */
+            const [dx, dy, dz] = pick.moved;
+            const ax = Math.abs(dz) >= Math.abs(dx) && Math.abs(dz) >= Math.abs(dy) ? 2
+              : (Math.abs(dy) > Math.abs(dx) ? 1 : 0);
+            const d = [0, 0, 0];
+            d[ax] = ([dx, dy, dz][ax] < 0 ? -1 : 1) * n;
+            commitMove(d);
+          }
+        }
+        ev.preventDefault();
+      }
+      return;
+    }
+    if ((ev.key === 'r' || ev.key === 'R') && pick.selected && !ev.ctrlKey && !ev.metaKey && !ev.altKey){
+      pick.mode = pick.mode === 'rotate' ? 'move' : 'rotate';
+      setSelected(pick.selected);
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+  }, true);
 }
 
 /* The selection survives a re-mesh, because a move rebuilds the scene. */
@@ -400,7 +627,10 @@ export function showView3d(opts){
   wireHud(o);
   pick.onSolidMove = o.onSolidMove || null;
   pick.onSolidInfo = o.onSolidInfo || null;
+  pick.onSolidCopy = o.onSolidCopy || null;
+  pick.onSolidRotate = o.onSolidRotate || null;
   wirePicking();
+  lastSolidsList = o.solids || [];
   const solid = extrudeDrawing(o.entities || [], {
     height: o.height,
     assumed: o.assumed,
@@ -419,6 +649,7 @@ export function showView3d(opts){
 export function syncView3d(opts){
   if (!running) return null;
   const o = opts || {};
+  lastSolidsList = o.solids || [];
   const solid = extrudeDrawing(o.entities || [], {
     height: o.height,
     assumed: o.assumed,
@@ -432,6 +663,7 @@ export function syncView3d(opts){
 }
 
 export function hideView3d(){
+  if (pick.dragging) cancelDrag();
   running = false;
   if (renderer) renderer.setAnimationLoop(null);
   window.removeEventListener('resize', onResize);
