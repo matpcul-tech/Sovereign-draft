@@ -11,6 +11,7 @@ import {
   makeBox, makeCylinder, makeSphere, makeCone
 } from '../core/mesh.js';
 import { pushPullPrism } from '../core/model3d.js';
+import { snapPoints, makeSnapIndex, inferMove } from '../core/snap3d.js';
 import { sunVector } from '../core/sun.js';
 import { samplePath, easeInOut } from '../core/campath.js';
 
@@ -581,6 +582,9 @@ const pick = {
   down: null,
   bboxSelf: null,        /* CAD bbox of the grabbed solid, at grab time */
   edges: null,           /* face and centre positions of every other solid */
+  snapSelf: [],          /* feature points of the grabbed solid */
+  snapIdx: null,         /* grid index over every other solid's points */
+  snapKind: null,        /* 'vertex' | 'midpoint' while an inference holds */
   pivot: null,           /* three-space plan centre for rotation */
   ppFace: -1,
   ppN3: null,
@@ -728,13 +732,20 @@ function collectSnapData(name){
   const self = lastSolidsList.find(s => s && s.name === name);
   pick.bboxSelf = self ? meshBBox(self.mesh) : null;
   pick.edges = { x: [], y: [], z: [] };
+  /* Inference data: the moving solid's feature points, and one grid
+   * index over every other solid's. Corners and ridge ends of pitched
+   * and CSG geometry snap where the bbox planes cannot see. */
+  pick.snapSelf = self ? snapPoints(self.mesh) : [];
+  const targets = [];
   for (const s of lastSolidsList){
     if (!s || s.name === name) continue;
     const bb = meshBBox(s.mesh);
     pick.edges.x.push(bb[0], bb[3], (bb[0] + bb[3]) / 2);
     pick.edges.y.push(bb[1], bb[4], (bb[1] + bb[4]) / 2);
     pick.edges.z.push(bb[2], bb[5]);
+    for (const pt of snapPoints(s.mesh)) targets.push(pt);
   }
+  pick.snapIdx = targets.length ? makeSnapIndex(targets, FACE_TOL) : null;
   pick.pivot = pick.bboxSelf
     ? { x: (pick.bboxSelf[0] + pick.bboxSelf[3]) / 2, z: (pick.bboxSelf[1] + pick.bboxSelf[4]) / 2 }
     : null;
@@ -783,7 +794,7 @@ function dragHud(){
     el.textContent = pick.selected + (pick.copying ? ' copy' : '') +
       ' · dx ' + fmtFtIn(dx) + ' · dy ' + fmtFtIn(dy) +
       (dz ? ' · dz ' + fmtFtIn(dz) : '') +
-      (pick.snapFace ? ' · face' : '') +
+      (pick.snapKind ? ' · ' + pick.snapKind : pick.snapFace ? ' · face' : '') +
       (pick.typed ? ' · type: ' + pick.typed + ' Enter' : '');
   }
 }
@@ -1093,18 +1104,27 @@ function wirePicking(){
     /* three (x, y, z) is CAD (x, height, y). */
     const delta = ev.shiftKey ? [0, 0, d3.y] : [d3.x, d3.z, 0];
     pick.snapFace = false;
+    pick.snapKind = null;
     if (!ev.altKey && pick.bboxSelf){
-      const bb = pick.bboxSelf;
-      if (ev.shiftKey){
-        const sz = snapAxis(delta[2], bb[2], bb[5], pick.edges.z);
-        delta[2] = sz.d;
-        pick.snapFace = sz.face;
+      const hit = pick.snapIdx && pick.snapSelf.length
+        ? inferMove(pick.snapSelf, delta, pick.snapIdx, FACE_TOL, ev.shiftKey ? 'lift' : 'plan')
+        : null;
+      if (hit){
+        delta[0] = hit.delta[0]; delta[1] = hit.delta[1]; delta[2] = hit.delta[2];
+        pick.snapKind = hit.kind;
       } else {
-        const sx = snapAxis(delta[0], bb[0], bb[3], pick.edges.x);
-        const sy = snapAxis(delta[1], bb[1], bb[4], pick.edges.y);
-        delta[0] = sx.d;
-        delta[1] = sy.d;
-        pick.snapFace = sx.face || sy.face;
+        const bb = pick.bboxSelf;
+        if (ev.shiftKey){
+          const sz = snapAxis(delta[2], bb[2], bb[5], pick.edges.z);
+          delta[2] = sz.d;
+          pick.snapFace = sz.face;
+        } else {
+          const sx = snapAxis(delta[0], bb[0], bb[3], pick.edges.x);
+          const sy = snapAxis(delta[1], bb[1], bb[4], pick.edges.y);
+          delta[0] = sx.d;
+          delta[1] = sy.d;
+          pick.snapFace = sx.face || sy.face;
+        }
       }
     }
     pick.moved = delta;
