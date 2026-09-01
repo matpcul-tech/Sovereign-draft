@@ -148,6 +148,21 @@ function solidOpts(){
     entities: state.entities,
     layers: state.layers,
     solids: state.solids,
+    onSolidMove: async (name, dx, dy, dz) => {
+      const { moveSolid, describeSolid, solidByName } = await import('./core/model3d.js');
+      pushUndo();
+      moveSolid(name, dx, dy, dz || 0);
+      afterChange();
+      const rec = solidByName(name);
+      if (rec) toast(describeSolid(rec), 3000);
+      syncOpen3d();
+    },
+    onSolidInfo: async (name) => {
+      if (!name) return;
+      const { describeSolid, solidByName } = await import('./core/model3d.js');
+      const rec = solidByName(name);
+      if (rec) toast(describeSolid(rec), 3000);
+    },
     height: state.storyHeight,
     assumed: state.heightAssumed,
     onHeight: (h) => {
@@ -165,7 +180,7 @@ function solidOpts(){
 }
 
 async function openView3d(){
-  if (!state.entities.length){ toast('Nothing to view in 3D yet'); return; }
+  if (!state.entities.length && !(state.solids || []).length){ toast('Nothing to view in 3D yet'); return; }
   try {
     const m = await loadView3d();
     if (m.isView3dOpen()){

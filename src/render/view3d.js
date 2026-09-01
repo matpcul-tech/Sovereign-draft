@@ -66,7 +66,7 @@ function appendSolidRecords(solid, records){
     const indices = new Uint32Array(m.faces.length * 3);
     for (let i = 0; i < indices.length; i++) indices[i] = i;
     solid.meshes = (solid.meshes || []).concat([{
-      positions, indices, color: '#00d4b8', kind: 'solid', opacity: 1
+      positions, indices, color: '#00d4b8', kind: 'solid', opacity: 1, solidName: rec.name
     }]);
     /* Framing reads solid.bbox and solid.height; a modelled tower must be
      * inside the frame, or the camera parks inside it. */
@@ -111,6 +111,7 @@ function addMeshes(solid){
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = m.kind === 'wall' || m.kind === 'door';
     mesh.receiveShadow = true;
+    if (m.solidName) mesh.userData.solidName = m.solidName;
     group.add(mesh);
   });
   scene.add(group);
@@ -149,8 +150,17 @@ function addMeshes(solid){
 
 function render(){
   if (!running || !renderer || !scene || !camera) return;
-  if (controls) controls.update();
   renderer.render(scene, camera);
+}
+
+/* The animation tick is the only caller of controls.update(). With damping
+ * on, update() dispatches 'change' whenever it moves the camera, and the
+ * 'change' listener renders; if that listener also updated, a large camera
+ * jump would recurse update -> change -> update until the stack ran out,
+ * which is exactly what re-targeting the view after a drag did. */
+function tick(){
+  if (controls) controls.update();
+  render();
 }
 
 function onResize(){
@@ -189,7 +199,8 @@ function ensureDom(){
         <button type="button" id="v3dHplus" title="Raise story">+</button>
         <button type="button" id="v3dGlb">GLB</button>
       </div>
-      <div class="v3d-hint">Drag to orbit · scroll to zoom · two-finger pan</div>`;
+      <div class="v3d-hint">Drag to orbit · scroll to zoom · click a solid to select</div>
+      <div class="v3d-sel" style="display:none;color:#d4a843;font-weight:600;margin-top:4px"></div>`;
     root.appendChild(hud);
   }
   root.style.display = 'block';
@@ -216,6 +227,138 @@ function exportGlb(download){
     const buf = res instanceof ArrayBuffer ? res : new TextEncoder().encode(JSON.stringify(res)).buffer;
     if (download) download('model.glb', buf, 'model/gltf-binary');
   }, (err) => { console.warn(err); }, { binary: true });
+}
+
+/* ---------- touching the model ----------
+ * Click a solid to select it; drag a selected solid to move it in plan,
+ * hold shift to move it vertically. A click on empty space or an unselected
+ * face orbits, so the camera never fights the hand. The live drag moves the
+ * three.js meshes only; the document move commits once on release through
+ * the onSolidMove hook, so the whole drag is one undo step.
+ */
+const pick = {
+  raycaster: null,
+  selected: null,        /* solid name */
+  meshes: [],            /* three meshes of the selected solid */
+  dragging: false,
+  moved: [0, 0, 0],
+  grab: null,            /* three-space point where the drag took hold */
+  down: null,
+  onSolidMove: null,
+  onSolidInfo: null
+};
+
+function solidMeshesByName(name){
+  const out = [];
+  if (!scene) return out;
+  scene.traverse(ch => { if (ch.userData && ch.userData.solidName === name) out.push(ch); });
+  return out;
+}
+
+function setSelected(name){
+  /* Clear the old highlight. */
+  pick.meshes.forEach(m => { if (m.material && m.material.emissive) m.material.emissive.setHex(0x000000); });
+  pick.selected = name || null;
+  pick.meshes = name ? solidMeshesByName(name) : [];
+  pick.meshes.forEach(m => { if (m.material && m.material.emissive) m.material.emissive.setHex(0x8a6a1a); });
+  const el = hud && hud.querySelector('.v3d-sel');
+  if (el){
+    el.textContent = name ? name + ' — drag to move · shift-drag to lift · esc to deselect' : '';
+    el.style.display = name ? 'block' : 'none';
+  }
+  if (pick.onSolidInfo) pick.onSolidInfo(name);
+  render();
+}
+
+function ndcFromEvent(ev){
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: ((ev.clientX - r.left) / r.width) * 2 - 1,
+    y: -((ev.clientY - r.top) / r.height) * 2 + 1
+  };
+}
+
+function raycastSolid(ev){
+  if (!pick.raycaster) pick.raycaster = new THREE.Raycaster();
+  const ndc = ndcFromEvent(ev);
+  pick.raycaster.setFromCamera(ndc, camera);
+  const hits = pick.raycaster.intersectObjects(scene.children, true)
+    .filter(h => h.object.userData && h.object.userData.solidName);
+  return hits.length ? hits[0] : null;
+}
+
+/* Where the drag ray meets the drag plane: the ground plane through the
+ * grab point for a plan move, a camera-facing vertical plane for a lift. */
+function dragPoint(ev, vertical){
+  const ndc = ndcFromEvent(ev);
+  pick.raycaster.setFromCamera(ndc, camera);
+  const plane = vertical
+    ? new THREE.Plane().setFromNormalAndCoplanarPoint(
+        new THREE.Vector3(camera.position.x - pick.grab.x, 0, camera.position.z - pick.grab.z).normalize(),
+        pick.grab)
+    : new THREE.Plane(new THREE.Vector3(0, 1, 0), -pick.grab.y);
+  const out = new THREE.Vector3();
+  return pick.raycaster.ray.intersectPlane(plane, out) ? out : null;
+}
+
+function wirePicking(){
+  if (canvas._pickWired) return;
+  canvas._pickWired = true;
+
+  canvas.addEventListener('pointerdown', ev => {
+    if (ev.button !== 0) return;
+    pick.down = { x: ev.clientX, y: ev.clientY };
+    const hit = raycastSolid(ev);
+    if (hit && hit.object.userData.solidName === pick.selected){
+      /* Grabbing the selected solid starts a move; the camera stays put. */
+      pick.dragging = true;
+      pick.moved = [0, 0, 0];
+      pick.grab = hit.point.clone();
+      if (controls) controls.enabled = false;
+      canvas.setPointerCapture(ev.pointerId);
+    }
+  });
+
+  canvas.addEventListener('pointermove', ev => {
+    if (!pick.dragging || !pick.grab) return;
+    const at = dragPoint(ev, ev.shiftKey);
+    if (!at) return;
+    const d3 = at.clone().sub(pick.grab);
+    /* three (x, y, z) is CAD (x, height, y). */
+    const delta = ev.shiftKey ? [0, 0, d3.y] : [d3.x, d3.z, 0];
+    const shift = [delta[0] - pick.moved[0], delta[2] - pick.moved[2], delta[1] - pick.moved[1]];
+    pick.meshes.forEach(m => { m.position.x += shift[0]; m.position.y += shift[1]; m.position.z += shift[2]; });
+    pick.moved = delta;
+    render();
+  });
+
+  canvas.addEventListener('pointerup', ev => {
+    const wasDrag = pick.dragging;
+    pick.dragging = false;
+    if (controls) controls.enabled = true;
+    if (wasDrag){
+      const [dx, dy, dz] = pick.moved;
+      /* Reset the preview offset; the document move re-meshes the scene. */
+      pick.meshes.forEach(m => { m.position.set(0, 0, 0); });
+      if ((dx || dy || dz) && pick.onSolidMove) pick.onSolidMove(pick.selected, dx, dy, dz);
+      else render();
+      return;
+    }
+    /* No drag: a small click selects what it hit, or clears. */
+    if (pick.down && Math.hypot(ev.clientX - pick.down.x, ev.clientY - pick.down.y) < 5){
+      const hit = raycastSolid(ev);
+      setSelected(hit ? hit.object.userData.solidName : null);
+    }
+  });
+
+  window.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && running && pick.selected) setSelected(null);
+  });
+}
+
+/* The selection survives a re-mesh, because a move rebuilds the scene. */
+function reapplySelection(){
+  if (pick.selected) setSelected(pick.selected);
 }
 
 export function isView3dOpen(){
@@ -255,6 +398,9 @@ export function showView3d(opts){
     controls.addEventListener('change', render);
   }
   wireHud(o);
+  pick.onSolidMove = o.onSolidMove || null;
+  pick.onSolidInfo = o.onSolidInfo || null;
+  wirePicking();
   const solid = extrudeDrawing(o.entities || [], {
     height: o.height,
     assumed: o.assumed,
@@ -262,9 +408,10 @@ export function showView3d(opts){
   });
   appendSolidRecords(solid, o.solids);
   addMeshes(solid);
+  reapplySelection();
   running = true;
   onResize();
-  renderer.setAnimationLoop(render);
+  renderer.setAnimationLoop(tick);
   window.addEventListener('resize', onResize);
   return solid;
 }
@@ -279,6 +426,7 @@ export function syncView3d(opts){
   });
   appendSolidRecords(solid, o.solids);
   addMeshes(solid);
+  reapplySelection();
   render();
   return solid;
 }
