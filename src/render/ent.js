@@ -9,6 +9,7 @@ import { splinePoints, SPLINE_TOL } from '../core/spline.js';
 import { polyOutline } from '../core/bulge.js';
 import { mtextLayout, mtextCorners } from '../core/mtext.js';
 import { styleFor, textOpts, fontStack } from '../core/textstyle.js';
+import { effTextSize } from '../core/annoscale.js';
 import { composeFont } from '../core/textmetrics.js';
 import { flattenEnt, spanXline, isComposite, expandComposite} from '../core/entities.js';
 import { tableFrags } from '../core/schedule.js';
@@ -35,7 +36,7 @@ function applyStroke(c, e, color, sel, scl){
   c.setLineDash(dash);
 }
 
-export function drawEnt(c, e, color, sel, toS, scl, bg, styles){
+export function drawEnt(c, e, color, sel, toS, scl, bg, styles, annoPpf){
   if (isComposite(e)){
     expandComposite(e).forEach(f => drawEnt(c, f, color, sel, toS, scl, bg));
     return;
@@ -104,7 +105,7 @@ export function drawEnt(c, e, color, sel, toS, scl, bg, styles){
     const q = toS(e.x, e.y);
     c.setLineDash([]);
     const ts = styleFor(e, styles);
-    c.font = composeFont(Math.max(e.size * scl, 6), ts && ts.bold ? 600 : null, fontStack(ts));
+    c.font = composeFont(Math.max(effTextSize(e, annoPpf) * scl, 6), ts && ts.bold ? 600 : null, fontStack(ts));
     c.textBaseline = 'alphabetic'; c.textAlign = 'left';
     if ('fontKerning' in c) c.fontKerning = 'none';
     if (e.rot){
@@ -119,7 +120,10 @@ export function drawEnt(c, e, color, sel, toS, scl, bg, styles){
   }
   else if (e.type === 'mtext'){
     c.setLineDash([]);
-    const px = Math.max(e.size * scl, 6);
+    /* An annotative block lays out at its effective model height, so the
+     * wrap on screen is the wrap the sheet gets at the working scale. */
+    const eff = e.anno ? Object.assign({}, e, { size: effTextSize(e, annoPpf), width: e.width > 0 ? e.width * 72 / (annoPpf || 18) : e.width }) : e;
+    const px = Math.max(eff.size * scl, 6);
     const st = styleFor(e, styles);
     c.font = composeFont(px, st && st.bold ? 600 : null, fontStack(st));
     c.textBaseline = 'alphabetic'; c.textAlign = 'left';
@@ -128,7 +132,7 @@ export function drawEnt(c, e, color, sel, toS, scl, bg, styles){
     /* Wrap against the font the canvas will actually draw, so what is on
      * screen breaks where the screen says it breaks. */
     const mo = textOpts(e, styles, c, px);
-    for (const l of mtextLayout(e, mo)){
+    for (const l of mtextLayout(eff, mo)){
       const q = toS(l.x, l.y);
       if (e.rot){
         c.save(); c.translate(q[0], q[1]); c.rotate(-e.rot * Math.PI / 180);
@@ -139,7 +143,7 @@ export function drawEnt(c, e, color, sel, toS, scl, bg, styles){
     }
     if (sel){
       c.setLineDash([4, 3]);
-      strokePathOn(c, toS, mtextCorners(e, mo), true);
+      strokePathOn(c, toS, mtextCorners(eff, mo), true);
       c.setLineDash([]);
     }
   }

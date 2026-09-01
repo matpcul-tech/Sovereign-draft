@@ -39,6 +39,7 @@ export function serializeProject(state, pretty){
     plotStyles: state.plotStyles || defaultPlotStyles(),
     currentPlotStyle: state.currentPlotStyle || 'ISO',
     layerStates: state.layerStates || [],
+    annoPpf: state.annoPpf || 18,
     layouts: state.layouts,
     currentLayout: state.currentLayout,
     space: state.space,
@@ -68,6 +69,7 @@ export function validateProject(o){
     plotStyles: validatePlotStyles(o.plotStyles),
     currentPlotStyle: o.currentPlotStyle || 'ISO',
     layerStates: validateLayerStates(o.layerStates),
+    annoPpf: Number(o.annoPpf) > 0 ? Number(o.annoPpf) : 18,
     /* Structural migration only. Entities are already true size and are
      * passed through untouched. */
     schemaVersion: Number(o.v) || 1,
@@ -102,6 +104,7 @@ export function applyProject(state, p){
   if (p.plotStyles) state.plotStyles = p.plotStyles;
   if (p.currentPlotStyle) state.currentPlotStyle = p.currentPlotStyle;
   state.layerStates = p.layerStates || [];
+  state.annoPpf = p.annoPpf || 18;
   if (p.layouts) state.layouts = p.layouts;
   if (p.currentLayout) state.currentLayout = p.currentLayout;
   if (p.space) state.space = p.space;

@@ -101,7 +101,9 @@ export const COMMANDS = {
   EXTRUDE: { aliases: ['EXTRUDE', 'EXT'],               tool: null,     action: 'extrude3d' },
   REVOLVE: { aliases: ['REVOLVE', 'REV'],               tool: null,     action: 'revolve3d' },
   LOFT:    { aliases: ['LOFT'],                         tool: null,     action: 'loft3d' },
-  SOLIDCLR:{ aliases: ['SOLIDCLR', 'CLEARSOLIDS'],      tool: null,     action: 'clearsolids' }
+  SOLIDCLR:{ aliases: ['SOLIDCLR', 'CLEARSOLIDS'],      tool: null,     action: 'clearsolids' },
+  ANNO:    { aliases: ['ANNO', 'ANNOTATIVE'],           tool: null,     action: 'anno' },
+  ANNOSCALE:{ aliases: ['ANNOSCALE', 'ASCALE'],         tool: null,     action: 'annoscale' }
 };
 
 const ALIAS = {};

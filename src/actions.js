@@ -23,6 +23,7 @@ import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, 
 import { plotStyleByName } from './io/plotstyle.js';
 import { modelToPaper, viewportRot } from './core/layout.js';
 import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight } from './core/mesh.js';
+import { toAnno, fromAnno, parseScaleToPpf } from './core/annoscale.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
 import { makeIndexCache, queryPoint, queryBox, worthIndexing } from './core/spatial.js';
 import { alignedDim, continueDim, baselineDim, applyStyleToDim, angularDim, radiusDim, diameterDim, makeLeader } from './core/dimStyle.js';
@@ -207,6 +208,28 @@ export function clearSolids(){
   state.solids = [];
   afterChange();
   toast(n + ' solid' + (n === 1 ? '' : 's') + ' cleared');
+}
+
+/* ---------- annotative text ---------- */
+export function toggleAnnotative(){
+  const ms = selMembers().filter(e => e.type === 'text' || e.type === 'mtext');
+  if (!ms.length){ toast('Select text or notes to make annotative'); return; }
+  pushUndo(undoScope(ms.map(e => e.id)));
+  const on = ms.some(e => !e.anno);
+  /* Converting at the working scale keeps the on-screen size unchanged, so
+   * the toggle changes what the height means, never how it looks today. */
+  ms.forEach(e => { if (on) toAnno(e, state.annoPpf); else fromAnno(e, state.annoPpf); });
+  afterChange();
+  toast(ms.length + (on ? ' now annotative: height is paper inches at every scale' : ' back to model height'));
+}
+
+export function setAnnoScale(rest){
+  const ppf = parseScaleToPpf(rest);
+  if (!ppf){ toast('ANNOSCALE wants a scale like 1/4 or 1/8, or a points-per-foot number'); return; }
+  pushUndo();
+  state.annoPpf = ppf;
+  afterChange();
+  toast('Working scale ' + (ppf % 3 === 0 && ppf <= 72 ? (ppf / 72) + '\" = 1\'-0\"' : ppf + ' pt/ft') + ': annotative text re-sized on screen');
 }
 
 /* ---------- viewport twist and clipping ----------

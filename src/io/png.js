@@ -5,7 +5,7 @@ import { membersBBox } from '../core/entities.js';
 import { clamp } from '../core/geometry.js';
 import { drawEnt } from '../render/ent.js';
 
-export function renderPNG(entities, layerByName, projectName, styles){
+export function renderPNG(entities, layerByName, projectName, styles, annoPpf){
   const bb = membersBBox(entities);
   const wft = Math.max(bb[2] - bb[0], 1) + 4, hft = Math.max(bb[3] - bb[1], 1) + 4;
   const ppf = clamp(2200 / wft, 8, 60);
@@ -19,7 +19,7 @@ export function renderPNG(entities, layerByName, projectName, styles){
   for (const e of entities){
     const L = layerByName(e.layer);
     if (L && !L.visible) continue;
-    drawEnt(oc, e, L ? L.color : '#e8e4dd', false, toS, ppf, undefined, styles);
+    drawEnt(oc, e, L ? L.color : '#e8e4dd', false, toS, ppf, undefined, styles, annoPpf);
   }
   const ty = H - TB;
   oc.fillStyle = '#0b1830'; oc.fillRect(0, ty, W, TB);

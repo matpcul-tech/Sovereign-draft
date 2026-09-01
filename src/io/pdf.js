@@ -7,6 +7,7 @@ import { fmtFtIn } from '../core/format.js';
 import { membersBBox, explodeForIO } from '../core/entities.js';
 import { hatchLines, hatchPlan, ppfToScaleFactor } from '../core/hatch.js';
 import { polyOutline } from '../core/bulge.js';
+import { paperTextPts } from '../core/annoscale.js';
 import { mtextLayout } from '../core/mtext.js';
 import { styleFor, metricsOpts } from '../core/textstyle.js';
 import { helveticaWidth } from '../core/textmetrics.js';
@@ -207,14 +208,14 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts,
        * model height for entities authored before the document model, so
        * existing drawings export byte for byte as they did. Phase C moves
        * new text onto the paper value once views can differ in scale. */
-      const th = e.paperTextH ? e.paperTextH : Math.max(e.size * ppf, 4);
+      const th = e.paperTextH ? e.paperTextH : paperTextPts(e, ppf);
       textAt(TX(e.x), TY(e.y), th, e.content || '', 0, false, 0.1);
     }
     else if (e.type === 'mtext'){
       /* No ctx here, so the wrap uses the AFM metrics, which are the metrics
        * of the font this writer embeds. That is the authority: the canvas
        * measures against the same widths for exactly this reason. */
-      const th = e.paperTextH ? e.paperTextH : Math.max(e.size * ppf, 4);
+      const th = e.paperTextH ? e.paperTextH : paperTextPts(e, ppf);
       /* textAt takes radians. */
       const ang = (e.rot || 0) * Math.PI / 180;
       const st = styleFor(e, styles);

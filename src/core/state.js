@@ -54,6 +54,7 @@ export const state = {
   layerStates: [],
   plotFont: null,
   solids: [],
+  annoPpf: 18,
   userBlocks: [],
   idSeq: 1,
   gSeq: 1,
@@ -158,6 +159,7 @@ function snapshot(){
     plotStyles: deep(state.plotStyles || []),
     layerStates: deep(state.layerStates || []),
     currentPlotStyle: state.currentPlotStyle,
+    annoPpf: state.annoPpf,
     layouts: deep(state.layouts),
     currentDimStyle: state.currentDimStyle,
     currentLayout: state.currentLayout,
@@ -174,6 +176,7 @@ function restore(s){
   if (s.plotStyles) state.plotStyles = s.plotStyles;
   if (s.layerStates) state.layerStates = s.layerStates;
   if (s.currentPlotStyle) state.currentPlotStyle = s.currentPlotStyle;
+  if (s.annoPpf) state.annoPpf = s.annoPpf;
   if (s.layouts) state.layouts = s.layouts;
   if (s.currentDimStyle) state.currentDimStyle = s.currentDimStyle;
   if (s.currentLayout) state.currentLayout = s.currentLayout;
