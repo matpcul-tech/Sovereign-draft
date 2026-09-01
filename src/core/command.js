@@ -120,6 +120,8 @@ export const COMMANDS = {
   SUN:     { aliases: ['SUN', 'SHADOW'],                tool: null,     action: 'sun' },
   MAT:     { aliases: ['MAT', 'MATERIAL'],              tool: null,     action: 'mat' },
   RENDER:  { aliases: ['RENDER'],                       tool: null,     action: 'render' },
+  VIEW:    { aliases: ['VIEW', 'VIEWS'],                tool: null,     action: 'view3dcam' },
+  TURNTABLE:{ aliases: ['TURNTABLE', 'ORBITVID'],       tool: null,     action: 'turntable' },
   DRAWINGS:{ aliases: ['DRAWINGS', 'DWGSET'],           tool: null,     action: 'drawings' },
   SWEEP:   { aliases: ['SWEEP'],                        tool: null,     action: 'sweep3d' },
   U3D:     { aliases: ['U3D', 'UNION3D'],               tool: null,     action: 'bool3d:union' },

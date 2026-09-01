@@ -55,6 +55,7 @@ export const state = {
   plotFont: null,
   materials: {},
   sun: null,
+  views3d: [],
   solids: [],
   tool3d: 'orbit',
   annoPpf: 18,
@@ -166,6 +167,7 @@ function snapshot(){
     annoPpf: state.annoPpf,
     materials: deep(state.materials || {}),
     sun: state.sun ? { ...state.sun } : null,
+    views3d: deep(state.views3d || []),
     layouts: deep(state.layouts),
     currentDimStyle: state.currentDimStyle,
     currentLayout: state.currentLayout,
@@ -185,6 +187,7 @@ function restore(s){
   if (s.annoPpf) state.annoPpf = s.annoPpf;
   if (s.materials) state.materials = s.materials;
   if ('sun' in s) state.sun = s.sun;
+  if (s.views3d) state.views3d = s.views3d;
   if (s.layouts) state.layouts = s.layouts;
   if (s.currentDimStyle) state.currentDimStyle = s.currentDimStyle;
   if (s.currentLayout) state.currentLayout = s.currentLayout;

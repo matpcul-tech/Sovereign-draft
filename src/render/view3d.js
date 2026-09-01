@@ -144,9 +144,37 @@ function applySun(solid){
   }
 }
 
+/* The camera as data, for saved views. */
+export function getCamera3d(){
+  if (!camera || !controls) return null;
+  return {
+    pos: [camera.position.x, camera.position.z, camera.position.y],
+    target: [controls.target.x, controls.target.z, controls.target.y],
+    fov: camera.fov
+  };
+}
+
+export function setCamera3d(v){
+  if (!camera || !controls || !v) return false;
+  /* Damping keeps applying leftover drag velocity on later ticks, which
+   * would drift the restored camera. Flush it with damping off first. */
+  controls.enableDamping = false;
+  controls.update();
+  camera.position.set(v.pos[0], v.pos[2], v.pos[1]);
+  controls.target.set(v.target[0], v.target[2], v.target[1]);
+  camera.fov = v.fov || 50;
+  camera.updateProjectionMatrix();
+  controls.update();
+  controls.enableDamping = true;
+  render();
+  return true;
+}
+
 /* A still frame at print resolution: the same scene through an offscreen
- * renderer, returned as a PNG data URL. */
-export function renderStill(width){
+ * renderer, returned as a PNG data URL. With level=true the camera is made
+ * horizontal and the framing recovered with a film offset, the two point
+ * perspective of an architectural rendering: verticals stay vertical. */
+export function renderStill(width, level){
   if (!scene || !camera) return null;
   const w = Math.max(320, Math.min(4096, Math.round(Number(width) || 1920)));
   const h = Math.round(w * 9 / 16);
@@ -158,11 +186,69 @@ export function renderStill(width){
   r.shadowMap.type = THREE.PCFSoftShadowMap;
   const cam = camera.clone();
   cam.aspect = w / h;
+  if (level && controls){
+    /* Look horizontally from the same eye, then shift the film to bring
+     * the original target back into frame. */
+    const eye = camera.position.clone();
+    const tgt = controls.target.clone();
+    const flat = tgt.clone(); flat.y = eye.y;
+    cam.position.copy(eye);
+    cam.up.set(0, 1, 0);
+    cam.lookAt(flat);
+    const dist = eye.distanceTo(flat) || 1;
+    const rise = tgt.y - eye.y;
+    const halfFilm = Math.tan((cam.fov / 2) * Math.PI / 180) * dist;
+    const shift = (rise / (2 * halfFilm)) * h;
+    cam.setViewOffset(w, h, 0, Math.max(-h, Math.min(h, -shift)), w, h);
+  }
   cam.updateProjectionMatrix();
   r.render(scene, cam);
   const url = cv.toDataURL('image/png');
   r.dispose();
   return { url, w, h };
+}
+
+/* A turntable: the camera orbits the target once while the live canvas is
+ * captured to WebM. Falls back to null where MediaRecorder cannot record
+ * a canvas stream. */
+export function renderTurntable(seconds){
+  if (!canvas || !camera || !controls || typeof MediaRecorder === 'undefined') return Promise.resolve(null);
+  const secs = Math.max(2, Math.min(20, Number(seconds) || 6));
+  let stream;
+  try { stream = canvas.captureStream(30); } catch (e){ return Promise.resolve(null); }
+  let rec;
+  try { rec = new MediaRecorder(stream, { mimeType: 'video/webm' }); }
+  catch (e){
+    try { rec = new MediaRecorder(stream); } catch (e2){ return Promise.resolve(null); }
+  }
+  const chunks = [];
+  rec.ondataavailable = ev => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+  const eye0 = camera.position.clone();
+  const tgt = controls.target.clone();
+  const r0 = Math.hypot(eye0.x - tgt.x, eye0.z - tgt.z);
+  const y0 = eye0.y;
+  const a0 = Math.atan2(eye0.z - tgt.z, eye0.x - tgt.x);
+  const t0 = performance.now();
+  return new Promise(resolve => {
+    const spin = () => {
+      const t = (performance.now() - t0) / (secs * 1000);
+      if (t >= 1){
+        camera.position.copy(eye0);
+        controls.update();
+        render();
+        rec.stop();
+        return;
+      }
+      const a = a0 + t * Math.PI * 2;
+      camera.position.set(tgt.x + r0 * Math.cos(a), y0, tgt.z + r0 * Math.sin(a));
+      camera.lookAt(tgt);
+      render();
+      requestAnimationFrame(spin);
+    };
+    rec.onstop = () => resolve(chunks.length ? new Blob(chunks, { type: 'video/webm' }) : null);
+    rec.start(200);
+    requestAnimationFrame(spin);
+  });
 }
 
 function addMeshes(solid){

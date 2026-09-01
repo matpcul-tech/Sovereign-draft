@@ -45,6 +45,7 @@ export function serializeProject(state, pretty){
     scripts: state.scripts || [],
     materials: state.materials || {},
     sun: state.sun || null,
+    views3d: state.views3d || [],
     solids: serializeSolids(state.solids),
     layouts: state.layouts,
     currentLayout: state.currentLayout,
@@ -79,6 +80,7 @@ export function validateProject(o){
     scripts: validateScripts(o.scripts),
     materials: validateMaterials(o.materials),
     sun: validateSun(o.sun),
+    views3d: validateViews3d(o.views3d),
     solids: validateSolids(o.solids),
     /* Structural migration only. Entities are already true size and are
      * passed through untouched. */
@@ -121,6 +123,7 @@ export function applyProject(state, p){
   state.annoPpf = p.annoPpf || 18;
   state.materials = p.materials || {};
   state.sun = p.sun || null;
+  state.views3d = p.views3d || [];
   state.scripts = p.scripts || [];
   state.solids = p.solids || [];
   if (p.layouts) state.layouts = p.layouts;
@@ -192,4 +195,25 @@ export function validateSun(sun){
     hour: Number.isFinite(h) ? Math.max(0, Math.min(24, h)) : 12,
     lat: Number.isFinite(lat) ? Math.max(-90, Math.min(90, lat)) : 40
   };
+}
+
+export function validateViews3d(list){
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const v of list.slice(0, 50)){
+    if (!v || typeof v !== 'object') continue;
+    const name = String(v.name || '').toUpperCase().slice(0, 24);
+    if (!name || seen.has(name)) continue;
+    const num3 = a => Array.isArray(a) && a.length === 3 && a.every(x => Number.isFinite(Number(x)));
+    if (!num3(v.pos) || !num3(v.target)) continue;
+    seen.add(name);
+    out.push({
+      name,
+      pos: v.pos.map(Number),
+      target: v.target.map(Number),
+      fov: Number.isFinite(Number(v.fov)) ? Math.max(10, Math.min(120, Number(v.fov))) : 50
+    });
+  }
+  return out;
 }

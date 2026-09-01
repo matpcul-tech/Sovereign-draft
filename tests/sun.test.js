@@ -85,10 +85,43 @@ describe('appearance is document data', () => {
     expect(validateProject({ ...JSON.parse(serializeProject(state, true)), materials: { X: { color: 'red' } }, sun: { month: 99 } }).sun).toBe(null);
   });
 
+  it('saved 3D views round trip and junk views are dropped', async () => {
+    const { state, defaultLayers } = await import('../src/core/state.js');
+    const { serializeProject, validateProject, applyProject } = await import('../src/io/project.js');
+    state.entities = [];
+    state.layers = defaultLayers();
+    state.solids = [];
+    state.idSeq = 1;
+    state.views3d = [
+      { name: 'HERO', pos: [60, -40, 18], target: [12, 12, 6], fov: 50 },
+      { name: 'AERIAL', pos: [80, 80, 90], target: [12, 12, 0], fov: 35 },
+    ];
+    const p = validateProject(JSON.parse(serializeProject(state, true)));
+    expect(p.views3d.length).toBe(2);
+    expect(p.views3d[0].pos).toEqual([60, -40, 18]);
+    const target = { ...state, views3d: [] };
+    applyProject(target, p);
+    expect(target.views3d[1].name).toBe('AERIAL');
+    expect(target.views3d[1].fov).toBeCloseTo(35, 9);
+    /* Bad positions, duplicate names and wild fov never make it into the file. */
+    const junk = validateProject({ ...JSON.parse(serializeProject(state, true)), views3d: [
+      { name: 'ok', pos: [1, 2, 3], target: [0, 0, 0], fov: 500 },
+      { name: 'OK', pos: [4, 5, 6], target: [0, 0, 0], fov: 50 },
+      { name: 'BAD', pos: [1, 'x', 3], target: [0, 0, 0], fov: 50 },
+      { pos: [1, 2, 3], target: [0, 0, 0], fov: 50 },
+    ] });
+    expect(junk.views3d.length).toBe(1);
+    expect(junk.views3d[0].name).toBe('OK');
+    expect(junk.views3d[0].fov).toBe(120);
+  });
+
   it('the commands exist', async () => {
     const { lookupCommand } = await import('../src/core/command.js');
     expect(lookupCommand('SUN').action).toBe('sun');
     expect(lookupCommand('MAT').action).toBe('mat');
     expect(lookupCommand('RENDER').action).toBe('render');
+    expect(lookupCommand('VIEW').action).toBe('view3dcam');
+    expect(lookupCommand('VIEWS').action).toBe('view3dcam');
+    expect(lookupCommand('TURNTABLE').action).toBe('turntable');
   });
 });

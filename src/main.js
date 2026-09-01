@@ -1318,12 +1318,40 @@ function wireUi(){
     } catch (e){ /* ignore */ }
   });
   document.addEventListener('sd-view2d', () => closeView3d());
+  document.addEventListener('sd-view-save', async ev => {
+    const m = await loadView3d();
+    if (!m.isView3dOpen()){ toast('Open 3D first, frame the shot, then VIEW SAVE'); return; }
+    const cam = m.getCamera3d();
+    if (!cam){ toast('No camera to save'); return; }
+    pushUndo();
+    const name = ev.detail.name;
+    state.views3d = (state.views3d || []).filter(v => v.name !== name).concat([{ name, ...cam }]);
+    afterChange();
+    toast('View ' + name + ' saved with the project');
+  });
+  document.addEventListener('sd-view-go', async ev => {
+    const v = (state.views3d || []).find(x => x.name === ev.detail.name);
+    if (!v){ toast('No view ' + ev.detail.name + '. VIEWS lists them'); return; }
+    const m = await loadView3d();
+    if (!m.isView3dOpen()) await openView3d();
+    if (m.setCamera3d(v)) toast('View ' + v.name);
+  });
+  document.addEventListener('sd-turntable', async ev => {
+    const m = await loadView3d();
+    if (!m.isView3dOpen()) await openView3d();
+    if (!m.isView3dOpen()){ toast('Nothing to orbit: model something first'); return; }
+    toast('Recording one orbit...');
+    const blob = await m.renderTurntable(ev.detail && ev.detail.seconds);
+    if (!blob){ toast('This browser cannot record the canvas'); return; }
+    download(fileSlug() + '-turntable.webm', blob, 'video/webm');
+    toast('Turntable saved, ' + Math.round(blob.size / 1024) + ' KB webm');
+  });
   document.addEventListener('sd-render', async ev => {
     try {
       const m = await loadView3d();
       if (!m.isView3dOpen()) await openView3d();
       if (!m.isView3dOpen()){ toast('Nothing to render: model something first'); return; }
-      const res = m.renderStill(ev.detail && ev.detail.width);
+      const res = m.renderStill(ev.detail && ev.detail.width, ev.detail && ev.detail.level);
       if (!res){ toast('Render failed'); return; }
       if (ev.detail && ev.detail.place){
         /* The rendering joins the drawing as an image beside everything

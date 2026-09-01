@@ -387,10 +387,42 @@ export function setMaterial(rest){
 export function requestRender(rest){
   const toks = String(rest || '').trim().split(/\s+/).filter(Boolean);
   const place = toks.some(t => /^PLACE$/i.test(t));
+  const level = toks.some(t => /^LEVEL$/i.test(t));
   const w = Number(toks.find(t => Number.isFinite(Number(t)))) || 1920;
   try {
-    document.dispatchEvent(new CustomEvent('sd-render', { detail: { width: Math.max(320, Math.min(4096, w)), place } }));
+    document.dispatchEvent(new CustomEvent('sd-render', { detail: { width: Math.max(320, Math.min(4096, w)), place, level } }));
   } catch (e){ toast('RENDER needs the browser'); }
+}
+
+export function manageView3dCam(rest){
+  const toks = String(rest || '').trim().split(/\s+/).filter(Boolean);
+  if (!toks.length || /^LIST$/i.test(toks[0])){
+    const names = (state.views3d || []).map(v => v.name);
+    toast(names.length ? 'Views: ' + names.join(', ') : 'No saved views. VIEW SAVE NAME stores the 3D camera');
+    return;
+  }
+  if (/^SAVE$/i.test(toks[0])){
+    const name = (toks[1] || '').toUpperCase().slice(0, 24);
+    if (!name){ toast('VIEW SAVE NAME'); return; }
+    document.dispatchEvent(new CustomEvent('sd-view-save', { detail: { name } }));
+    return;
+  }
+  if (/^(DEL|DELETE)$/i.test(toks[0])){
+    const name = (toks[1] || '').toUpperCase();
+    pushUndo();
+    state.views3d = (state.views3d || []).filter(v => v.name !== name);
+    afterChange();
+    toast(name + ' dropped');
+    return;
+  }
+  document.dispatchEvent(new CustomEvent('sd-view-go', { detail: { name: toks[0].toUpperCase() } }));
+}
+
+export function requestTurntable(rest){
+  const secs = Number(String(rest || '').trim()) || 6;
+  try {
+    document.dispatchEvent(new CustomEvent('sd-turntable', { detail: { seconds: secs } }));
+  } catch (e){ toast('TURNTABLE needs the browser'); }
 }
 
 export function setTool3d(name){
