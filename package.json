@@ -1,8 +1,8 @@
 {
   "name": "sovereign-draft",
   "private": false,
-  "version": "1.7.0",
-  "description": "Issued 2D, free, DXF/DWG out. Mesh 3D: extrude, revolve, primitives, CSG, STL/OBJ.",
+  "version": "1.8.0",
+  "description": "Issued 2D, touchable 3D, free. One plan becomes a documented building: model, stack, roof with valleys, dormers, drawing set on numbered sheets, takeoff. Exact mesh CSG, push-pull, DXF/DWG out.",
   "type": "module",
   "main": "./src/api.js",
   "exports": {

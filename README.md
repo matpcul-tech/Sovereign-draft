@@ -1,12 +1,12 @@
 # Sovereign Draft
 
-**Issued 2D, free, DXF/DWG out.**
+**Issued 2D, touchable 3D, free. One plan becomes a documented building.**
 
-[![CI](https://github.com/matpcul-tech/Sovereign-draft/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/matpcul-tech/Sovereign-draft/actions/workflows/ci.yml) · v1.7.0 · MIT · no account · no seat
+[![CI](https://github.com/matpcul-tech/Sovereign-draft/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/matpcul-tech/Sovereign-draft/actions/workflows/ci.yml) · v1.8.0 · MIT · no account · no seat
 
 The CAD you open without a license — and shouldn’t need one.
 
-Browser 2D CAD for the 80% of drawings that are plans, elevations, and diagrams. Decimal feet, Y-up, dimensions to the nearest ½″. JSON lives in git next to the code. A sentence can become a sheet set. The drawing stays on the device until you export.
+Browser CAD: 2D drafting for the 80% of drawings that are plans, elevations, and diagrams, plus a mesh 3D kernel where every volume is exact. Decimal feet, Y-up, dimensions to the nearest ½″. JSON lives in git next to the code. A sentence can become a sheet set; four commands turn a floor plan into a dormered multi-story building with a numbered drawing set. The drawing stays on the device until you export.
 
 This is how we democratize CAD: the cheapest go-to for a developer who needs a real issued sheet, not a $2,000 seat.
 
@@ -46,7 +46,11 @@ Starters in `examples/`:
 | Associative dims that follow stretch / move | |
 | R2000 DXF AutoCAD Open path + DWG this app reopens | ODA-grade DWG every AutoCAD opens without Recover |
 | Cutting planes (`SE`) that hatch a true section + a sheet | Pretending 8'-0" is a known story height |
-| 3D modelling: `BOX` `CYL` `EXTRUDE` `REVOLVE` `LOFT` `SWEEP`, CSG, STL/OBJ/glTF | B-rep, NURBS, Parasolid, STEP, or a PE stamp |
+| 3D modelling: `BOX` `CYL` `EXTRUDE` `REVOLVE` `LOFT` `SWEEP`, CSG, push-pull, STL in/out, OBJ/glTF | B-rep, NURBS, Parasolid, STEP, or a PE stamp |
+| One model, whole set: `MODEL` `STACK` `ROOF` `DORMER` `DRAWINGS SHEETS` | Parametric BIM objects or a worksharing server |
+| Generated plans per storey, roof plan, 4 hidden-line elevations, sections that see beyond the cut | Hidden line removal of every edge of every mass |
+| Wing roofs with real valleys over L / T / U plans; gabled dormers by point and width | A framing package |
+| Model takeoff (`QTO`): footprint, surface, volume per solid, straight from the meshes | A cost estimate |
 | Feature control frames, datums, ± tolerances (`FCF` / `DATUM`) | A frame without a number |
 | Isolated detail sheets (`DET`) — a tighter viewport, not a copy | |
 | Grok drafts for free (optional Anthropic fallback) | |
@@ -85,10 +89,17 @@ Copy share link (Sheet menu) puts a gzipped drawing in the URL hash. No server. 
 | `SE` | Section cut | `DET` | Isolated detail |
 | `3D` | Model in 3D | `HT` | Story height |
 | `BOX` | Box solid | `CYL` | Cylinder |
+| `SPHERE` / `CONE` / `WEDGE` | More primitives | `SWEEP` | Sweep a section along a path |
 | `EXTRUDE` | Extrude sketch | `REVOLVE` | Revolve profile |
 | `U3D` / `SUB3D` | Union / subtract | `DWGOUT` | Export DWG |
+| `MODEL` | Plan becomes named solids | `STACK n` | Replicate the storey upward |
+| `ROOF HIP 6` | Roof the massing, valleys included | `DORMER x y w` | Gabled dormer on the slope |
+| `DRAWINGS HIP 6 SHEETS` | The whole set on numbered sheets | `PLANS` | A cut plan per storey |
+| `ELEV S` | Hidden-line elevation | `SLICE NAME y 12` | Section, poche and beyond |
+| `ROOFPLAN` | Ridges, hips, valleys from above | `QTO` | Model takeoff table |
 | `2D` | Back to plan | `FCF` | Feature control frame |
 | `DATUM` | Datum feature | `SF` | Surface finish |
+| `JS` | Script sheet (`sd.*` API) | `RUN` | Run a saved script |
 
 **Wall mode** draws two parallel faces + caps. Thickness chip: 4″ / 6″ / 8″. Walls **heal as you draw** — L-corners miter and T-junctions recut automatically. Doors and windows are **dynamic INSERT blocks**: stretch the width grip, tap the diamond to flip swing, type `2'6"` with the door selected. They recut the host wall. **Explode** (`XP`) yields ordinary lines and arcs. Fixtures (stove, bed, …) are the same INSERT type with rotate + flip grips.
 
@@ -244,13 +255,40 @@ The project JSON is the source of truth — plain objects, diffable in git, next
 
 **DWG** (`DWGOUT`) writes AC1015 this app reopens, with the same R2000 DXF inside and 3DFACE from the extrusion. Autodesk’s native DWG is still proprietary — if their Open refuses the binary, the DXF R2000 is the interchange they document. We do not rename a DXF and call it a DWG.
 
+## One model, whole set
+
+Draw a floor plan. Then:
+
+```
+MODEL                  the plan becomes named solids: WALL, DOOR, WINDOW, FLOOR
+STACK 3                three storeys, upper windows and doors named per level
+ROOF HIP 6             a hip at 6:12 over the massing; L, T and U plans get
+                       wing roofs whose CSG union makes the real valleys
+DORMER 12 19 6         a gabled dormer seats itself on the slope at that point
+DRAWINGS HIP 6 SHEETS  the whole set, one undo step
+```
+
+The set: a cut plan per storey (4 ft above each floor, poche hatched, voids respected), a roof plan with ridge, hip and valley lines, four elevations with hidden lines removed and only the openings you would actually see, at their true sills, and a section that shows the cut material **and** everything visible beyond it, tied back to the plan by a tagged section marker. Every view arrives titled and dimensioned, framed on numbered sheets: plans on A-101 up, elevations on A-201 up, sections on A-301, at honest standard architectural scales. `buildAllSheetsPDF` prints the package one page per sheet.
+
+Walls carry their headers over doors and sill walls under windows, so a section through a doorway shows the header, not a void. `QTO` lands a takeoff table: footprint, surface area and volume per solid, totals included, every figure straight from the meshes.
+
+Every generated number is held by a closed-form test. The hidden line pass runs on a gridded depth probe, so a 100-building campus (29k faces) produces its full set in about five seconds (`scripts/drawbench.mjs` reproduces the measurement).
+
 ## 3D
 
-`3D` is a modelling view. Drag `BOX` / `CYL` / `SPHERE` / `CONE` on the workplane, or `EXTRUDE` / `REVOLVE` / `LOFT` / `SWEEP` a closed 2D sketch. Pick two solids and `U3D` / `SUB3D`. Click a solid to move it (shift lifts, ctrl copies, R rotates). `STL` / `OBJ` / GLB out. Sample 3D bracket is in the Sheet menu.
+`3D` is a modelling view. Drag `BOX` / `CYL` / `SPHERE` / `CONE` on the workplane, or `EXTRUDE` / `REVOLVE` / `LOFT` / `SWEEP` a closed 2D sketch. Pick two solids and `U3D` / `SUB3D`. `STL` opens as welded meshes; `STL` / `OBJ` / GLB out. Sample 3D bracket is in the Sheet menu.
+
+The model is touchable, and touch is precise:
+
+- **Click** a solid to select it by name. **Drag** moves it in plan, shift lifts it. The drag snaps to a half-foot grid and to the faces and centres of other solids, so a box lands flush against its neighbour exactly (alt frees it). The live delta reads out in feet and inches; **type a number, Enter** sets the distance exactly. **Ctrl-drag** commits a copy.
+- **R** rotates about the solid's own centre in 15° steps (shift 1°, typed degrees exact).
+- **P** is push-pull: grab any planar face and drag it along its own normal. The face's coplanar patch is found through CSG T-junctions, holes ride along, and the edit is exact by construction: volume changes by patch area × distance. A ghost prism previews; typed distance commits.
+- **M** measures: two clicks give the true 3D distance with the per-axis breakdown. The same point twice reads zero.
+- Every touch is one undo step. Escape cancels a drag without touching the document.
 
 The plan is still the issued print. A floor plan with no solids extrudes to story height and is stamped **ASSUMED** until you set `HEIGHT`. Solids you placed do not carry that stamp.
 
-This is a mesh modeler, not Fusion. Not B-rep, not STEP, not a PE stamp. Faces are triangles. Punch a hole by overlapping the cutter past both caps, or use two same-height extrusions so the 2D boolean path can do it cleanly.
+This is a mesh modeler, not Fusion. Not B-rep, not STEP, not a PE stamp. Faces are triangles; CSG booleans are held to vol(A)+vol(B) = vol(A∪B)+vol(A∩B) in the test suite rather than eyeballed. `scripts/csgbench.mjs` publishes the measured performance ceiling.
 
 Esc once returns to orbit. Esc again returns to plan.
 
@@ -289,11 +327,13 @@ Autosave to `localStorage`. No account, no backend. Grok drafting uses the app o
 
 ## Status
 
-**v1.7.0** — Issued 2D, free, DXF/DWG out.
+**v1.8.0** — Issued 2D, touchable 3D, one plan becomes a documented building.
 
-Shipped: kernel + CLI + embed, honest AI, Grok drafting with no key, R2000 DXF AutoCAD Open path, DWG this app reopens, paperspace kept on open, associative dims that follow a stretch, issued 24×36 PDF with ISO lineweights, cutting-plane sections, isolated details, feature control frames, ± tolerances, mesh 3D (extrude / revolve / loft / sweep / primitives / CSG, STL/OBJ/glTF). Starters: cabin, plate, GA, 3D bracket.
+Shipped: kernel + CLI + embed, honest AI, Grok drafting with no key, R2000 DXF AutoCAD Open path (island hatches round-trip both ways), DWG this app reopens, paperspace kept on open, associative dims that follow a stretch, issued 24×36 PDF with ISO lineweights and embedded fonts, cutting-plane sections, isolated details, feature control frames, ± tolerances. Mesh 3D on an exact CSG kernel: primitives, extrude / revolve / loft / sweep, push-pull face editing, precision touch (snap, typed distances, rotate, copy), measure, STL both ways, OBJ/glTF out. The building pipeline: MODEL, STACK, wing roofs with valleys, dormers, per-storey plans, roof plan, hidden-line elevations, sections that see beyond the cut, DRAWINGS SHEETS, QTO. Starters: cabin, plate, GA, 3D bracket.
 
-Still ahead: ODA-grade DWG that every AutoCAD build opens without Recover, B-rep solids, a hosted share link (maybe). Floor-plan sheets will keep getting tighter. Collaboration only after the kernel is something you can import — it already is.
+Three layers of proof, all in the repo: unit tests against closed forms (`npm test`), a headless smoke check that the built app paints (`npm run smoke` equivalent via `scripts/smoke.mjs`), and a full acceptance run that drives every feature in one continuous session with real pointer events (`npm run accept`). Performance claims are reproducible: `scripts/csgbench.mjs` and `scripts/drawbench.mjs`.
+
+Still ahead: ODA-grade DWG that every AutoCAD build opens without Recover, B-rep solids, a hosted share link (maybe), inference-grade 3D snapping. Collaboration only after the kernel is something you can import — it already is.
 
 ```
 npm test
@@ -305,10 +345,14 @@ node bin/sovereign-draft.js examples/ga.json --pdf ga.pdf
 ## Development
 
 ```
-npm test          # vitest (geometry, modify, dxf, pdf, AI schema, sheet sets, kernel)
+npm test          # vitest (geometry, modify, dxf, pdf, AI schema, sheet sets, 3D kernel)
 npm run dev       # Vite, browser CAD
 npm run build     # static PWA + embed.html
+npm run accept    # the whole program in one pass, against the built app
 npm run examples  # rewrite examples/*.json from the kernel
+node scripts/smoke.mjs      # the built app loads, paints, no page errors
+node scripts/csgbench.mjs   # CSG boolean performance, verified against closed forms
+node scripts/drawbench.mjs  # DRAWINGS at campus scale
 node bin/sovereign-draft.js --sample --pdf cabin.pdf
 ```
 
