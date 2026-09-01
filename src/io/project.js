@@ -8,6 +8,7 @@ import { defaultTextStyles, validateTextStyles } from '../core/textstyle.js';
 import { defaultPlotStyles, validatePlotStyles } from './plotstyle.js';
 import { validateLayerStates } from '../core/layerstate.js';
 import { validateScripts } from '../core/script.js';
+import { serializeSolids, validateSolids } from '../core/model3d.js';
 
 export const AUTOSAVE_KEY = 'sovereign-draft.autosave.v1';
 
@@ -42,6 +43,7 @@ export function serializeProject(state, pretty){
     layerStates: state.layerStates || [],
     annoPpf: state.annoPpf || 18,
     scripts: state.scripts || [],
+    solids: serializeSolids(state.solids),
     layouts: state.layouts,
     currentLayout: state.currentLayout,
     space: state.space,
@@ -73,6 +75,7 @@ export function validateProject(o){
     layerStates: validateLayerStates(o.layerStates),
     annoPpf: Number(o.annoPpf) > 0 ? Number(o.annoPpf) : 18,
     scripts: validateScripts(o.scripts),
+    solids: validateSolids(o.solids),
     /* Structural migration only. Entities are already true size and are
      * passed through untouched. */
     schemaVersion: Number(o.v) || 1,
@@ -113,6 +116,7 @@ export function applyProject(state, p){
   state.layerStates = p.layerStates || [];
   state.annoPpf = p.annoPpf || 18;
   state.scripts = p.scripts || [];
+  state.solids = p.solids || [];
   if (p.layouts) state.layouts = p.layouts;
   if (p.currentLayout) state.currentLayout = p.currentLayout;
   if (p.space) state.space = p.space;

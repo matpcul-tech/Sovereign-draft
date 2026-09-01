@@ -49,6 +49,39 @@ function hexToInt(c){
   return isFinite(n) ? n : 0xd4a843;
 }
 
+/* Document solids, modelled with BOX, CSG and the rest, join the scene in
+ * the same mesh format the plan extrusion produces. */
+function appendSolidRecords(solid, records){
+  (records || []).forEach(rec => {
+    const m = rec.mesh;
+    if (!m || !m.faces || !m.faces.length) return;
+    const positions = new Float32Array(m.faces.length * 9);
+    let p = 0;
+    for (const f of m.faces){
+      for (const vi of f){
+        const v = m.verts[vi];
+        positions[p++] = v[0]; positions[p++] = v[1]; positions[p++] = v[2];
+      }
+    }
+    const indices = new Uint32Array(m.faces.length * 3);
+    for (let i = 0; i < indices.length; i++) indices[i] = i;
+    solid.meshes = (solid.meshes || []).concat([{
+      positions, indices, color: '#00d4b8', kind: 'solid', opacity: 1
+    }]);
+    /* Framing reads solid.bbox and solid.height; a modelled tower must be
+     * inside the frame, or the camera parks inside it. */
+    const bb = solid.bbox || [Infinity, Infinity, 0, -Infinity, -Infinity, 0];
+    let zTop = solid.height || 0;
+    for (const v of m.verts){
+      bb[0] = Math.min(bb[0], v[0]); bb[1] = Math.min(bb[1], v[1]);
+      bb[3] = Math.max(bb[3], v[0]); bb[4] = Math.max(bb[4], v[1]);
+      zTop = Math.max(zTop, v[2]);
+    }
+    solid.bbox = bb;
+    solid.height = zTop;
+  });
+}
+
 function addMeshes(solid){
   clearScene();
   lastSolid = solid;
@@ -227,6 +260,7 @@ export function showView3d(opts){
     assumed: o.assumed,
     layers: o.layers || []
   });
+  appendSolidRecords(solid, o.solids);
   addMeshes(solid);
   running = true;
   onResize();
@@ -243,6 +277,7 @@ export function syncView3d(opts){
     assumed: o.assumed,
     layers: o.layers || []
   });
+  appendSolidRecords(solid, o.solids);
   addMeshes(solid);
   render();
   return solid;

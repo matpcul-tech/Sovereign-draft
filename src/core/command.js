@@ -105,7 +105,19 @@ export const COMMANDS = {
   ANNO:    { aliases: ['ANNO', 'ANNOTATIVE'],           tool: null,     action: 'anno' },
   ANNOSCALE:{ aliases: ['ANNOSCALE', 'ASCALE'],         tool: null,     action: 'annoscale' },
   SCRIPT:  { aliases: ['SCRIPT', 'JS'],                 tool: null,     action: 'script' },
-  RUN:     { aliases: ['RUN'],                          tool: null,     action: 'runscript' }
+  RUN:     { aliases: ['RUN'],                          tool: null,     action: 'runscript' },
+  BOX:     { aliases: ['BOX'],                          tool: null,     action: 'prim:box' },
+  CYL3D:   { aliases: ['CYL', 'CYLINDER'],              tool: null,     action: 'prim:cylinder' },
+  SPHERE:  { aliases: ['SPHERE'],                       tool: null,     action: 'prim:sphere' },
+  CONE:    { aliases: ['CONE'],                         tool: null,     action: 'prim:cone' },
+  WEDGE:   { aliases: ['WEDGE'],                        tool: null,     action: 'prim:wedge' },
+  SWEEP:   { aliases: ['SWEEP'],                        tool: null,     action: 'sweep3d' },
+  U3D:     { aliases: ['U3D', 'UNION3D'],               tool: null,     action: 'bool3d:union' },
+  SUB3D:   { aliases: ['SUB3D', 'SUBTRACT3D'],          tool: null,     action: 'bool3d:subtract' },
+  INT3D:   { aliases: ['INT3D', 'INTERSECT3D'],         tool: null,     action: 'bool3d:intersect' },
+  SLICE:   { aliases: ['SLICE'],                        tool: null,     action: 'slice3d' },
+  SOLIDS:  { aliases: ['SOLIDS'],                       tool: null,     action: 'solids' },
+  SOLIDDEL:{ aliases: ['SOLIDDEL'],                     tool: null,     action: 'soliddel' }
 };
 
 const ALIAS = {};

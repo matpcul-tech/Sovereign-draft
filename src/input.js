@@ -22,7 +22,8 @@ import {
   saveLayerState, restoreLayerState, deleteLayerState, setPlotStyle,
   twistViewport, clipViewport,
   extrudeSelection, revolveSelection, loftSelection, clearSolids,
-  toggleAnnotative, setAnnoScale, openScriptSheet, runSavedScript
+  toggleAnnotative, setAnnoScale, openScriptSheet, runSavedScript,
+  makePrimitive, sweepSelection, boolean3d, sliceSolid, listSolids, deleteSolid
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
 import { setTool } from './ui/tools.js';
@@ -484,6 +485,12 @@ export function handleCommand(text){
   if (res.action === 'annoscale'){ setAnnoScale(res.rest); return; }
   if (res.action === 'script'){ openScriptSheet(); return; }
   if (res.action === 'runscript'){ runSavedScript(res.rest); return; }
+  if (res.action && res.action.indexOf('prim:') === 0){ makePrimitive(res.action.slice(5), res.rest); return; }
+  if (res.action === 'sweep3d'){ sweepSelection(res.rest); return; }
+  if (res.action && res.action.indexOf('bool3d:') === 0){ boolean3d(res.action.slice(7), res.rest); return; }
+  if (res.action === 'slice3d'){ sliceSolid(res.rest); return; }
+  if (res.action === 'solids'){ listSolids(); return; }
+  if (res.action === 'soliddel'){ deleteSolid(res.rest); return; }
   if (res.action === 'zoomfit'){ zoomFit(); draw(); return; }
   if (res.action === 'explode'){ explodeSelection(); return; }
   if (res.action === 'flip'){ flipSelection(); return; }

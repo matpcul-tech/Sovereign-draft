@@ -32,6 +32,8 @@ import { makeMText } from './mtext.js';
 import { makeHatch, closedLoops, hatchWithIslands } from './hatch.js';
 import { polyBoolean, ringsArea } from './boolean.js';
 import { solveConstraints, makeConstraint, CONSTRAINT_TYPES } from './constrain.js';
+import { createSolid, addSolid, booleanSolids, moveSolid, rotateSolid, scaleSolid, sliceSolidToPlan, solidByName, solidNames, removeSolid } from './model3d.js';
+import { extrudeRings, meshVolume } from './mesh.js';
 
 const NUMERIC = v => {
   const n = Number(v);
@@ -191,6 +193,26 @@ export function makeSd(println){
           if (props && props[k] !== undefined) L[k] = props[k];
         });
       }
+    },
+
+    /* ---------- 3D: solids by name, the same door the commands use ---------- */
+    solid: {
+      box: (x, y, z, w, d, h, name) => createSolid('box', [x, y, z, w, d, h], name).name,
+      cylinder: (cx, cy, z, r, h, name) => createSolid('cylinder', [cx, cy, z, r, h], name).name,
+      sphere: (cx, cy, z, r, name) => createSolid('sphere', [cx, cy, z, r], name).name,
+      cone: (cx, cy, z, r, h, name) => createSolid('cone', [cx, cy, z, r, h], name).name,
+      wedge: (x, y, z, w, d, h, name) => createSolid('wedge', [x, y, z, w, d, h], name).name,
+      extrude: (rings, h, name) => addSolid(extrudeRings(rings, NUMERIC(h)), name || 'EXTRUDE').name,
+      union: (a, b, name) => { const r = booleanSolids('union', a, b, name); return r ? r.name : null; },
+      subtract: (a, b, name) => { const r = booleanSolids('subtract', a, b, name); return r ? r.name : null; },
+      intersect: (a, b, name) => { const r = booleanSolids('intersect', a, b, name); return r ? r.name : null; },
+      move: (name, dx, dy, dz) => { moveSolid(name, NUMERIC(dx), NUMERIC(dy), Number(dz) || 0); },
+      rotate: (name, axis, cx, cy, cz, deg) => { rotateSolid(name, axis, NUMERIC(cx), NUMERIC(cy), NUMERIC(cz), NUMERIC(deg)); },
+      scale: (name, cx, cy, cz, k) => { scaleSolid(name, NUMERIC(cx), NUMERIC(cy), NUMERIC(cz), NUMERIC(k)); },
+      slice: (name, z, layer) => sliceSolidToPlan(name, NUMERIC(z), layer).made.map(e => e.id),
+      volume: name => { const r = solidByName(name); if (!r) throw new Error('No solid ' + name); return Math.abs(meshVolume(r.mesh)); },
+      list: () => solidNames(),
+      delete: name => removeSolid(name)
     },
 
     print,

@@ -344,7 +344,7 @@ export function shellHTML(){
   <button class="mrow" id="mNew"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg><span id="mNewLabel">New drawing</span></button>
   <div class="subtle" id="menuFooter">Issued 2D, free, DXF/DWG out. Open a DXF from AutoCAD, LibreCAD or DraftSight — units follow $INSUNITS. Drawing stays on this device until you export.</div>
 </div>
-<input type="file" id="fileOpen" accept=".dxf,.json,.dwg,application/json,application/dxf" style="display:none">
+<input type="file" id="fileOpen" accept=".dxf,.json,.dwg,.stl,application/json,application/dxf,model/stl" style="display:none">
 <input type="file" id="fileDXF" accept=".dxf,application/dxf" style="display:none">
 <input type="file" id="fileXref" accept=".dxf,.json,.dwg,application/json,application/dxf" style="display:none">
 <input type="file" id="fileFont" accept=".ttf,.otf,font/ttf,font/sfnt" style="display:none">

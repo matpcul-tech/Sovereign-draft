@@ -452,3 +452,178 @@ export function mergeMeshes(list){
 }
 
 void cleanRings; void ringsArea;
+
+/* ---------- primitive solids ----------
+ * The starting blocks of mesh modelling. Each is closed by construction and
+ * verified in the suite against its exact volume formula, because a
+ * primitive that is a few percent off poisons every boolean built on it.
+ */
+
+export function makeBox(x, y, z, w, d, h){
+  return extrudeRings([[[x, y], [x + w, y], [x + w, y + d], [x, y + d]]], h, { base: z });
+}
+
+export function makeCylinder(cx, cy, z, r, h, segments){
+  const n = Math.max(3, Math.min(256, Math.round(segments || 48)));
+  const ring = [];
+  for (let i = 0; i < n; i++){
+    const a = (i / n) * Math.PI * 2;
+    ring.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+  }
+  return extrudeRings([ring], h, { base: z });
+}
+
+export function makeCone(cx, cy, z, r, h, segments){
+  const n = Math.max(3, Math.min(256, Math.round(segments || 48)));
+  const verts = [];
+  for (let i = 0; i < n; i++){
+    const a = (i / n) * Math.PI * 2;
+    verts.push([cx + r * Math.cos(a), cy + r * Math.sin(a), z]);
+  }
+  const apex = verts.length; verts.push([cx, cy, z + h]);
+  const centre = verts.length; verts.push([cx, cy, z]);
+  const faces = [];
+  for (let i = 0; i < n; i++){
+    const j = (i + 1) % n;
+    faces.push([i, j, apex]);        /* side, outward */
+    faces.push([j, i, centre]);      /* base, facing down */
+  }
+  return makeMesh(verts, faces);
+}
+
+export function makeSphere(cx, cy, cz, r, segments){
+  const n = Math.max(4, Math.min(128, Math.round(segments || 32)));
+  const rows = Math.max(3, Math.round(n / 2));
+  const verts = [];
+  for (let i = 1; i < rows; i++){
+    const phi = (i / rows) * Math.PI;
+    for (let j = 0; j < n; j++){
+      const th = (j / n) * Math.PI * 2;
+      verts.push([cx + r * Math.sin(phi) * Math.cos(th), cy + r * Math.sin(phi) * Math.sin(th), cz + r * Math.cos(phi)]);
+    }
+  }
+  const top = verts.length; verts.push([cx, cy, cz + r]);
+  const bot = verts.length; verts.push([cx, cy, cz - r]);
+  const faces = [];
+  const at = (i, j) => (i - 1) * n + (j % n);
+  for (let j = 0; j < n; j++){
+    faces.push([top, at(1, j), at(1, j + 1)]);
+    faces.push([bot, at(rows - 1, j + 1), at(rows - 1, j)]);
+  }
+  for (let i = 1; i < rows - 1; i++){
+    for (let j = 0; j < n; j++){
+      faces.push([at(i, j), at(i + 1, j), at(i + 1, j + 1)]);
+      faces.push([at(i, j), at(i + 1, j + 1), at(i, j + 1)]);
+    }
+  }
+  return makeMesh(verts, faces);
+}
+
+export function makeWedge(x, y, z, w, d, h){
+  /* A box cut diagonally: full height along y = 0, zero at y = d. */
+  const verts = [
+    [x, y, z], [x + w, y, z], [x + w, y + d, z], [x, y + d, z],
+    [x, y, z + h], [x + w, y, z + h]
+  ];
+  const faces = [
+    [0, 2, 1], [0, 3, 2],          /* base, facing down */
+    [0, 1, 5], [0, 5, 4],          /* vertical back */
+    [1, 2, 5],                     /* right triangle */
+    [0, 4, 3],                     /* left triangle */
+    [3, 4, 5], [3, 5, 2]           /* slope */
+  ];
+  return makeMesh(verts, faces);
+}
+
+/* Sweep a section along a polyline path in plan. The section is [right, up]
+ * pairs in the plane perpendicular to travel; joints are mitred on the
+ * angle bisector, the way a thick polyline mitres, so the sweep of a closed
+ * section along a straight path has exactly area times length. */
+export function sweepPath(section, path, opts){
+  const o = opts || {};
+  const sec = (section || []).map(p => [Number(p[0]) || 0, Number(p[1]) || 0]);
+  const pts = (path || []).map(p => [Number(p[0]) || 0, Number(p[1]) || 0]);
+  if (sec.length < 3 || pts.length < 2) return makeMesh([], []);
+  const ring = polyArea(sec) > 0 ? sec : sec.slice().reverse();
+  const m = ring.length;
+
+  /* A frame per path vertex: the mitre direction and its scale. */
+  const frames = [];
+  for (let i = 0; i < pts.length; i++){
+    const prev = pts[Math.max(0, i - 1)], next = pts[Math.min(pts.length - 1, i + 1)];
+    const dx = next[0] - prev[0], dy = next[1] - prev[1];
+    const L = Math.hypot(dx, dy) || 1e-9;
+    const tx = dx / L, ty = dy / L;
+    /* The section's 'right' axis: up cross travel, so (right, up, travel)
+     * is right handed. The other sign is a reflection, which flips the side
+     * quads against the caps and quietly wrecks the volume while every edge
+     * still matches. */
+    let nx = -ty, ny = tx, k = 1;
+    if (i > 0 && i < pts.length - 1){
+      /* The mitre scale is 1 / cos(half the turn), and the turn is between
+       * the two segments, not between a segment and the bisector: feeding
+       * the bisector angle in makes every joint too thin by exactly the
+       * factor a right angle shows most. Capped so a hairpin cannot blow
+       * the joint out to infinity. */
+      const d1x = pts[i][0] - pts[i - 1][0], d1y = pts[i][1] - pts[i - 1][1];
+      const d2x = pts[i + 1][0] - pts[i][0], d2y = pts[i + 1][1] - pts[i][1];
+      const L1 = Math.hypot(d1x, d1y) || 1e-9;
+      const L2 = Math.hypot(d2x, d2y) || 1e-9;
+      const cos = (d1x / L1) * (d2x / L2) + (d1y / L1) * (d2y / L2);
+      k = Math.min(4, 1 / Math.max(0.25, Math.sqrt((1 + cos) / 2)));
+    }
+    frames.push({ x: pts[i][0], y: pts[i][1], nx, ny, k });
+  }
+
+  const verts = [];
+  frames.forEach(f => {
+    ring.forEach(s => {
+      verts.push([f.x + f.nx * s[0] * f.k, f.y + f.ny * s[0] * f.k, s[1]]);
+    });
+  });
+  const faces = [];
+  for (let s2 = 0; s2 + 1 < frames.length; s2++){
+    const a = s2 * m, b = (s2 + 1) * m;
+    for (let i = 0; i < m; i++){
+      const j = (i + 1) % m;
+      faces.push([a + i, b + j, b + i]);
+      faces.push([a + i, a + j, b + j]);
+    }
+  }
+  /* Caps: the section triangulated in its own plane, then placed. */
+  const { points, tris } = triangulateRings([ring]);
+  const place = (frame, flip) => {
+    const base = verts.length;
+    points.forEach(p => verts.push([frame.x + frame.nx * p[0] * frame.k, frame.y + frame.ny * p[0] * frame.k, p[1]]));
+    tris.forEach(t => faces.push(flip ? [base + t[2], base + t[1], base + t[0]] : [base + t[0], base + t[1], base + t[2]]));
+  };
+  /* Start cap faces backward along the travel, end cap forward. */
+  place(frames[0], true);
+  place(frames[frames.length - 1], false);
+  const mesh = makeMesh(verts, faces);
+  /* Winding depends on the path direction; hand back positive volume. */
+  if (meshVolume(mesh) < 0) mesh.faces = mesh.faces.map(f => [f[2], f[1], f[0]]);
+  return mesh;
+  void o;
+}
+
+/* ---------- rigid transforms in 3D ---------- */
+
+export function translateMesh(mesh, dx, dy, dz){
+  return makeMesh(mesh.verts.map(v => [v[0] + dx, v[1] + dy, v[2] + (dz || 0)]), mesh.faces.map(f => f.slice()));
+}
+
+export function scaleMesh(mesh, cx, cy, cz, k){
+  return makeMesh(mesh.verts.map(v => [cx + (v[0] - cx) * k, cy + (v[1] - cy) * k, cz + (v[2] - cz) * k]), mesh.faces.map(f => f.slice()));
+}
+
+/* Rotate about an axis through a point: 'x', 'y' or 'z'. */
+export function rotateMesh(mesh, axis, cx, cy, cz, deg){
+  const r = deg * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+  const rot = axis === 'x'
+    ? v => [v[0], cy + (v[1] - cy) * c - (v[2] - cz) * s, cz + (v[1] - cy) * s + (v[2] - cz) * c]
+    : axis === 'y'
+      ? v => [cx + (v[2] - cz) * s + (v[0] - cx) * c, v[1], cz + (v[2] - cz) * c - (v[0] - cx) * s]
+      : v => [cx + (v[0] - cx) * c - (v[1] - cy) * s, cy + (v[0] - cx) * s + (v[1] - cy) * c, v[2]];
+  return makeMesh(mesh.verts.map(rot), mesh.faces.map(f => f.slice()));
+}

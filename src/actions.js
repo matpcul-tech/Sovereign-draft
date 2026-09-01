@@ -22,7 +22,8 @@ import { polyBoolean, ringsArea } from './core/boolean.js';
 import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, removeLayerState, layerStateByName } from './core/layerstate.js';
 import { plotStyleByName } from './io/plotstyle.js';
 import { modelToPaper, viewportRot } from './core/layout.js';
-import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight } from './core/mesh.js';
+import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight, sweepPath } from './core/mesh.js';
+import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary } from './core/model3d.js';
 import { toAnno, fromAnno, parseScaleToPpf } from './core/annoscale.js';
 import { runScript, scriptByName } from './core/script.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
@@ -155,15 +156,100 @@ export function closePoly(){
  * OBJ writers all see the same solid, and its volume is reported because
  * that is usually the reason someone asked for it.
  */
-function reportSolid(mesh, what){
+function reportSolid(mesh, what, name){
   if (!mesh || !mesh.faces.length){ toast('Nothing to build a solid from'); return false; }
-  const v = meshVolume(mesh);
-  const tight = isWatertight(mesh);
-  state.solids = (state.solids || []).concat([mesh]);
+  const rec = addSolid(mesh, name || what.split(' ')[0]);
   afterChange();
-  toast(what + ': ' + Math.abs(v).toFixed(2) + ' CF, ' + mesh.faces.length + ' faces'
-    + (tight ? '' : ', NOT closed'), 4000);
+  toast(rec.name + ' · ' + Math.abs(meshVolume(mesh)).toFixed(2) + ' CF, ' + mesh.faces.length + ' faces'
+    + (isWatertight(mesh) ? '' : ', NOT closed'), 4000);
   return true;
+}
+
+/* ---------- the 3D command set ---------- */
+function numsOf(rest, want, usage){
+  const nums = String(rest || '').trim().split(/[\s,]+/).filter(Boolean).map(Number);
+  if (nums.length < want || nums.some(n => !Number.isFinite(n))){ toast(usage); return null; }
+  return nums;
+}
+
+export function makePrimitive(kind, rest){
+  const usage = {
+    box: 'BOX x y z width depth height',
+    cylinder: 'CYL cx cy z radius height [segments]',
+    sphere: 'SPHERE cx cy z radius [segments]',
+    cone: 'CONE cx cy z radius height [segments]',
+    wedge: 'WEDGE x y z width depth height'
+  }[kind];
+  const want = kind === 'sphere' ? 4 : kind === 'cylinder' || kind === 'cone' ? 5 : 6;
+  const nums = numsOf(rest, want, usage);
+  if (!nums) return;
+  pushUndo(undoScope([]));
+  try {
+    const rec = createSolid(kind, nums);
+    afterChange();
+    toast(describeSolid(rec), 4000);
+  } catch (e){ toast(e.message); }
+}
+
+export function sweepSelection(rest){
+  /* The selected closed region is the section; the selected open polyline
+   * or line run is the path. */
+  const ms = selMembers();
+  const section = closedLoops(ms)[0];
+  const path = ms.map(e => e.type === 'line' ? [[e.x1, e.y1], [e.x2, e.y2]]
+    : (e.type === 'poly' && !e.closed ? e.pts : null)).find(Boolean);
+  if (!section || !path){ toast('Select one closed section and one open path, then SWEEP'); return; }
+  /* Plan coordinates become the section plane: x is right of travel, y up. */
+  const bb = section.reduce((b, p) => [Math.min(b[0], p[0]), Math.min(b[1], p[1]), Math.max(b[2], p[0]), Math.max(b[3], p[1])], [1e9, 1e9, -1e9, -1e9]);
+  const cx = (bb[0] + bb[2]) / 2;
+  const sec = section.map(p => [p[0] - cx, p[1] - bb[1]]);
+  pushUndo(undoScope([]));
+  reportSolid(sweepPath(sec, path), 'Swept along ' + path.length + ' points', 'SWEEP');
+  void rest;
+}
+
+export function boolean3d(op, rest){
+  const parts = String(rest || '').trim().split(/[\s,]+/).filter(Boolean);
+  let a = parts[0], b = parts[1];
+  if (!a || !b){
+    const names = solidNames();
+    if (names.length === 2){ a = names[0]; b = names[1]; }
+    else { toast((op.toUpperCase()) + ' A B — have: ' + (names.join(', ') || 'no solids')); return; }
+  }
+  pushUndo(undoScope([]));
+  try {
+    const rec = booleanSolids(op, a, b, parts[2]);
+    afterChange();
+    toast(rec ? describeSolid(rec) : op + ' removed everything', 4000);
+  } catch (e){ toast(e.message, 4000); }
+}
+
+export function sliceSolid(rest){
+  const parts = String(rest || '').trim().split(/[\s,]+/).filter(Boolean);
+  let name = parts[0], z = Number(parts[1]);
+  if (parts.length === 1 && Number.isFinite(Number(parts[0])) && solidNames().length === 1){
+    name = solidNames()[0]; z = Number(parts[0]);
+  }
+  if (!name || !Number.isFinite(z)){ toast('SLICE name z — have: ' + (solidNames().join(', ') || 'no solids')); return; }
+  pushUndo(undoScope([]));
+  try {
+    const r = sliceSolidToPlan(name, z);
+    afterChange();
+    toast('Section at z=' + z + ': ' + r.made.length + ' ring' + (r.made.length === 1 ? '' : 's') +
+      ', ' + r.area.toFixed(1) + ' SF' + (r.openChains ? ', ' + r.openChains + ' open chains' : ''), 4000);
+  } catch (e){ toast(e.message, 4000); }
+}
+
+export function listSolids(){
+  toast(solidsSummary(), 6000);
+}
+
+export function deleteSolid(rest){
+  const name = String(rest || '').trim();
+  if (!name){ toast('SOLIDDEL name — have: ' + (solidNames().join(', ') || 'none')); return; }
+  pushUndo(undoScope([]));
+  if (removeSolid(name)){ afterChange(); toast(name.toUpperCase() + ' deleted'); }
+  else toast('No solid ' + name.toUpperCase());
 }
 
 export function extrudeSelection(rest){

@@ -147,6 +147,7 @@ function solidOpts(){
   return {
     entities: state.entities,
     layers: state.layers,
+    solids: state.solids,
     height: state.storyHeight,
     assumed: state.heightAssumed,
     onHeight: (h) => {
@@ -685,6 +686,25 @@ function wireUi(){
     function attach(ents){
       applyAttachXref({ name, entities: ents }, { name, path: file.name });
       zoomFit(); draw();
+    }
+    if (n.endsWith('.stl')){
+      const rd = new FileReader();
+      rd.onload = async () => {
+        try {
+          const { parseSTL } = await import('./io/stl.js');
+          const { addSolid, describeSolid } = await import('./core/model3d.js');
+          const { meshVolume } = await import('./core/mesh.js');
+          const mesh = parseSTL(rd.result);
+          if (!mesh.faces.length){ toast('No triangles in that STL'); return; }
+          pushUndo();
+          const rec = addSolid(mesh, name.toUpperCase());
+          afterChange();
+          toast('STL: ' + describeSolid(rec), 4000);
+          void meshVolume;
+        } catch (e){ toast('Could not read that STL: ' + e.message, 4000); }
+      };
+      rd.readAsArrayBuffer(file);
+      return;
     }
     if (n.endsWith('.dwg') || file.type === 'application/acad' || file.type === 'image/vnd.dwg'){
       const rd = new FileReader();
