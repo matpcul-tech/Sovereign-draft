@@ -205,6 +205,36 @@ function meshOf(kind, layer, color, positions, indices, extra){
   }, extra || {});
 }
 
+/* Gaps between collinear runs of one wall: the openings its centerline was
+ * split around. Endpoint pairs closer than half a foot are corner mitres,
+ * farther than fourteen feet are unrelated runs. */
+function wallGaps(segs){
+  const gaps = [];
+  for (let i = 0; i < segs.length; i++){
+    for (let j = i + 1; j < segs.length; j++){
+      const a = segs[i], b = segs[j];
+      const dax = a.x2 - a.x1, day = a.y2 - a.y1;
+      const dbx = b.x2 - b.x1, dby = b.y2 - b.y1;
+      const La = hypot(dax, day) || 1e-9, Lb = hypot(dbx, dby) || 1e-9;
+      if (Math.abs((dax * dby - day * dbx) / (La * Lb)) > 0.02) continue;
+      let best = null;
+      for (const p of [[a.x1, a.y1], [a.x2, a.y2]]){
+        for (const q of [[b.x1, b.y1], [b.x2, b.y2]]){
+          const d = hypot(p[0] - q[0], p[1] - q[1]);
+          if (!best || d < best.d) best = { d, p, q };
+        }
+      }
+      if (!best || best.d < 0.5 || best.d > 14) continue;
+      /* The far run must sit on this run's line, not on a parallel wall. */
+      const t = ((best.q[0] - a.x1) * dax + (best.q[1] - a.y1) * day) / (La * La);
+      const off = hypot(best.q[0] - (a.x1 + dax * t), best.q[1] - (a.y1 + day * t));
+      if (off > 0.1) continue;
+      gaps.push({ p: best.p, q: best.q, th: a.th });
+    }
+  }
+  return gaps;
+}
+
 function wallSegments(members){
   const as = members.filter(m => m.role === 'a' && m.x1 != null);
   const bs = members.filter(m => m.role === 'b' && m.x1 != null).slice();
@@ -264,6 +294,8 @@ export function extrudeDrawing(entities, opts){
       groups.get(e.g).push(e);
     }
   });
+  const openingInserts = ents.filter(e => e.type === 'insert' && (e.def === 'door' || e.def === 'window'));
+
   groups.forEach(members => {
     members.forEach(m => { if (m.id != null) used.add(m.id); });
     const segs = wallSegments(members);
@@ -271,6 +303,28 @@ export function extrudeDrawing(entities, opts){
     const ly = (members[0] && members[0].layer) || 'WALLS';
     if (!layerPlot(layers, ly)) return;
     segs.forEach(s => pushBox(positions, indices, s.x1, s.y1, s.x2, s.y2, s.th, 0, height));
+    /* An opening is not a full height hole in the wall. The gap between
+     * two collinear runs of one wall carries the wall back over a door as
+     * its header, and around a window as sill wall and header, sized by
+     * whichever door or window insert sits at the gap. A gap with no
+     * insert nearby stays open: that is a real pass-through. */
+    for (const g of wallGaps(segs)){
+      let best = null;
+      const cx = (g.p[0] + g.q[0]) / 2, cy = (g.p[1] + g.q[1]) / 2;
+      for (const ins of openingInserts){
+        const d = hypot(ins.x - cx, ins.y - cy);
+        if (d < 2.5 && (!best || d < best.d)) best = { d, ins };
+      }
+      if (!best) continue;
+      if (best.ins.def === 'door'){
+        const top = Math.min(doorH, height);
+        if (top < height - 1e-6) pushBox(positions, indices, g.p[0], g.p[1], g.q[0], g.q[1], g.th, top, height);
+      } else {
+        if (sill > 1e-6) pushBox(positions, indices, g.p[0], g.p[1], g.q[0], g.q[1], g.th, 0, Math.min(sill, height));
+        const top = Math.min(head, height);
+        if (top < height - 1e-6) pushBox(positions, indices, g.p[0], g.p[1], g.q[0], g.q[1], g.th, top, height);
+      }
+    }
     const m = meshOf('wall', ly, layerColor(layers, ly), positions, indices, { assumed });
     if (m) meshes.push(m);
   });

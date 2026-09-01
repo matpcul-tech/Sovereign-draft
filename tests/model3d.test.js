@@ -413,6 +413,63 @@ describe('stacked stories', () => {
   });
 });
 
+describe('headers and sills over openings', () => {
+  beforeEach(reset);
+
+  /* One wall along x at y=0: runs 0..8, 11..14, 17..20, with a door
+   * insert centred in the first gap and a window in the second. */
+  const wallWithGaps = () => {
+    const runs = [[0, 8], [11, 14], [17, 20]];
+    const ents = [];
+    runs.forEach(([x0, x1]) => {
+      ents.push(
+        { type: 'line', kind: 'wall', g: 'w1', role: 'a', th: 0.5, layer: 'WALLS', x1: x0, y1: 0.25, x2: x1, y2: 0.25 },
+        { type: 'line', kind: 'wall', g: 'w1', role: 'b', th: 0.5, layer: 'WALLS', x1: x0, y1: -0.25, x2: x1, y2: -0.25 }
+      );
+    });
+    ents.push({ type: 'insert', def: 'door', x: 9.5, y: 0, width: 3, layer: 'DOORS' });
+    ents.push({ type: 'insert', def: 'window', x: 15.5, y: 0, width: 3, layer: 'DOORS' });
+    return ents;
+  };
+
+  it('the wall carries back over the door and around the window, volumes exact', async () => {
+    const { extrudeDrawing } = await import('../src/core/solid.js');
+    const { sliceAreaAxis } = await import('../src/core/slice.js');
+    const drawn = extrudeDrawing(wallWithGaps(), { height: 8, layers: defaultLayers() });
+    const wallMesh = drawn.meshes.find(m => m.kind === 'wall');
+    const verts = [];
+    for (let i = 0; i + 2 < wallMesh.positions.length; i += 3){
+      verts.push([wallMesh.positions[i], wallMesh.positions[i + 1], wallMesh.positions[i + 2]]);
+    }
+    const faces = [];
+    for (let i = 0; i + 2 < wallMesh.indices.length; i += 3){
+      faces.push([wallMesh.indices[i], wallMesh.indices[i + 1], wallMesh.indices[i + 2]]);
+    }
+    const mesh = { verts, faces };
+    /* Runs 14 ft of full wall, plus the door header (8 - 6'-8" tall over
+     * 3 ft) and the window sill and header. All at 0.5 thick. */
+    const doorHeader = 3 * 0.5 * (8 - (6 + 8 / 12));
+    const winSill = 3 * 0.5 * 3;
+    const winHeader = 3 * 0.5 * (8 - (6 + 8 / 12));
+    expect(Math.abs(V(mesh))).toBeCloseTo(14 * 0.5 * 8 + doorHeader + winSill + winHeader, 5);
+    /* A section through the doorway shows exactly the header. */
+    expect(sliceAreaAxis(mesh, 'x', 9.5)).toBeCloseTo(0.5 * (8 - (6 + 8 / 12)), 6);
+    /* Through the window: sill wall below, header above. */
+    expect(sliceAreaAxis(mesh, 'x', 15.5)).toBeCloseTo(0.5 * 3 + 0.5 * (8 - (6 + 8 / 12)), 6);
+    /* A gap with no insert nearby stays open. */
+    const bare = extrudeDrawing(wallWithGaps().filter(e => e.type !== 'insert'), { height: 8, layers: defaultLayers() });
+    const bm = bare.meshes.find(m => m.kind === 'wall');
+    let vol = 0;
+    {
+      const vs = [], fs = [];
+      for (let i = 0; i + 2 < bm.positions.length; i += 3) vs.push([bm.positions[i], bm.positions[i + 1], bm.positions[i + 2]]);
+      for (let i = 0; i + 2 < bm.indices.length; i += 3) fs.push([bm.indices[i], bm.indices[i + 1], bm.indices[i + 2]]);
+      vol = V({ verts: vs, faces: fs });
+    }
+    expect(Math.abs(vol)).toBeCloseTo(14 * 0.5 * 8, 5);
+  });
+});
+
 describe('per-storey plans', () => {
   beforeEach(reset);
 

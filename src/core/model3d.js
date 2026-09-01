@@ -392,8 +392,10 @@ export function elevationToPlan(dir, layer){
       silhouette(rec.mesh, d, boolean).filter(r => ringVisible(r, ownProbe, occProbe)));
   }
   /* The interior lines of the elevation: visible feature edges of the
-   * massing, clipped to where they run inside the outline. */
-  let edgeSegs = clipSegsToInterior(visibleMeshEdges(mesh, d, sign), rings);
+   * massing, clipped to where they run inside the outline. Opening rings
+   * count as already drawn too, so the header and sill creases the wall
+   * infill creates do not double-draw the reveals. */
+  let edgeSegs = clipSegsToInterior(visibleMeshEdges(mesh, d, sign), rings.concat(openRings));
   /* Seen from the south or the west the horizontal axis reads the other
    * way, so mirror it: elevations read left to right the way you face them.
    * Openings and edges mirror with the massing or they land on the wrong
