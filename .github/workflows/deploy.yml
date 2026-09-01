@@ -55,14 +55,6 @@ jobs:
 
   deploy:
     needs: build
-    # Best effort: actions/deploy-pages is rejected in one second with zero
-    # steps when the github-pages environment does not exist, which means
-    # Pages has never been enabled for this repository. That is a one-time
-    # admin switch (Settings -> Pages -> Build and deployment -> Source:
-    # GitHub Actions) the workflow token cannot flip. Until it is flipped,
-    # this job must not paint every push red: the site's primary host is
-    # Vercel, and the build job above already proves the bundle.
-    continue-on-error: true
     runs-on: ubuntu-latest
     environment:
       name: github-pages
