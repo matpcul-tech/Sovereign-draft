@@ -429,6 +429,51 @@ export function elevationToPlan(dir, layer){
   };
 }
 
+/* ---------- per-storey plans ----------
+ * A stacked building documents each level: the whole massing except roofs
+ * is cut horizontally at the drafting convention of four feet above each
+ * floor (half the storey when it is shorter), and every level's plan lands
+ * beside the drawing as closed rings with poche, titled LEVEL k PLAN with
+ * overall dims. Storeys come from the -L suffixes STACK writes; a single
+ * storey model gets its one LEVEL 1 PLAN.
+ */
+export function storyPlans(){
+  const list = (state.solids || []).filter(s => s && !/^ROOF/.test(s.name));
+  if (!list.length) throw new Error('Nothing to cut plans from: MODEL first');
+  let levels = 1;
+  for (const s of list){
+    const m = s.name.match(/-L(\d+)$/);
+    if (m) levels = Math.max(levels, Number(m[1]));
+  }
+  const base = list.filter(s => !/-L\d+$/.test(s.name));
+  let z0 = Infinity, z1 = -Infinity;
+  for (const s of (base.length ? base : list)){
+    const b = meshBBox(s.mesh);
+    z0 = Math.min(z0, b[2]);
+    z1 = Math.max(z1, b[5]);
+  }
+  const h = Math.max(z1 - z0, 0.1);
+  const mesh = mergeMeshes(list.map(s => s.mesh));
+  const plans = [];
+  for (let k = 1; k <= levels; k++){
+    const cutZ = z0 + h * (k - 1) + Math.min(4, h / 2);
+    const { rings } = sliceMeshAxis(mesh, 'z', cutZ);
+    if (!rings.length) continue;
+    const offset = nextViewOffset(rings);
+    const made = placeRings(rings, 'SECTION', offset);
+    const hatches = hatchWithIslands(made.map(e => e.pts), { layer: 'SECTION', pattern: 'ANSI31' });
+    for (const ha of hatches){
+      ha.id = state.idSeq++;
+      state.entities.push(ha);
+      made.push(ha);
+    }
+    annotateView(made.filter(e => e.type === 'poly'), 'LEVEL ' + k + ' PLAN').forEach(e => made.push(e));
+    plans.push({ level: k, cutZ, made, rings: rings.length, hatches: hatches.length });
+  }
+  if (!plans.length) throw new Error('No level cuts the massing: nothing solid at cut height');
+  return { plans, levels, storyHeight: h };
+}
+
 /* ---------- the whole set, one command ----------
  * DRAWINGS composes what already exists: model the plan into solids if
  * that has not happened yet, optionally seat a roof, then take all four
@@ -463,6 +508,16 @@ export function generateDrawings(opts){
     if (!massing().length) throw new Error('Nothing in the plan extrudes into a solid');
   }
   if (o.roof) out.roof = roofOverModel(o.roof, o.pitch, o.overhang).name;
+  /* A stacked building gets a cut plan per level; a single storey keeps
+   * its drawn plan as the plan. */
+  if ((state.solids || []).some(s => /-L\d+$/.test(s.name))){
+    const sp = storyPlans();
+    out.storyPlans = sp.plans.length;
+    for (const pl of sp.plans){
+      const pb = viewExtent(pl.made);
+      if (pb) out.views.push({ name: 'LEVEL ' + pl.level + ' PLAN', bbox: pb });
+    }
+  }
   const NAMES = { S: 'SOUTH ELEVATION', E: 'EAST ELEVATION', N: 'NORTH ELEVATION', W: 'WEST ELEVATION' };
   for (const d of ['S', 'E', 'N', 'W']){
     const r = elevationToPlan(d);

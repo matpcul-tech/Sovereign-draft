@@ -23,7 +23,7 @@ import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, 
 import { plotStyleByName } from './io/plotstyle.js';
 import { modelToPaper, viewportRot } from './core/layout.js';
 import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight, sweepPath } from './core/mesh.js';
-import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, roofOverModel, generateDrawings, stackStories, sampleBracket } from './core/model3d.js';
+import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, roofOverModel, generateDrawings, stackStories, storyPlans, sampleBracket } from './core/model3d.js';
 import { toAnno, fromAnno, parseScaleToPpf } from './core/annoscale.js';
 import { runScript, scriptByName } from './core/script.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
@@ -271,6 +271,16 @@ export function makeStack(rest){
     afterChange();
     toast(r.stories + ' stories at ' + r.storyHeight.toFixed(1) + ' ft each: ' +
       r.made.length + ' solids added, roof on top', 4000);
+  } catch (e){ toast(e.message, 4000); }
+}
+
+export function makePlans(){
+  pushUndo(undoScope([]));
+  try {
+    const r = storyPlans();
+    afterChange();
+    toast(r.plans.length + ' level plan' + (r.plans.length === 1 ? '' : 's') +
+      ' cut at ' + Math.min(4, r.storyHeight / 2).toFixed(1) + ' ft above each floor, beside the drawing', 4000);
   } catch (e){ toast(e.message, 4000); }
 }
 

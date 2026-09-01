@@ -32,7 +32,7 @@ import { makeMText } from './mtext.js';
 import { makeHatch, closedLoops, hatchWithIslands } from './hatch.js';
 import { polyBoolean, ringsArea } from './boolean.js';
 import { solveConstraints, makeConstraint, CONSTRAINT_TYPES } from './constrain.js';
-import { createSolid, addSolid, booleanSolids, moveSolid, rotateSolid, scaleSolid, sliceSolidToPlan, solidByName, solidNames, removeSolid, roofOverModel, stackStories } from './model3d.js';
+import { createSolid, addSolid, booleanSolids, moveSolid, rotateSolid, scaleSolid, sliceSolidToPlan, solidByName, solidNames, removeSolid, roofOverModel, stackStories, storyPlans } from './model3d.js';
 import { extrudeRings, meshVolume } from './mesh.js';
 
 const NUMERIC = v => {
@@ -206,6 +206,7 @@ export function makeSd(println){
       hip: (x, y, z, w, d, rise, name) => createSolid('hip', [x, y, z, w, d, rise], name).name,
       roof: (kind, pitch, overhang) => roofOverModel(kind, pitch, overhang).name,
       stack: (n, h) => stackStories(n, h).made.length,
+      plans: () => storyPlans().plans.length,
       extrude: (rings, h, name) => addSolid(extrudeRings(rings, NUMERIC(h)), name || 'EXTRUDE').name,
       union: (a, b, name) => { const r = booleanSolids('union', a, b, name); return r ? r.name : null; },
       subtract: (a, b, name) => { const r = booleanSolids('subtract', a, b, name); return r ? r.name : null; },

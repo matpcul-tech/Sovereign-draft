@@ -413,6 +413,47 @@ describe('stacked stories', () => {
   });
 });
 
+describe('per-storey plans', () => {
+  beforeEach(reset);
+
+  it('PLANS cuts every level with exact poche and titles', async () => {
+    const { stackStories, storyPlans } = await import('../src/core/model3d.js');
+    const { csgSubtract: sub } = await import('../src/core/csg.js');
+    const { hatchArea } = await import('../src/core/hatch.js');
+    /* A hollow tube of walls, 2 ft thick, stacked twice. */
+    addSolid(sub(makeBox(0, 0, 0, 20, 20, 8), makeBox(2, 2, -1, 16, 16, 10)), 'WALL');
+    stackStories(2, 8);
+    const r = storyPlans();
+    expect(r.levels).toBe(2);
+    expect(r.plans.map(p => p.cutZ)).toEqual([4, 12]);
+    for (const pl of r.plans){
+      expect(pl.rings).toBe(2);
+      const hatch = pl.made.find(e => e.type === 'hatch');
+      expect(hatch.holes.length).toBe(1);
+      expect(hatchArea(hatch)).toBeCloseTo(400 - 256, 6);
+    }
+    const titles = state.entities.filter(e => e.type === 'text').map(e => e.content);
+    expect(titles).toContain('LEVEL 1 PLAN');
+    expect(titles).toContain('LEVEL 2 PLAN');
+    expect(lookupCommand('PLANS').action).toBe('plans');
+  });
+
+  it('DRAWINGS on a stacked model folds level plans into the views', async () => {
+    const { stackStories, generateDrawings } = await import('../src/core/model3d.js');
+    const { viewSheets } = await import('../src/core/sheetset.js');
+    addSolid(makeBox(0, 0, 0, 30, 20, 8), 'WALL');
+    stackStories(3, 8);
+    const r = generateDrawings({});
+    expect(r.storyPlans).toBe(3);
+    const names = r.views.map(v => v.name);
+    expect(names).toContain('LEVEL 3 PLAN');
+    /* The sheet ladder numbers the plans first. */
+    const sheets = viewSheets(r.views);
+    const planNums = sheets.filter(s => /PLAN/.test(s.name)).map(s => s.sheetNumber);
+    expect(planNums).toEqual(['A-101', 'A-102', 'A-103']);
+  });
+});
+
 describe('the whole set from one command', () => {
   beforeEach(reset);
 
