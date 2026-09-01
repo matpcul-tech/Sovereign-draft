@@ -375,6 +375,40 @@ describe('vertical sections and elevations', () => {
     expect(r.area).toBeCloseTo(200, 1);
   });
 
+  it('hidden line: only openings facing the viewer are drawn', async () => {
+    const { elevationToPlan } = await import('../src/core/model3d.js');
+    const { mergeMeshes } = await import('../src/core/mesh.js');
+    addSolid(makeBox(0, 0, 0, 20, 0.5, 10), 'WALL');
+    addSolid(makeBox(0, 24, 0, 20, 0.5, 10), 'WALL-N');
+    /* One merged WINDOW bucket holding a near window (4 wide) and a far
+     * one (3 wide), the way the plan-to-solids bridge builds it. */
+    addSolid(mergeMeshes([
+      makeBox(8, 0.15, 4, 4, 0.2, 3),
+      makeBox(2, 24.15, 3, 3, 0.2, 3)
+    ]), 'WINDOW');
+    /* An interior door, hidden from every compass side. */
+    addSolid(makeBox(3, 11.8, 0, 3, 0.4, 7), 'DOOR');
+    const s = elevationToPlan('S');
+    expect(s.openings).toBe(1);
+    const sOpen = state.entities.filter(e => e.layer === 'OPENINGS');
+    const xs = sOpen[0].pts.map(p => p[0]);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(4, 6);
+    const n = elevationToPlan('N');
+    expect(n.openings).toBe(1);
+    const nOpen = state.entities.filter(e => e.layer === 'OPENINGS').slice(sOpen.length);
+    const nxs = nOpen[0].pts.map(p => p[0]);
+    expect(Math.max(...nxs) - Math.min(...nxs)).toBeCloseTo(3, 6);
+  });
+
+  it('hidden line reads east and west depths correctly too', async () => {
+    const { elevationToPlan } = await import('../src/core/model3d.js');
+    addSolid(makeBox(0, 0, 0, 0.5, 20, 10), 'WALL');
+    addSolid(makeBox(24, 0, 0, 0.5, 20, 10), 'WALL-E');
+    addSolid(makeBox(0.15, 8, 4, 0.2, 4, 3), 'WINDOW');
+    expect(elevationToPlan('W').openings).toBe(1);
+    expect(elevationToPlan('E').openings).toBe(0);
+  });
+
   it('elevationToPlan draws all four compass outlines', async () => {
     const { elevationToPlan } = await import('../src/core/model3d.js');
     addSolid(tower(), 'TOWER');

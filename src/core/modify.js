@@ -38,6 +38,20 @@ function keepDirFromPick(a, b, I, pick){
 /* Fillet two lines. r=0 is a sharp corner (trim/extend to the intersection).
  * Returns {ok, replace:[{orig, ents}]} — each orig is swapped for ents.
  */
+/* A trimmed wall face is still a wall face: without carrying the wall
+ * identity, filleting two wall edges silently de-walls them, and the wall
+ * stops extruding into 3D. The sample cabin shipped with an invisible west
+ * wall for exactly this reason. Style copy is not enough; the wall fields
+ * ride along too. The corner arc itself stays a plain arc. */
+function carryWall(from, to){
+  if (from.kind) to.kind = from.kind;
+  if (from.role) to.role = from.role;
+  if (from.th != null) to.th = from.th;
+  if (from.ocl) to.ocl = from.ocl;
+  if (from.g != null) to.g = from.g;
+  return to;
+}
+
 export function filletLines(e1, e2, r, p1, p2){
   if (e1.type !== 'line' || e2.type !== 'line') return { ok: false, msg: 'Fillet works on two lines' };
   const a = [e1.x1, e1.y1], b = [e1.x2, e1.y2];
@@ -69,8 +83,8 @@ export function filletLines(e1, e2, r, p1, p2){
     const keep2 = (p2 && dist(p2[0], p2[1], c[0], c[1]) < dist(p2[0], p2[1], d[0], d[1]) && dist(Ix[0], Ix[1], c[0], c[1]) > 1e-6) ? c
       : (p2 && dist(p2[0], p2[1], d[0], d[1]) <= dist(p2[0], p2[1], c[0], c[1]) && dist(Ix[0], Ix[1], d[0], d[1]) > 1e-6) ? d
       : far2;
-    const nL1 = copyStyle(e1, { type: 'line', layer: e1.layer, x1: keep1[0], y1: keep1[1], x2: Ix[0], y2: Ix[1] });
-    const nL2 = copyStyle(e2, { type: 'line', layer: e2.layer, x1: keep2[0], y1: keep2[1], x2: Ix[0], y2: Ix[1] });
+    const nL1 = carryWall(e1, copyStyle(e1, { type: 'line', layer: e1.layer, x1: keep1[0], y1: keep1[1], x2: Ix[0], y2: Ix[1] }));
+    const nL2 = carryWall(e2, copyStyle(e2, { type: 'line', layer: e2.layer, x1: keep2[0], y1: keep2[1], x2: Ix[0], y2: Ix[1] }));
     void L1;
     return { ok: true, replace: [{ orig: e1, ents: [nL1] }, { orig: e2, ents: [nL2] }] };
   }
@@ -93,8 +107,8 @@ export function filletLines(e1, e2, r, p1, p2){
   const use1 = (dist(keep1[0], keep1[1], T1[0], T1[1]) < 1e-6) ? far1 : keep1;
   const use2 = (dist(keep2[0], keep2[1], T2[0], T2[1]) < 1e-6) ? far2 : keep2;
 
-  const nL1 = copyStyle(e1, { type: 'line', layer: e1.layer, x1: use1[0], y1: use1[1], x2: T1[0], y2: T1[1] });
-  const nL2 = copyStyle(e2, { type: 'line', layer: e2.layer, x1: use2[0], y1: use2[1], x2: T2[0], y2: T2[1] });
+  const nL1 = carryWall(e1, copyStyle(e1, { type: 'line', layer: e1.layer, x1: use1[0], y1: use1[1], x2: T1[0], y2: T1[1] }));
+  const nL2 = carryWall(e2, copyStyle(e2, { type: 'line', layer: e2.layer, x1: use2[0], y1: use2[1], x2: T2[0], y2: T2[1] }));
 
   let a1 = angDeg(C[0], C[1], T1[0], T1[1]);
   let a2 = angDeg(C[0], C[1], T2[0], T2[1]);

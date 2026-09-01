@@ -167,6 +167,34 @@ export function silhouette(mesh, dir, boolean){
   return level[0] || [];
 }
 
+/* ---------- depth along a view ray ----------
+ * The first surface the view ray meets at elevation-plane point (u, v):
+ * the smallest signed depth over every triangle whose projection covers the
+ * point. For a view along y, (u, v) is (x, height) and depth is sign * y;
+ * along x it is (y, height) and sign * x. Faces edge-on to the view project
+ * to nothing and occlude nothing, so they are skipped. Infinity means the
+ * ray hits open air.
+ */
+export function depthAt(mesh, axis, sign, u, v){
+  const proj = axis === 'y' ? p => [p[0], p[2]] : p => [p[1], p[2]];
+  const dep = axis === 'y' ? p => sign * p[1] : p => sign * p[0];
+  let best = Infinity;
+  for (const f of mesh.faces){
+    const A = mesh.verts[f[0]], B = mesh.verts[f[1]], C = mesh.verts[f[2]];
+    if (!A || !B || !C) continue;
+    const a = proj(A), b = proj(B), c = proj(C);
+    const det = (b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]);
+    if (Math.abs(det) < 1e-9) continue;
+    const l1 = ((b[0] - u) * (c[1] - v) - (c[0] - u) * (b[1] - v)) / det;
+    const l2 = ((c[0] - u) * (a[1] - v) - (a[0] - u) * (c[1] - v)) / det;
+    const l3 = 1 - l1 - l2;
+    if (l1 < -1e-9 || l2 < -1e-9 || l3 < -1e-9) continue;
+    const d = l1 * dep(A) + l2 * dep(B) + l3 * dep(C);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
 function contains(outer, inner){
   /* One interior test point is enough for section rings. */
   const p = inner[0];

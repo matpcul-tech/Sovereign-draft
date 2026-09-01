@@ -14,12 +14,20 @@ import {
 
 /* Hashes captured from the build BEFORE the document model landed. These are
  * the acceptance criterion for the whole phase: a one sheet one view project
- * must export the same bytes it did before the refactor. */
+ * must export the same bytes it did before the refactor.
+ *
+ * Regenerated once, deliberately, when the cabin itself was corrected: the
+ * corner fillet used to drop the wall identity from the trimmed faces, so
+ * the cabin's west wall was an open outline missing its inner face line and
+ * never extruded to 3D. Fixing filletLines to carry the wall fields put the
+ * line back into the 2D drawing, which changes these bytes for the right
+ * reason. The guard's job, catching unintended pipeline changes against a
+ * stable input, continues from the corrected cabin. */
 const PRE_REFACTOR_PDF = {
-  'cabin:fit': '335178054f317536',
-  'cabin:18': 'c81a12770bdbf15a',
-  'cabin:9': '335178054f317536',
-  'cabin:4.5': 'ac62e32eee755ba0'
+  'cabin:fit': '91c749e294f0773a',
+  'cabin:18': 'f4d5dbd61125c6b3',
+  'cabin:9': '91c749e294f0773a',
+  'cabin:4.5': '1d97467c0a87a811'
 };
 
 function pdfHash(ents, ppf, name){

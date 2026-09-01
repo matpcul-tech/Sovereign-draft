@@ -18,7 +18,7 @@ import {
   translateMesh, rotateMesh, scaleMesh, mergeMeshes
 } from './mesh.js';
 import { csg } from './csg.js';
-import { sliceMesh, sliceArea, sliceMeshAxis, sliceAreaAxis, silhouette } from './slice.js';
+import { sliceMesh, sliceArea, sliceMeshAxis, sliceAreaAxis, silhouette, depthAt } from './slice.js';
 import { polyBoolean, ringsArea } from './boolean.js';
 import { extrudeDrawing } from './solid.js';
 
@@ -158,10 +158,45 @@ export function sliceSolidToPlan(name, z, layer, axis){
  * compass side, drawn beside the plan. Solids named DOOR* or WINDOW*, which
  * is what the plan-to-solids bridge names them, are openings: their own
  * outlines are drawn inside the massing so the elevation shows where the
- * holes are. No hidden line removal, so openings on the far wall project
- * too; this is the massing elevation a drawing starts from, stated honestly.
+ * holes are.
+ *
+ * Hidden line removal for openings: an opening draws only when it faces the
+ * viewer. The test is depth against the whole massing along the view ray at
+ * sample points inside the opening: the first surface the ray meets must be
+ * essentially the wall the opening sits in, within a wall thickness, or the
+ * opening is behind something and stays off the drawing. That hides far
+ * walls' openings, interior doors, and side walls' edge-on slivers, which
+ * is what a drawn elevation omits. Full hidden line removal of the massing
+ * itself (roof lines behind parapets and the like) remains out of scope.
  */
 const OPENING_NAME = /^(DOOR|WINDOW)/;
+const OPENING_DEPTH_TOL = 1.5;
+
+/* Viewer position by compass side: depth = viewSign * coordinate, smaller
+ * is closer to the viewer. */
+const VIEW_SIGN = { S: 1, N: -1, W: 1, E: -1 };
+
+/* One projected ring of one opening. The bridge merges every door into one
+ * DOOR solid, so visibility has to be decided ring by ring: the opening's
+ * own front surface at each sample comes from ray-casting its own mesh,
+ * which reads the right door even inside a merged bucket. */
+function ringVisible(ring, axis, sign, ownMesh, occluder){
+  let u0 = Infinity, v0 = Infinity, u1 = -Infinity, v1 = -Infinity;
+  for (const p of ring){
+    u0 = Math.min(u0, p[0]); v0 = Math.min(v0, p[1]);
+    u1 = Math.max(u1, p[0]); v1 = Math.max(v1, p[1]);
+  }
+  const at = (tu, tv) => [u0 + (u1 - u0) * tu, v0 + (v1 - v0) * tv];
+  const samples = [at(0.5, 0.5), at(0.25, 0.25), at(0.75, 0.25), at(0.25, 0.75), at(0.75, 0.75)];
+  let pass = 0;
+  for (const [u, v] of samples){
+    const own = depthAt(ownMesh, axis, sign, u, v);
+    if (!isFinite(own)) continue;
+    const occ = depthAt(occluder, axis, sign, u, v);
+    if (own - occ <= OPENING_DEPTH_TOL) pass++;
+  }
+  return pass >= 3;
+}
 
 export function elevationToPlan(dir, layer){
   const mesh = allSolidsMesh();
@@ -170,10 +205,12 @@ export function elevationToPlan(dir, layer){
   if (!d) throw new Error('ELEV wants N, S, E or W');
   const boolean = (A, B, op) => polyBoolean(A, B, op);
   let rings = silhouette(mesh, d, boolean);
+  const sign = VIEW_SIGN[String(dir || 'S').toUpperCase()];
   let openRings = [];
   for (const rec of state.solids || []){
     if (!OPENING_NAME.test(rec.name)) continue;
-    openRings = openRings.concat(silhouette(rec.mesh, d, boolean));
+    openRings = openRings.concat(
+      silhouette(rec.mesh, d, boolean).filter(r => ringVisible(r, d, sign, rec.mesh, mesh)));
   }
   /* Seen from the south or the west the horizontal axis reads the other
    * way, so mirror it: elevations read left to right the way you face them.

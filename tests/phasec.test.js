@@ -133,8 +133,10 @@ describe('single sheet output is unchanged by the multi page writer', () => {
     expect(hash(all)).toBe(hash(single));
   });
   it('model space export is untouched', () => {
+    /* Hash regenerated with the corrected cabin (fillet keeps wall
+     * identity, west wall restored); see the note in phaseb.test.js. */
     const r = buildPDF(cabin24x36(), { ppf: 18, layerVisible: vis, projectName: 'CABIN', dateStr: '2026-01-01' });
-    expect(hash(r.pdf)).toBe('c81a12770bdbf15a');
+    expect(hash(r.pdf)).toBe('f4d5dbd61125c6b3');
   });
 });
 

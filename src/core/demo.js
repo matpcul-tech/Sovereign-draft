@@ -42,6 +42,13 @@ export function cabin24x36(){
     res.replace.forEach(p => {
       const i = ents.indexOf(p.orig);
       if (i >= 0) ents[i] = p.ents[0];
+      /* The members lists must track the replacement too, or the second
+       * corner on the same wall looks up a stale entity and silently does
+       * nothing, which left the west wall an open outline. */
+      [a, b].forEach(w => {
+        const mi = w.members.indexOf(p.orig);
+        if (mi >= 0) w.members[mi] = p.ents[0];
+      });
     });
   }
   corner(S, E); corner(E, N); corner(N, W); corner(W, S);

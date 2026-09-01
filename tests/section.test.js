@@ -24,8 +24,13 @@ describe('cutting plane', () => {
 
 describe('section through the sample cabin', () => {
   const ents = cabin24x36();
-  /* Horizontal cut through the middle of the 24×36 cabin. */
-  const plane = makeCutPlane([0, 12], [36, 12], 'A');
+  /* Horizontal cut through the cabin at y=20, where the west wall, the
+   * interior bedroom wall and the east wall are all solid. The old cut at
+   * y=12 ran through the east window and only ever "hit" the east wall via
+   * a ghost duplicate line the corner fillet used to leave behind; when the
+   * fillet was fixed to keep wall identity, the ghosts went away and the
+   * cut line had to become honest too. */
+  const plane = makeCutPlane([0, 20], [36, 20], 'A');
 
   it('hits the west wall, interior wall and east wall', () => {
     const hits = sectionHits(ents, plane);
