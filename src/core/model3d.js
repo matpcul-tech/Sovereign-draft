@@ -27,6 +27,7 @@ import { polyBoolean, ringsArea, differenceRings } from './boolean.js';
 import { extrudeDrawing } from './solid.js';
 import { alignedDim } from './dimStyle.js';
 import { fmtFtIn } from './format.js';
+import { makeCutPlane } from './section.js';
 
 export function solidByName(name){
   const n = String(name || '').trim().toUpperCase();
@@ -476,6 +477,31 @@ export function storyPlans(){
   return { plans, levels, storyHeight: h };
 }
 
+/* ---------- the roof plan ----------
+ * The set's top-down view: the plan shadow of everything modelled as the
+ * outline, with the visible edges seen from straight above drawn inside
+ * it. On a hip roof that is the ridge and the four hip lines; on a gable,
+ * the ridge. The same hidden line pass as the elevations, pointed down.
+ */
+export function roofPlanToPlan(layer){
+  const mesh = allSolidsMesh();
+  if (!mesh.faces.length) throw new Error('Nothing modelled to take a roof plan of');
+  const boolean = (A, B, op) => polyBoolean(A, B, op);
+  const rings = silhouette(mesh, 'z', boolean);
+  const edgeSegs = clipSegsToInterior(visibleMeshEdges(mesh, 'z', -1), rings);
+  const offset = nextViewOffset(rings);
+  const made = placeRings(rings, layer || 'SECTION', offset);
+  for (const s of edgeSegs){
+    pushEnt({
+      type: 'line', layer: layer || 'SECTION',
+      x1: round6(s[0][0] + offset[0]), y1: round6(s[0][1] + offset[1]),
+      x2: round6(s[1][0] + offset[0]), y2: round6(s[1][1] + offset[1])
+    }, made);
+  }
+  annotateView(made.filter(e => e.type === 'poly'), 'ROOF PLAN').forEach(e => made.push(e));
+  return { made, edges: edgeSegs.length, area: ringsArea(rings), offset };
+}
+
 /* ---------- the whole set, one command ----------
  * DRAWINGS composes what already exists: model the plan into solids if
  * that has not happened yet, optionally seat a roof, then take all four
@@ -540,9 +566,23 @@ export function generateDrawings(opts){
     }
   }
   const bb = meshBBox(target.mesh);
-  out.section = sliceSolidToPlan(target.name, (bb[1] + bb[4]) / 2, undefined, 'y');
+  const cutY = (bb[1] + bb[4]) / 2;
+  out.section = sliceSolidToPlan(target.name, cutY, undefined, 'y');
   const sb = viewExtent(out.section.made);
   if (sb) out.views.push({ name: 'SECTION', bbox: sb });
+  /* The plan gets its cut marker: a tagged section line where the section
+   * was taken, so the set references itself the way an issued set does. */
+  const marker = makeCutPlane([bb[0] - 2, cutY], [bb[3] + 2, cutY], 'A');
+  marker.id = state.idSeq++;
+  state.entities.push(marker);
+  out.marker = marker.id;
+  /* A roofed model gets its roof plan. */
+  if ((state.solids || []).some(s => /^ROOF/.test(s.name))){
+    const rp = roofPlanToPlan();
+    out.roofPlan = rp.edges;
+    const rb = viewExtent(rp.made);
+    if (rb) out.views.push({ name: 'ROOF PLAN', bbox: rb });
+  }
   return out;
 }
 

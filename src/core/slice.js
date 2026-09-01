@@ -183,8 +183,8 @@ export function silhouette(mesh, dir, boolean){
  * probe returns exactly what the linear scan returns. The hidden line
  * pass over a campus of buildings was quadratic without this. */
 export function makeDepthProbe(mesh, axis, sign){
-  const proj = axis === 'y' ? p => [p[0], p[2]] : p => [p[1], p[2]];
-  const dep = axis === 'y' ? p => sign * p[1] : p => sign * p[0];
+  const proj = axis === 'y' ? p => [p[0], p[2]] : axis === 'x' ? p => [p[1], p[2]] : p => [p[0], p[1]];
+  const dep = axis === 'y' ? p => sign * p[1] : axis === 'x' ? p => sign * p[0] : p => sign * p[2];
   const tris = [];
   let u0 = Infinity, v0 = Infinity, u1 = -Infinity, v1 = -Infinity;
   for (const f of mesh.faces){
@@ -229,8 +229,8 @@ export function makeDepthProbe(mesh, axis, sign){
 }
 
 export function depthAt(mesh, axis, sign, u, v){
-  const proj = axis === 'y' ? p => [p[0], p[2]] : p => [p[1], p[2]];
-  const dep = axis === 'y' ? p => sign * p[1] : p => sign * p[0];
+  const proj = axis === 'y' ? p => [p[0], p[2]] : axis === 'x' ? p => [p[1], p[2]] : p => [p[0], p[1]];
+  const dep = axis === 'y' ? p => sign * p[1] : axis === 'x' ? p => sign * p[0] : p => sign * p[2];
   let best = Infinity;
   for (const f of mesh.faces){
     const A = mesh.verts[f[0]], B = mesh.verts[f[1]], C = mesh.verts[f[2]];
@@ -312,9 +312,9 @@ function faceNormal(A, B, C){
 }
 
 export function visibleMeshEdges(mesh, axis, sign){
-  const proj = axis === 'y' ? p => [p[0], p[2]] : p => [p[1], p[2]];
-  const dep = axis === 'y' ? p => sign * p[1] : p => sign * p[0];
-  const view = axis === 'y' ? [0, sign, 0] : [sign, 0, 0];
+  const proj = axis === 'y' ? p => [p[0], p[2]] : axis === 'x' ? p => [p[1], p[2]] : p => [p[0], p[1]];
+  const dep = axis === 'y' ? p => sign * p[1] : axis === 'x' ? p => sign * p[0] : p => sign * p[2];
+  const view = axis === 'y' ? [0, sign, 0] : axis === 'x' ? [sign, 0, 0] : [0, 0, sign];
   const probe = makeDepthProbe(mesh, axis, sign);
   const K = 1e-6;
   const pkey = v => Math.round(v[0] / K) + ',' + Math.round(v[1] / K) + ',' + Math.round(v[2] / K);

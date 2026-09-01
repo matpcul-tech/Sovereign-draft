@@ -114,6 +114,7 @@ export const COMMANDS = {
   ROOF:    { aliases: ['ROOF'],                         tool: null,     action: 'roof' },
   STACK:   { aliases: ['STACK', 'STOREY', 'STORIES'],   tool: null,     action: 'stack' },
   PLANS:   { aliases: ['PLANS', 'LEVELPLANS'],          tool: null,     action: 'plans' },
+  ROOFPLAN:{ aliases: ['ROOFPLAN'],                     tool: null,     action: 'roofplan' },
   DRAWINGS:{ aliases: ['DRAWINGS', 'DWGSET'],           tool: null,     action: 'drawings' },
   SWEEP:   { aliases: ['SWEEP'],                        tool: null,     action: 'sweep3d' },
   U3D:     { aliases: ['U3D', 'UNION3D'],               tool: null,     action: 'bool3d:union' },

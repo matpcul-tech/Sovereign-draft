@@ -413,6 +413,45 @@ describe('stacked stories', () => {
   });
 });
 
+describe('the roof plan', () => {
+  beforeEach(reset);
+
+  it('a hip roof plans to its ridge and four hips, exactly', async () => {
+    const { roofPlanToPlan } = await import('../src/core/model3d.js');
+    const { makeHip } = await import('../src/core/mesh.js');
+    addSolid(makeHip(0, 0, 8, 30, 20, 5), 'ROOF');
+    const r = roofPlanToPlan();
+    expect(r.area).toBeCloseTo(600, 6);
+    expect(r.edges).toBe(5);
+    const lines = r.made.filter(e => e.type === 'line');
+    const lens = lines.map(l => Math.hypot(l.x2 - l.x1, l.y2 - l.y1)).sort((a, b) => a - b);
+    /* Four hips at sqrt(200) and the ridge at 10. */
+    expect(lens[0]).toBeCloseTo(10, 6);
+    for (let i = 1; i < 5; i++) expect(lens[i]).toBeCloseTo(Math.sqrt(200), 6);
+    expect(lookupCommand('ROOFPLAN').action).toBe('roofplan');
+  });
+
+  it('a gable roof plans to just its ridge', async () => {
+    const { roofPlanToPlan } = await import('../src/core/model3d.js');
+    const { makeGable } = await import('../src/core/mesh.js');
+    addSolid(makeGable(0, 0, 8, 30, 20, 5), 'ROOF');
+    const r = roofPlanToPlan();
+    expect(r.edges).toBe(1);
+    const line = r.made.find(e => e.type === 'line');
+    expect(Math.abs(line.y2 - line.y1)).toBeLessThan(1e-6);
+    expect(Math.abs(line.x2 - line.x1)).toBeCloseTo(30, 0);
+  });
+
+  it('DRAWINGS adds the roof plan and marks the section cut on the plan', async () => {
+    const { generateDrawings } = await import('../src/core/model3d.js');
+    addSolid(makeBox(0, 0, 0, 30, 20, 8), 'WALL');
+    const r = generateDrawings({ roof: 'hip', pitch: 6 });
+    expect(r.roofPlan).toBeGreaterThan(0);
+    expect(r.views.map(v => v.name)).toContain('ROOF PLAN');
+    expect(state.entities.some(e => e.type === 'cutplane')).toBe(true);
+  });
+});
+
 describe('headers and sills over openings', () => {
   beforeEach(reset);
 

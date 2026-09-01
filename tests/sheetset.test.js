@@ -345,15 +345,16 @@ describe('sheets for known views', () => {
     state.solids = [];
     state.idSeq = 10;
     const r = generateDrawings({ roof: 'gable', pitch: 6 });
-    expect(r.views.length).toBe(5);
+    /* Four elevations, the section, and the roof plan the roof earns. */
+    expect(r.views.length).toBe(6);
     const sheets = viewSheets([{ name: 'FLOOR PLAN', bbox: [0, 0, 30, 20] }].concat(r.views));
-    expect(sheets.length).toBe(6);
+    expect(sheets.length).toBe(7);
     const pdf = buildAllSheetsPDF(state.entities, {
       sheets, layerVisible: () => true, projectName: 'SET', dateStr: '2026-01-01'
     });
     expect(pdf.pdf.length).toBeGreaterThan(10000);
     /* One page per sheet: count the PDF page objects. */
     const pages = (pdf.pdf.match(/\/Type \/Page[^s]/g) || []).length;
-    expect(pages).toBe(6);
+    expect(pages).toBe(7);
   });
 });

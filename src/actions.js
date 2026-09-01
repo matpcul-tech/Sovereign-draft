@@ -23,7 +23,7 @@ import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, 
 import { plotStyleByName } from './io/plotstyle.js';
 import { modelToPaper, viewportRot } from './core/layout.js';
 import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight, sweepPath } from './core/mesh.js';
-import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, roofOverModel, generateDrawings, stackStories, storyPlans, sampleBracket } from './core/model3d.js';
+import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, roofOverModel, generateDrawings, stackStories, storyPlans, roofPlanToPlan, sampleBracket } from './core/model3d.js';
 import { toAnno, fromAnno, parseScaleToPpf } from './core/annoscale.js';
 import { runScript, scriptByName } from './core/script.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
@@ -281,6 +281,16 @@ export function makePlans(){
     afterChange();
     toast(r.plans.length + ' level plan' + (r.plans.length === 1 ? '' : 's') +
       ' cut at ' + Math.min(4, r.storyHeight / 2).toFixed(1) + ' ft above each floor, beside the drawing', 4000);
+  } catch (e){ toast(e.message, 4000); }
+}
+
+export function makeRoofPlan(){
+  pushUndo(undoScope([]));
+  try {
+    const r = roofPlanToPlan();
+    afterChange();
+    toast('Roof plan: ' + r.edges + ' ridge and hip line' + (r.edges === 1 ? '' : 's') + ', ' +
+      r.area.toFixed(1) + ' SF footprint, beside the drawing', 4000);
   } catch (e){ toast(e.message, 4000); }
 }
 
