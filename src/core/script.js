@@ -32,7 +32,7 @@ import { makeMText } from './mtext.js';
 import { makeHatch, closedLoops, hatchWithIslands } from './hatch.js';
 import { polyBoolean, ringsArea } from './boolean.js';
 import { solveConstraints, makeConstraint, CONSTRAINT_TYPES } from './constrain.js';
-import { createSolid, addSolid, booleanSolids, moveSolid, rotateSolid, scaleSolid, sliceSolidToPlan, solidByName, solidNames, removeSolid, roofOverModel, stackStories, storyPlans, pushPullSolid } from './model3d.js';
+import { createSolid, addSolid, booleanSolids, moveSolid, rotateSolid, scaleSolid, sliceSolidToPlan, solidByName, solidNames, removeSolid, roofOverModel, stackStories, storyPlans, pushPullSolid, dormerOnRoof } from './model3d.js';
 import { extrudeRings, meshVolume } from './mesh.js';
 
 const NUMERIC = v => {
@@ -208,6 +208,7 @@ export function makeSd(println){
       stack: (n, h) => stackStories(n, h).made.length,
       plans: () => storyPlans().plans.length,
       pushpull: (name, face, d) => { const r = pushPullSolid(name, face, d); return Math.abs(meshVolume(r.rec.mesh)); },
+      dormer: (x, y, w, h, pitch) => dormerOnRoof(x, y, w, h, pitch).added,
       extrude: (rings, h, name) => addSolid(extrudeRings(rings, NUMERIC(h)), name || 'EXTRUDE').name,
       union: (a, b, name) => { const r = booleanSolids('union', a, b, name); return r ? r.name : null; },
       subtract: (a, b, name) => { const r = booleanSolids('subtract', a, b, name); return r ? r.name : null; },

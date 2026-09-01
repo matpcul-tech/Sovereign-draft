@@ -455,6 +455,47 @@ describe('wing roofs over rectilinear plans', () => {
   });
 });
 
+describe('dormers on the roof slope', () => {
+  beforeEach(reset);
+
+  it('a dormer seats itself downhill and adds exactly its volume minus the overlap', async () => {
+    const { roofOverModel, dormerOnRoof, solidByName: byName } = await import('../src/core/model3d.js');
+    const { makeGable } = await import('../src/core/mesh.js');
+    const { csgUnion: uni, csgIntersect: inter } = await import('../src/core/csg.js');
+    addSolid(makeBox(0, 0, 0, 40, 24, 9), 'WALL');
+    roofOverModel('gable', 8, 1);
+    const roofBefore = byName('ROOF').mesh;
+    const r = dormerOnRoof(12, 4, 6, 4, 8);
+    expect(r.axis).toBe('y');
+    /* Rebuild the dormer independently and hold the union identity. */
+    const D = 6 * 1.25;
+    const body = makeBox(12 - 3, 4 - D / 2, r.zb, 6, D, 4);
+    const hat = makeGable(12 - 3, 4 - D / 2, r.zb + 4, 6, D, 3 * 8 / 12);
+    const dSolid = uni(body, hat);
+    const want = Math.abs(V(dSolid)) - Math.abs(V(inter(dSolid, roofBefore)));
+    expect(r.added).toBeCloseTo(want, 6);
+    expect(lookupCommand('DORMER').action).toBe('dormer');
+  });
+
+  it('a point off the roof or on flat ground is refused', async () => {
+    const { roofOverModel, dormerOnRoof } = await import('../src/core/model3d.js');
+    addSolid(makeBox(0, 0, 0, 40, 24, 9), 'WALL');
+    expect(() => dormerOnRoof(10, 10, 6)).toThrow();     /* no roof yet */
+    roofOverModel('gable', 8, 1);
+    expect(() => dormerOnRoof(500, 500, 6)).toThrow();   /* off the roof */
+  });
+
+  it('the drawings inherit the dormer', async () => {
+    const { roofOverModel, dormerOnRoof, roofPlanToPlan, elevationToPlan } = await import('../src/core/model3d.js');
+    addSolid(makeBox(0, 0, 0, 40, 24, 9), 'WALL');
+    roofOverModel('gable', 8, 1);
+    const bare = roofPlanToPlan().edges;
+    dormerOnRoof(12, 4, 6, 4, 8);
+    expect(roofPlanToPlan().edges).toBeGreaterThan(bare);
+    expect(elevationToPlan('S').edges).toBeGreaterThan(1);
+  });
+});
+
 describe('push-pull on the exact kernel', () => {
   beforeEach(reset);
 

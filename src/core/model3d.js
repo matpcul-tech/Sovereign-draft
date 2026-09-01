@@ -179,6 +179,58 @@ export function roofOverModel(kind, pitch, overhang){
   return addSolid(mesh, 'ROOF');
 }
 
+/* ---------- dormers ----------
+ * A dormer is a gabled body seated on a roof slope: front wall standing
+ * proud on the downhill side, back buried in the main roof, cheek walls
+ * emerging where the union crosses the slope. The command needs only a
+ * point and a width: the roof surface is probed from above to find the
+ * height and the downhill direction, the body is set with its base just
+ * under the slope's lowest footprint corner, and the whole thing unions
+ * into the ROOF solid so plans, elevations and takeoffs inherit it.
+ */
+export function dormerOnRoof(x, y, w, hFace, pitch){
+  const roof = (state.solids || []).find(s => /^ROOF/.test(s.name));
+  if (!roof) throw new Error('No roof: ROOF first, then DORMER x y width');
+  const probe = makeDepthProbe(roof.mesh, 'z', -1);
+  const zAt = (px, py) => { const d = probe(px, py); return isFinite(d) ? -d : null; };
+  const zc = zAt(x, y);
+  if (zc == null) throw new Error('That point is not on the roof');
+  const W = Number(w) > 0 ? Number(w) : 6;
+  const H = Number(hFace) > 0 ? Number(hFace) : 4;
+  const p = Number(pitch) > 0 ? Number(pitch) : 6;
+  /* Downhill: the steepest descending neighbour decides axis and sense. */
+  const eps = 0.25;
+  const cand = [
+    { ax: 'y', dir: 1, z: zAt(x, y + eps) },
+    { ax: 'y', dir: -1, z: zAt(x, y - eps) },
+    { ax: 'x', dir: 1, z: zAt(x + eps, y) },
+    { ax: 'x', dir: -1, z: zAt(x - eps, y) }
+  ].filter(c => c.z != null && c.z < zc - 1e-9);
+  if (!cand.length) throw new Error('No slope at that point: a dormer wants a pitched face');
+  cand.sort((a, b) => a.z - b.z);
+  const down = cand[0];
+  /* Deeper than wide, so the gable ridge runs into the slope. */
+  const D = W * 1.25;
+  const half = v => v / 2;
+  const foot = down.ax === 'y'
+    ? { x0: x - half(W), y0: y - half(D) + (down.dir > 0 ? 0 : 0), w: W, d: D }
+    : { x0: x - half(D), y0: y - half(W), w: D, d: W };
+  /* Base: just under the lowest on-roof corner of the footprint, so the
+   * front wall stands on the slope and the back stays buried. */
+  const corners = [
+    [foot.x0, foot.y0], [foot.x0 + foot.w, foot.y0],
+    [foot.x0, foot.y0 + foot.d], [foot.x0 + foot.w, foot.y0 + foot.d]
+  ].map(c => zAt(c[0], c[1])).filter(z => z != null);
+  if (!corners.length) throw new Error('The dormer footprint leaves the roof');
+  const zb = Math.min(...corners) - 0.25;
+  const rise = W / 2 * p / 12;
+  const body = makeBox(foot.x0, foot.y0, zb, foot.w, foot.d, H);
+  const hat = makeGable(foot.x0, foot.y0, zb + H, foot.w, foot.d, rise);
+  const before = Math.abs(meshVolume(roof.mesh));
+  roof.mesh = csg('union', roof.mesh, csg('union', body, hat));
+  return { rec: roof, added: Math.abs(meshVolume(roof.mesh)) - before, axis: down.ax, zb };
+}
+
 /* ---------- push-pull ----------
  * The direct-modelling verb: grab a planar face, drag it along its normal.
  * The face's coplanar patch is found from the seed triangle, its boundary

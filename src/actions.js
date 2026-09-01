@@ -23,7 +23,7 @@ import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, 
 import { plotStyleByName } from './io/plotstyle.js';
 import { modelToPaper, viewportRot } from './core/layout.js';
 import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight, sweepPath } from './core/mesh.js';
-import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, roofOverModel, generateDrawings, stackStories, storyPlans, roofPlanToPlan, takeoffSolids, sampleBracket } from './core/model3d.js';
+import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, roofOverModel, generateDrawings, stackStories, storyPlans, roofPlanToPlan, takeoffSolids, dormerOnRoof, sampleBracket } from './core/model3d.js';
 import { toAnno, fromAnno, parseScaleToPpf } from './core/annoscale.js';
 import { runScript, scriptByName } from './core/script.js';
 import { setBulge, bulgeAt, bulgeThrough } from './core/bulge.js';
@@ -317,6 +317,22 @@ export function makeTakeoff3d(){
     state.entities.push(t);
     afterChange();
     toast('Takeoff: ' + (rows.length - 1) + ' solids, ' + volume.toFixed(1) + ' CF total, table beside the drawing', 4000);
+  } catch (e){ toast(e.message, 4000); }
+}
+
+export function makeDormer(rest){
+  const nums = String(rest || '').trim().split(/\s+/).filter(Boolean).map(Number);
+  if (nums.length < 2 || nums.some(v => !Number.isFinite(v))){
+    toast('DORMER x y [width] [faceHeight] [pitch] seats a gabled dormer on the roof slope at that point');
+    return;
+  }
+  /* Full snapshot: the dormer edits the ROOF solid in place. */
+  pushUndo();
+  try {
+    const r = dormerOnRoof(nums[0], nums[1], nums[2], nums[3], nums[4]);
+    afterChange();
+    toast('Dormer on the ' + (r.axis === 'y' ? 'north-south' : 'east-west') + ' slope, ' +
+      r.added.toFixed(1) + ' CF added to the roof', 4000);
   } catch (e){ toast(e.message, 4000); }
 }
 
