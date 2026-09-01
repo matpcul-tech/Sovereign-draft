@@ -44,7 +44,7 @@ import { attachXref, expandXref } from './core/xref.js';
 import { overkill } from './core/overkill.js';
 import { buildTakeoffTable, takeoffSummary } from './core/takeoff.js';
 import { syncAutoRooms } from './core/rooms.js';
-import { generateSheetSet } from './core/sheetset.js';
+import { generateSheetSet, viewSheets } from './core/sheetset.js';
 import { envelopeDims, sectionDims } from './core/spec.js';
 import { makeConstraint, solveConstraints, constraintsOn, describeConstraint } from './core/constrain.js';
 import { buildSection, buildDetail } from './core/section.js';
@@ -220,20 +220,40 @@ export function makeRoof(rest){
 
 export function makeDrawings(rest){
   const toks = String(rest || '').trim().split(/\s+/).filter(Boolean);
+  const wantSheets = toks.some(t => /^SHEETS?$/i.test(t));
+  const rem = toks.filter(t => !/^SHEETS?$/i.test(t));
   const opts = {};
-  if (toks.length && /^(G|GABLE|H|HIP)$/i.test(toks[0])){
-    opts.roof = /^h/i.test(toks[0]) ? 'hip' : 'gable';
-    opts.pitch = Number(toks[1]) > 0 ? Number(toks[1]) : 6;
+  if (rem.length && /^(G|GABLE|H|HIP)$/i.test(rem[0])){
+    opts.roof = /^h/i.test(rem[0]) ? 'hip' : 'gable';
+    opts.pitch = Number(rem[1]) > 0 ? Number(rem[1]) : 6;
   }
-  pushUndo(undoScope([]));
+  /* Sheets live outside the sparse record's scope, so the SHEETS form
+   * takes a full snapshot: one undo still removes the whole package. */
+  if (wantSheets) pushUndo();
+  else pushUndo(undoScope([]));
   try {
+    let planBB = null;
+    if (wantSheets && state.entities.length){
+      const bb = [1e9, 1e9, -1e9, -1e9];
+      state.entities.forEach(e => entBBox(e, bb));
+      if (bb[0] < 1e8) planBB = [bb[0] - 1, bb[1] - 1, bb[2] + 1, bb[3] + 1];
+    }
     const r = generateDrawings(opts);
+    let sheets = 0;
+    if (wantSheets){
+      const views = (planBB ? [{ name: 'FLOOR PLAN', bbox: planBB }] : []).concat(r.views);
+      const made = viewSheets(views);
+      state.layouts = (state.layouts || []).concat(made);
+      sheets = made.length;
+      try { document.dispatchEvent(new Event('sd-sheets-changed')); } catch (e2){ /* node */ }
+    }
     afterChange();
     const openings = r.elevations.reduce((s2, e) => s2 + (e.openings || 0), 0);
     toast('Drawing set: ' +
       (r.modelled ? r.modelled + ' solids modelled, ' : '') +
       (r.roof ? r.roof + ' seated, ' : '') +
-      '4 elevations (' + openings + ' openings), 1 section, all beside the plan. F fits the view', 5000);
+      '4 elevations (' + openings + ' openings), 1 section' +
+      (sheets ? ', ' + sheets + ' sheets' : '') + '. F fits the view', 5000);
   } catch (e){ toast(e.message, 4000); }
 }
 

@@ -229,6 +229,32 @@ function stampMarks(layout, parts){
   return out;
 }
 
+/* Sheets for views whose extents the caller already knows exactly, the
+ * way DRAWINGS does: no cluster detection, one numbered sheet per view.
+ * Plans take A-101 up, elevations A-201 up, sections A-301 up. Layout ids
+ * carry a V prefix so they never collide with a detected sheet set. */
+export function viewSheets(views){
+  const out = [];
+  let plan = 0, elev = 0, sect = 0;
+  for (const v of views || []){
+    if (!v || !v.bbox || !(v.bbox[2] > v.bbox[0])) continue;
+    const num = /SECTION/i.test(v.name) ? 'A-' + (301 + sect++)
+      : /ELEVATION/i.test(v.name) ? 'A-' + (201 + elev++)
+        : 'A-' + (101 + plan++);
+    out.push(buildSheet({
+      id: 'V' + num.replace('-', ''),
+      sheetNumber: num,
+      name: num + ' ' + v.name,
+      kind: 'overall',
+      sheet: pickSheetForBBox(v.bbox),
+      ppf: 18,
+      viewName: v.name,
+      section: { bbox: v.bbox, name: v.name, source: 'view' }
+    }, v.bbox));
+  }
+  return out;
+}
+
 export function generateSheetSet(entities, layers, opts){
   opts = opts || {};
   const detected = detectSections(entities);

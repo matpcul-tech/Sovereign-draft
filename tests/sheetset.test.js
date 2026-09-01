@@ -311,3 +311,49 @@ describe('default plan layout clears the issued title block', () => {
 
 void membersBBox;
 void collectCallouts;
+
+describe('sheets for known views', () => {
+  it('viewSheets numbers plans, elevations and sections on their own ladders', async () => {
+    const { viewSheets } = await import('../src/core/sheetset.js');
+    const sheets = viewSheets([
+      { name: 'FLOOR PLAN', bbox: [0, 0, 40, 30] },
+      { name: 'SOUTH ELEVATION', bbox: [50, 0, 90, 16] },
+      { name: 'EAST ELEVATION', bbox: [100, 0, 130, 16] },
+      { name: 'SECTION', bbox: [140, 0, 180, 16] },
+      { name: 'bad', bbox: null }
+    ]);
+    expect(sheets.map(s => s.sheetNumber)).toEqual(['A-101', 'A-201', 'A-202', 'A-301']);
+    expect(sheets.map(s => s.id)).toEqual(['VA101', 'VA201', 'VA202', 'VA301']);
+    /* Each viewport is centred on its own view, at an honest scale. */
+    for (let i = 0; i < sheets.length; i++){
+      const vp = sheets[i].viewports[0];
+      expect(vp.mx).toBeGreaterThan(i * 40 - 5);
+      expect(vp.ppf).toBeGreaterThan(0);
+    }
+  });
+
+  it('the whole DRAWINGS package prints through the all sheets PDF', async () => {
+    const { state, defaultLayers } = await import('../src/core/state.js');
+    const { generateDrawings } = await import('../src/core/model3d.js');
+    const { viewSheets } = await import('../src/core/sheetset.js');
+    const { buildAllSheetsPDF } = await import('../src/io/pdf.js');
+    state.entities = [{
+      id: 1, type: 'poly', layer: 'WALLS', closed: true,
+      pts: [[0, 0], [30, 0], [30, 20], [0, 20]]
+    }];
+    state.layers = defaultLayers();
+    state.solids = [];
+    state.idSeq = 10;
+    const r = generateDrawings({ roof: 'gable', pitch: 6 });
+    expect(r.views.length).toBe(5);
+    const sheets = viewSheets([{ name: 'FLOOR PLAN', bbox: [0, 0, 30, 20] }].concat(r.views));
+    expect(sheets.length).toBe(6);
+    const pdf = buildAllSheetsPDF(state.entities, {
+      sheets, layerVisible: () => true, projectName: 'SET', dateStr: '2026-01-01'
+    });
+    expect(pdf.pdf.length).toBeGreaterThan(10000);
+    /* One page per sheet: count the PDF page objects. */
+    const pages = (pdf.pdf.match(/\/Type \/Page[^s]/g) || []).length;
+    expect(pages).toBe(6);
+  });
+});

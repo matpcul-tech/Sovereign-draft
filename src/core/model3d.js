@@ -398,9 +398,26 @@ export function elevationToPlan(dir, layer){
  * north. Every piece lands beside the last, titled and dimensioned, and
  * the caller wraps the lot in a single undo step.
  */
+/* The extent of one generated view, every entity kind included, padded a
+ * foot so nothing touches the frame. */
+function viewExtent(made){
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const p = (x, y) => {
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+  };
+  for (const e of made || []){
+    if (e.pts) e.pts.forEach(q => p(q[0], q[1]));
+    if (e.holes) e.holes.forEach(h => h.forEach(q => p(q[0], q[1])));
+    if (e.x1 != null && e.y1 != null){ p(e.x1, e.y1); p(e.x2, e.y2); }
+    if (e.x != null && e.y != null) p(e.x, e.y);
+  }
+  return isFinite(x0) ? [x0 - 1, y0 - 1, x1 + 1, y1 + 1] : null;
+}
+
 export function generateDrawings(opts){
   const o = opts || {};
-  const out = { modelled: 0, roof: null, elevations: [], section: null };
+  const out = { modelled: 0, roof: null, elevations: [], section: null, views: [] };
   const massing = () => (state.solids || []).filter(s => s && !OPENING_NAME.test(s.name) && !/^ROOF/.test(s.name));
   if (!massing().length){
     if (!state.entities.length) throw new Error('Draw a plan or model a solid first');
@@ -408,7 +425,13 @@ export function generateDrawings(opts){
     if (!massing().length) throw new Error('Nothing in the plan extrudes into a solid');
   }
   if (o.roof) out.roof = roofOverModel(o.roof, o.pitch, o.overhang).name;
-  for (const d of ['S', 'E', 'N', 'W']) out.elevations.push(elevationToPlan(d));
+  const NAMES = { S: 'SOUTH ELEVATION', E: 'EAST ELEVATION', N: 'NORTH ELEVATION', W: 'WEST ELEVATION' };
+  for (const d of ['S', 'E', 'N', 'W']){
+    const r = elevationToPlan(d);
+    out.elevations.push(r);
+    const bb = viewExtent(r.made);
+    if (bb) out.views.push({ name: NAMES[d], bbox: bb });
+  }
   /* Section target: the WALL solid when the bridge made one, else the
    * mass with the largest footprint. */
   const cands = massing();
@@ -423,6 +446,8 @@ export function generateDrawings(opts){
   }
   const bb = meshBBox(target.mesh);
   out.section = sliceSolidToPlan(target.name, (bb[1] + bb[4]) / 2, undefined, 'y');
+  const sb = viewExtent(out.section.made);
+  if (sb) out.views.push({ name: 'SECTION', bbox: sb });
   return out;
 }
 
