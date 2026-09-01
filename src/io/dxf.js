@@ -330,7 +330,29 @@ function writeEnt(w, e, r2000, inBlock, paper){
   void TITLE_BLOCK_H;
 }
 
-function num(v){ v = Number(v); return isFinite(v) ? v : 0; }
+function num(v){
+  let n = Number(v);
+  if (!isFinite(n) && typeof v === 'string' && /\d[dD][+-]?\d/.test(v)){
+    /* Fortran exponent notation, 1.5D+2 for 150, from old CAD exporters. */
+    n = Number(v.replace(/[dD]/, 'E'));
+  }
+  return isFinite(n) ? n : 0;
+}
+
+/* AutoCAD writes non ASCII text as \U+XXXX in older files. Left undecoded,
+ * a Cyrillic room name displays as backslash soup. */
+function decodeUplus(str){
+  return String(str == null ? '' : str).replace(/\\U\+([0-9A-Fa-f]{4})/g, (m, h) => String.fromCharCode(parseInt(h, 16)));
+}
+
+/* The one OCS case that occurs in practice: an extrusion of (0,0,-1), which
+ * is how AutoCAD stores mirrored planar entities. The arbitrary axis
+ * algorithm for that normal maps (x, y) to (-x, y) and an angle t to
+ * 180 - t. Any other tilted OCS is ignored as before, which is wrong for
+ * genuinely 3D files and right for every 2D drawing this program reads. */
+function flippedOCS(cur){
+  return num(cur[230]) < -0.5 && Math.abs(num(cur[210])) < 1 / 64 && Math.abs(num(cur[220])) < 1 / 64;
+}
 function clampN(v, a, b){ return v < a ? a : (v > b ? b : v); }
 
 
@@ -405,14 +427,21 @@ export function parseDXF(txt, ensureLayer, sink){
       cur = null; curVerts = null; curBul = null;
       return;
     }
+    const ocsFlip = flippedOCS(cur);
+    const fx = ocsFlip ? v => (v ? -v : 0) : v => v;
     if (t === 'LINE' && cur[10] !== undefined) emit(style({ type: 'line', layer: ly, x1: num(cur[10]), y1: num(cur[20]), x2: num(cur[11]), y2: num(cur[21]) }));
-    else if (t === 'CIRCLE' && cur[10] !== undefined) emit(style({ type: 'circle', layer: ly, cx: num(cur[10]), cy: num(cur[20]), r: num(cur[40]) || 0.1 }));
-    else if (t === 'ARC' && cur[10] !== undefined) emit(style({ type: 'arc', layer: ly, cx: num(cur[10]), cy: num(cur[20]), r: num(cur[40]) || 0.1, a1: num(cur[50]), a2: num(cur[51]) }));
+    else if (t === 'CIRCLE' && cur[10] !== undefined) emit(style({ type: 'circle', layer: ly, cx: fx(num(cur[10])), cy: num(cur[20]), r: num(cur[40]) || 0.1 }));
+    else if (t === 'ARC' && cur[10] !== undefined){
+      const a1 = num(cur[50]), a2 = num(cur[51]);
+      emit(style(ocsFlip
+        ? { type: 'arc', layer: ly, cx: fx(num(cur[10])), cy: num(cur[20]), r: num(cur[40]) || 0.1, a1: (180 - a2 + 360) % 360, a2: (180 - a1 + 360) % 360 }
+        : { type: 'arc', layer: ly, cx: num(cur[10]), cy: num(cur[20]), r: num(cur[40]) || 0.1, a1, a2 }));
+    }
     else if (t === 'MTEXT' && cur[10] !== undefined){
       /* Keep it a paragraph. Flattening the breaks to spaces turned every
        * imported general note into one run-on line, which is the note's
        * meaning gone, not just its look. */
-      emit(style(makeMText(decodeMText(cur[1] || ''), {
+      emit(style(makeMText(decodeUplus(decodeMText(cur[1] || '')), {
         layer: ly,
         x: num(cur[10]),
         y: num(cur[20]),
@@ -423,9 +452,13 @@ export function parseDXF(txt, ensureLayer, sink){
       })));
     }
     else if (t === 'TEXT' && cur[10] !== undefined){
-      emit(style({ type: 'text', layer: ly, x: num(cur[10]), y: num(cur[20]), size: num(cur[40]) || 1, content: String(cur[1] || ''), rot: num(cur[50]) || 0 }));
+      emit(style({ type: 'text', layer: ly, x: num(cur[10]), y: num(cur[20]), size: num(cur[40]) || 1, content: decodeUplus(cur[1] || ''), rot: num(cur[50]) || 0 }));
     }
-    else if (t === 'LWPOLYLINE' && cur._pts && cur._pts.length >= 2) emit(style(withBulge({ type: 'poly', layer: ly, closed: !!(num(cur[70]) & 1), pts: cur._pts }, cur._bul)));
+    else if (t === 'LWPOLYLINE' && cur._pts && cur._pts.length >= 2){
+      const pts = ocsFlip ? cur._pts.map(p => [p[0] ? -p[0] : 0, p[1]]) : cur._pts;
+      const bul = ocsFlip && cur._bul ? cur._bul.map(b => (b ? -b : 0)) : cur._bul;
+      emit(style(withBulge({ type: 'poly', layer: ly, closed: !!(num(cur[70]) & 1), pts }, bul)));
+    }
     else if (t === 'POLYLINE' && curVerts && curVerts.length >= 2) emit(style(withBulge({ type: 'poly', layer: ly, closed: !!(num(cur[70]) & 1), pts: curVerts }, curBul)));
     else if (t === 'INSERT' && cur[2]){
       const name = String(cur[2]);
