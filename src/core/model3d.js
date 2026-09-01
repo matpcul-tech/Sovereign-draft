@@ -9,7 +9,8 @@
  * All mutation here follows the app convention: the caller pushes undo, the
  * functions mutate state, afterChange tells the world.
  */
-import { state } from './state.js';
+import { state, ensureLayer } from './state.js';
+import { hatchWithIslands } from './hatch.js';
 import {
   makeBox, makeCylinder, makeSphere, makeCone, makeWedge, sweepPath,
   extrudeRings, revolveProfile, loftRings,
@@ -138,24 +139,55 @@ export function sliceSolidToPlan(name, z, layer, axis){
    * different drawing and lands beside everything else. */
   const offset = a === 'z' ? [0, 0] : nextViewOffset(rings);
   const made = placeRings(rings, layer, offset);
-  return { made, openChains: open.length, area: sliceAreaAxis(rec.mesh, a, Number(z) || 0), axis: a, offset };
+  /* Poche: cut material reads as cut because it is hatched. The placed
+   * rings go through the island nesting, so a hollow wall hatches the
+   * wall and leaves the cavity clear. */
+  const hatches = hatchWithIslands(made.map(e => e.pts), { layer: layer || 'SECTION', pattern: 'ANSI31' });
+  for (const h of hatches){
+    h.id = state.idSeq++;
+    state.entities.push(h);
+    made.push(h);
+  }
+  return {
+    made, openChains: open.length, hatches: hatches.length,
+    area: sliceAreaAxis(rec.mesh, a, Number(z) || 0), axis: a, offset
+  };
 }
 
 /* The four elevations: the outline of everything modelled, seen from a
- * compass side, drawn beside the plan. */
+ * compass side, drawn beside the plan. Solids named DOOR* or WINDOW*, which
+ * is what the plan-to-solids bridge names them, are openings: their own
+ * outlines are drawn inside the massing so the elevation shows where the
+ * holes are. No hidden line removal, so openings on the far wall project
+ * too; this is the massing elevation a drawing starts from, stated honestly.
+ */
+const OPENING_NAME = /^(DOOR|WINDOW)/;
+
 export function elevationToPlan(dir, layer){
   const mesh = allSolidsMesh();
   if (!mesh.faces.length) throw new Error('Nothing modelled to take an elevation of');
   const d = { N: 'y', S: 'y', E: 'x', W: 'x' }[String(dir || 'S').toUpperCase()];
   if (!d) throw new Error('ELEV wants N, S, E or W');
-  let rings = silhouette(mesh, d, (A, B, op) => polyBoolean(A, B, op));
+  const boolean = (A, B, op) => polyBoolean(A, B, op);
+  let rings = silhouette(mesh, d, boolean);
+  let openRings = [];
+  for (const rec of state.solids || []){
+    if (!OPENING_NAME.test(rec.name)) continue;
+    openRings = openRings.concat(silhouette(rec.mesh, d, boolean));
+  }
   /* Seen from the south or the west the horizontal axis reads the other
-   * way, so mirror it: elevations read left to right the way you face them. */
+   * way, so mirror it: elevations read left to right the way you face them.
+   * Openings mirror with the massing or they land on the wrong side. */
   const flip = String(dir).toUpperCase() === 'N' || String(dir).toUpperCase() === 'W';
-  if (flip) rings = rings.map(r => r.map(p => [-p[0], p[1]]).reverse());
+  if (flip){
+    const mirror = rs => rs.map(r => r.map(p => [-p[0], p[1]]).reverse());
+    rings = mirror(rings);
+    openRings = mirror(openRings);
+  }
   const offset = nextViewOffset(rings);
   const made = placeRings(rings, layer || 'SECTION', offset);
-  return { made, area: ringsArea(rings), offset };
+  const openings = placeRings(openRings, ensureLayer('OPENINGS'), offset);
+  return { made: made.concat(openings), openings: openings.length, area: ringsArea(rings), offset };
 }
 
 /* ---------- the plan becomes solids ---------- */

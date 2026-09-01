@@ -85,6 +85,9 @@ function appendSolidRecords(solid, records){
 
 function addMeshes(solid){
   clearScene();
+  /* The scene rebuild took the measure marks with it. */
+  meas.marks = [];
+  meas.a = null;
   lastSolid = solid;
   const group = new THREE.Group();
   group.name = 'drawing';
@@ -200,7 +203,7 @@ function ensureDom(){
         <button type="button" id="v3dHplus" title="Raise story">+</button>
         <button type="button" id="v3dGlb">GLB</button>
       </div>
-      <div class="v3d-hint">Drag to orbit · scroll to zoom · click a solid to select</div>
+      <div class="v3d-hint">Drag to orbit · scroll to zoom · click a solid to select · M measures</div>
       <div class="v3d-sel" style="display:none;color:#d4a843;font-weight:600;margin-top:4px"></div>`;
     root.appendChild(hud);
   }
@@ -350,6 +353,88 @@ function dragHud(){
   }
 }
 
+/* ---------- measuring ----------
+ * M toggles measure mode: two clicks give the true 3D distance between the
+ * points hit, with the delta per axis. Points land on whatever surface the
+ * click hits, or on the ground plane when it hits nothing.
+ */
+const meas = { on: false, a: null, marks: [] };
+
+function clearMeasureMarks(){
+  meas.marks.forEach(m => { scene.remove(m); if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); });
+  meas.marks = [];
+}
+
+function measureHud(text){
+  const el = hud && hud.querySelector('.v3d-sel');
+  if (!el) return;
+  el.textContent = text;
+  el.style.display = text ? 'block' : 'none';
+}
+
+function setMeasureMode(on){
+  meas.on = on;
+  meas.a = null;
+  clearMeasureMarks();
+  if (on) measureHud('MEASURE · click two points · M or esc to leave');
+  else setSelected(pick.selected);
+  render();
+}
+
+function markerRadius(){
+  const solid = lastSolid;
+  const bb = solid && solid.bbox;
+  const span = bb ? Math.max(bb[3] - bb[0], bb[4] - bb[1], solid.height || 8) : 20;
+  return Math.max(0.05, span * 0.008);
+}
+
+function addMark(pt){
+  const m = new THREE.Mesh(
+    new THREE.SphereGeometry(markerRadius(), 12, 8),
+    new THREE.MeshBasicMaterial({ color: 0xd4a843 })
+  );
+  m.position.copy(pt);
+  scene.add(m);
+  meas.marks.push(m);
+}
+
+function measurePointFromEvent(ev){
+  if (!pick.raycaster) pick.raycaster = new THREE.Raycaster();
+  const ndc = ndcFromEvent(ev);
+  pick.raycaster.setFromCamera(ndc, camera);
+  const hits = pick.raycaster.intersectObjects(scene.children, true)
+    .filter(h => h.object.isMesh && !meas.marks.includes(h.object));
+  if (hits.length) return hits[0].point.clone();
+  const out = new THREE.Vector3();
+  return pick.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), out) ? out : null;
+}
+
+function measureClick(ev){
+  const pt = measurePointFromEvent(ev);
+  if (!pt) return;
+  if (!meas.a){
+    clearMeasureMarks();
+    meas.a = pt;
+    addMark(pt);
+    measureHud('MEASURE · first point set · click the second');
+  } else {
+    addMark(pt);
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([meas.a, pt]),
+      new THREE.LineBasicMaterial({ color: 0x00d4b8 })
+    );
+    scene.add(line);
+    meas.marks.push(line);
+    /* three (x, y, z) is CAD (x, height, y). */
+    const dx = pt.x - meas.a.x, dy = pt.z - meas.a.z, dz = pt.y - meas.a.y;
+    const d = Math.hypot(dx, dy, dz);
+    measureHud('MEASURE · ' + fmtFtIn(d) + ' · dx ' + fmtFtIn(Math.abs(dx)) +
+      ' · dy ' + fmtFtIn(Math.abs(dy)) + ' · dz ' + fmtFtIn(Math.abs(dz)));
+    meas.a = null;
+  }
+  render();
+}
+
 function ndcFromEvent(ev){
   const r = canvas.getBoundingClientRect();
   return {
@@ -451,6 +536,7 @@ function wirePicking(){
   canvas.addEventListener('pointerdown', ev => {
     if (ev.button !== 0) return;
     pick.down = { x: ev.clientX, y: ev.clientY };
+    if (meas.on) return;
     const hit = raycastSolid(ev);
     if (hit && hit.object.userData.solidName === pick.selected){
       /* Grabbing the selected solid starts a move; the camera stays put. */
@@ -518,8 +604,10 @@ function wirePicking(){
       return;
     }
     if (controls) controls.enabled = true;
-    /* No drag: a small click selects what it hit, or clears. */
+    /* No drag: a small click measures in measure mode, otherwise it
+     * selects what it hit, or clears. */
     if (pick.down && Math.hypot(ev.clientX - pick.down.x, ev.clientY - pick.down.y) < 5){
+      if (meas.on){ measureClick(ev); return; }
       const hit = raycastSolid(ev);
       setSelected(hit ? hit.object.userData.solidName : null);
     }
@@ -536,7 +624,8 @@ function wirePicking(){
     const t = ev.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
     if (ev.key === 'Escape'){
-      if (pick.dragging){ cancelDrag(); ev.preventDefault(); ev.stopPropagation(); }
+      if (meas.on){ setMeasureMode(false); ev.preventDefault(); ev.stopPropagation(); }
+      else if (pick.dragging){ cancelDrag(); ev.preventDefault(); ev.stopPropagation(); }
       else if (pick.selected && pick.mode === 'rotate'){
         pick.mode = 'move'; setSelected(pick.selected);
         ev.preventDefault(); ev.stopPropagation();
@@ -574,9 +663,14 @@ function wirePicking(){
       }
       return;
     }
-    if ((ev.key === 'r' || ev.key === 'R') && pick.selected && !ev.ctrlKey && !ev.metaKey && !ev.altKey){
+    if ((ev.key === 'r' || ev.key === 'R') && pick.selected && !meas.on && !ev.ctrlKey && !ev.metaKey && !ev.altKey){
       pick.mode = pick.mode === 'rotate' ? 'move' : 'rotate';
       setSelected(pick.selected);
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+    if ((ev.key === 'm' || ev.key === 'M') && !ev.ctrlKey && !ev.metaKey && !ev.altKey){
+      setMeasureMode(!meas.on);
       ev.preventDefault();
       ev.stopPropagation();
     }

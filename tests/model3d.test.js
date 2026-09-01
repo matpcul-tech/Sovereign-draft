@@ -205,14 +205,31 @@ describe('solids are document objects', () => {
     expect(V(solidByName('M').mesh)).toBeCloseTo(120, 9);
   });
 
-  it('slicing lands closed polylines on the SECTION layer', () => {
+  it('slicing lands closed polylines on the SECTION layer, hatched as poche', () => {
     createSolid('box', [2, 3, 0, 10, 6, 8], 'M');
     const r = sliceSolidToPlan('M', 4);
-    expect(r.made.length).toBe(1);
+    expect(r.made.length).toBe(2);
+    expect(r.hatches).toBe(1);
     expect(r.made[0].layer).toBe('SECTION');
     expect(r.made[0].closed).toBe(true);
+    expect(r.made[1].type).toBe('hatch');
+    expect(r.made[1].pattern).toBe('ANSI31');
     expect(r.area).toBeCloseTo(60, 6);
-    expect(state.entities.length).toBe(1);
+    expect(state.entities.length).toBe(2);
+  });
+
+  it('poche of a hollow section hatches the wall and spares the cavity', async () => {
+    const { hatchArea } = await import('../src/core/hatch.js');
+    const { csgSubtract: sub } = await import('../src/core/csg.js');
+    addSolid(sub(box(0, 0, 0, 10, 10, 8), box(2, 2, -1, 6, 6, 10)), 'TUBE');
+    const r = sliceSolidToPlan('TUBE', 4);
+    const rings = r.made.filter(e => e.type === 'poly');
+    const hatches = r.made.filter(e => e.type === 'hatch');
+    expect(rings.length).toBe(2);
+    expect(hatches.length).toBe(1);
+    expect(hatches[0].holes.length).toBe(1);
+    expect(hatchArea(hatches[0])).toBeCloseTo(100 - 36, 6);
+    expect(r.area).toBeCloseTo(64, 6);
   });
 
   it('solids survive save and load with the project', () => {
@@ -257,8 +274,12 @@ describe('the scripting facade models in 3D', () => {
      * percent is the tessellation, not an error. */
     const got = Number(r.output[0].split(' ')[1]);
     expect(got / (400 * 4 - Math.PI * 16 * 4)).toBeCloseTo(1, 3);
-    expect(r.output[1]).toBe('section rings 2');
-    expect(state.entities.filter(e => e.layer === 'SECTION').length).toBe(2);
+    /* Two rings plus the poche hatch, whose hole is the drill. */
+    expect(r.output[1]).toBe('section rings 3');
+    expect(state.entities.filter(e => e.layer === 'SECTION').length).toBe(3);
+    const hatches = state.entities.filter(e => e.type === 'hatch');
+    expect(hatches.length).toBe(1);
+    expect((hatches[0].holes || []).length).toBe(1);
   });
 
   it('a failing 3D script rolls back the solids too', () => {
@@ -329,10 +350,29 @@ describe('vertical sections and elevations', () => {
     addSolid(makeBox(0, 0, 0, 40, 30, 10), 'M');
     state.entities.push({ id: state.idSeq++, type: 'poly', layer: 'WALLS', closed: true, pts: [[0, 0], [40, 0], [40, 30], [0, 30]] });
     const r = sliceSolidToPlan('M', 15, undefined, 'y');
-    expect(r.made.length).toBe(1);
+    expect(r.made.length).toBe(2);
+    expect(r.made[1].type).toBe('hatch');
     const xs = r.made[0].pts.map(p => p[0]);
     expect(Math.min(...xs)).toBeGreaterThan(40);
     expect(r.area).toBeCloseTo(400, 6);
+  });
+
+  it('elevations show door and window openings inside the massing', async () => {
+    const { elevationToPlan } = await import('../src/core/model3d.js');
+    addSolid(makeBox(0, 0, 0, 20, 1, 10), 'WALL');
+    addSolid(makeBox(8, 0.4, 4, 4, 0.2, 3), 'WINDOW');
+    const r = elevationToPlan('S');
+    expect(r.openings).toBe(1);
+    const open = state.entities.filter(e => e.layer === 'OPENINGS');
+    expect(open.length).toBe(1);
+    /* The opening ring is the window face: 4 wide, sill 4 to head 7. */
+    const ys = open[0].pts.map(p => p[1]);
+    const xs = open[0].pts.map(p => p[0]);
+    expect(Math.min(...ys)).toBeCloseTo(4, 6);
+    expect(Math.max(...ys)).toBeCloseTo(7, 6);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(4, 6);
+    /* The massing outline is untouched by the opening. */
+    expect(r.area).toBeCloseTo(200, 1);
   });
 
   it('elevationToPlan draws all four compass outlines', async () => {
