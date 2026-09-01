@@ -185,8 +185,8 @@ function hitPath(pts, w, tol, closed){
 /* Snap candidates: [x, y, kind] where kind 0=end, 1=mid, 2=center. */
 export function entPoints(e){
   if (e.type === 'spline'){
-    /* Control points snap, plus the curve ends. */
-    const pts = (e.ctrl || []).map(p => [p[0], p[1], 0]);
+    /* Control points are nodes; the curve's ends are endpoints. */
+    const pts = (e.ctrl || []).map(p => [p[0], p[1], 7]);
     const t = splinePoints(e);
     if (t.length) pts.push([t[0][0], t[0][1], 0], [t[t.length - 1][0], t[t.length - 1][1], 0]);
     return pts;
@@ -223,8 +223,8 @@ export function entPoints(e){
     p.push([e.x1, e.y1, 0], [e.x2, e.y2, 0]);
     if (e.kind === 'angular' && e.x3 != null) p.push([e.x3, e.y3, 0]);
   }
-  else if (e.type === 'text'){ p.push([e.x, e.y, 0]); }
-  else if (e.type === 'mtext'){ p.push([e.x, e.y, 0]); mtextCorners(e).forEach(c => p.push([c[0], c[1], 0])); }
+  else if (e.type === 'text'){ p.push([e.x, e.y, 11]); }
+  else if (e.type === 'mtext'){ p.push([e.x, e.y, 11]); mtextCorners(e).forEach(c => p.push([c[0], c[1], 0])); }
   else if (e.type === 'table'){ tableCorners(e).forEach(pt => p.push([pt[0], pt[1], 0])); }
   else if (e.type === 'image'){ imageCorners(e).forEach(pt => p.push([pt[0], pt[1], 0])); }
   else if (e.type === 'xline'){ p.push([e.x1, e.y1, 0], [e.x2, e.y2, 0]); }

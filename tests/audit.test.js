@@ -177,3 +177,71 @@ describe('object snap sees the real geometry', () => {
     expect(hit[3]).toBeGreaterThan(2);
   });
 });
+
+describe('the six added object snaps', () => {
+  it('QUA: circle quadrants, and only the quadrants an arc reaches', async () => {
+    const { quadSnaps } = await import('../src/core/osnap.js');
+    const q = quadSnaps({ type: 'circle', cx: 5, cy: 5, r: 2 });
+    expect(q.length).toBe(4);
+    expect(q).toContainEqual([7, 5, 8]);
+    const a = quadSnaps({ type: 'arc', cx: 0, cy: 0, r: 3, a1: 0, a2: 120 });
+    expect(a.length).toBe(2);
+  });
+
+  it('EXT: past the end, on the line, bounded in reach', async () => {
+    const { extensionSnaps } = await import('../src/core/osnap.js');
+    const ln = { type: 'line', x1: 0, y1: 0, x2: 10, y2: 0 };
+    const near = extensionSnaps(ln, [13, 0.1], 0.5);
+    expect(near.length).toBe(1);
+    expect(near[0][0]).toBeCloseTo(13, 9);
+    expect(near[0][1]).toBe(0);
+    /* On the segment is not an extension. */
+    expect(extensionSnaps(ln, [5, 0.1], 0.5).length).toBe(0);
+    /* Too far off the axis is nothing. */
+    expect(extensionSnaps(ln, [13, 3], 0.5).length).toBe(0);
+    /* A mile past the end is out of reach. */
+    expect(extensionSnaps(ln, [500, 0.1], 0.5).length).toBe(0);
+  });
+
+  it('PAR: locks a new segment parallel to an existing line', async () => {
+    const { parallelSnap } = await import('../src/core/osnap.js');
+    const ln = { type: 'line', x1: 0, y1: 0, x2: 10, y2: 5 };
+    const from = [0, 20];
+    /* Cursor roughly along the parallel direction from the pick point. */
+    const hit = parallelSnap(ln, from, [8, 24.2], 0.5);
+    expect(hit).toBeTruthy();
+    const [px, py] = hit;
+    /* Exactly parallel: same slope from the pick point. */
+    expect((py - 20) / (px - 0)).toBeCloseTo(0.5, 9);
+    /* Off direction is no snap. */
+    expect(parallelSnap(ln, from, [8, 28], 0.5)).toBe(null);
+  });
+
+  it('XIN: where two segments would cross, and never where they truly do', async () => {
+    const { apparentIntSnaps } = await import('../src/core/osnap.js');
+    const A = { type: 'line', layer: 'W', x1: 0, y1: 0, x2: 4, y2: 0 };
+    const B = { type: 'line', layer: 'W', x1: 10, y1: -5, x2: 10, y2: -1 };
+    /* Their extensions cross at (10, 0). */
+    const hits = apparentIntSnaps([A, B], null, [10.1, 0.1], 0.5);
+    expect(hits.length).toBe(1);
+    expect(hits[0][0]).toBeCloseTo(10, 9);
+    expect(hits[0][1]).toBeCloseTo(0, 9);
+    /* A real crossing is INT's job, not XIN's. */
+    const C = { type: 'line', layer: 'W', x1: 0, y1: -1, x2: 0, y2: 1 };
+    const D = { type: 'line', layer: 'W', x1: -1, y1: 0, x2: 1, y2: 0 };
+    expect(apparentIntSnaps([C, D], null, [0, 0], 0.5).length).toBe(0);
+  });
+
+  it('NOD and INS: spline control points and text anchors carry their own kinds', async () => {
+    const { entPoints } = await import('../src/core/entities.js');
+    const spPts = entPoints(SPLINE());
+    expect(spPts.filter(p => p[2] === 7).length).toBe(4);
+    const mtPts = entPoints(MT());
+    expect(mtPts.filter(p => p[2] === 11).length).toBe(1);
+  });
+
+  it('all six kinds have labels for the snap glyph', async () => {
+    const { SNAP_KIND } = await import('../src/core/osnap.js');
+    [7, 8, 9, 10, 11, 12].forEach(k => expect(SNAP_KIND[k]).toBeTruthy());
+  });
+});

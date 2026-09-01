@@ -2,9 +2,9 @@
  * intersection, nearest, perpendicular. Each candidate is [x, y, kind]
  * where kind 0=end 1=mid 2=center 3=intersection 4=nearest 5=perp.
  */
-import { dist, distToSeg, closestOnSeg, perpFoot, segSegIntersect, lineCircleTs, angDeg, onArc, arcPoints, tanPoints, ellipsePoints, cloudPoints } from './geometry.js';
+import { dist, distToSeg, closestOnSeg, perpFoot, segSegIntersect, lineCircleTs, angDeg, onArc, arcPoints, tanPoints, ellipsePoints, cloudPoints, lineIntersect } from './geometry.js';
 import { entPoints, flattenEnt, spanXline } from './entities.js';
-import { polyOutline } from './bulge.js';
+import { polyOutline, hasBulge } from './bulge.js';
 import { splinePoints } from './spline.js';
 
 function segsOf(e){
@@ -203,25 +203,126 @@ export function perpSnap(e, from){
   return null;
 }
 
-export const SNAP_KIND = { 0: 'END', 1: 'MID', 2: 'CEN', 3: 'INT', 4: 'NEA', 5: 'PER', 6: 'TAN' };
+export const SNAP_KIND = { 0: 'END', 1: 'MID', 2: 'CEN', 3: 'INT', 4: 'NEA', 5: 'PER', 6: 'TAN', 7: 'NOD', 8: 'QUA', 9: 'EXT', 10: 'PAR', 11: 'INS', 12: 'XIN' };
+
+/* ---------- the six snaps a drafter reaches for after END and MID ---------- */
+
+/* Quadrants: the four compass points of a circle, the ones on an arc. */
+export function quadSnaps(e){
+  const out = [];
+  if (e.type === 'circle'){
+    out.push([e.cx + e.r, e.cy, 8], [e.cx, e.cy + e.r, 8], [e.cx - e.r, e.cy, 8], [e.cx, e.cy - e.r, 8]);
+  } else if (e.type === 'arc'){
+    for (const a of [0, 90, 180, 270]){
+      if (!onArc(e, a, 0.01)) continue;
+      const r = a * Math.PI / 180;
+      out.push([e.cx + e.r * Math.cos(r), e.cy + e.r * Math.sin(r), 8]);
+    }
+  }
+  return out;
+}
+
+/* Extension: the projection onto a segment's infinite line, past its ends.
+ * Gated tight to the line and bounded in reach, or empty paper anywhere near
+ * a long wall's axis would snap constantly. */
+export function extensionSnaps(e, w, wtol){
+  const t = wtol == null ? 0.5 : wtol;
+  const segs = [];
+  if (e.type === 'line') segs.push([[e.x1, e.y1], [e.x2, e.y2]]);
+  else if (e.type === 'poly' && !hasBulge(e) && e.pts && e.pts.length > 1 && !e.closed){
+    segs.push([e.pts[0], e.pts[1]], [e.pts[e.pts.length - 1], e.pts[e.pts.length - 2]]);
+  }
+  const out = [];
+  for (const [a, b] of segs){
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const L2 = dx * dx + dy * dy;
+    if (L2 < 1e-12) continue;
+    const u = ((w[0] - a[0]) * dx + (w[1] - a[1]) * dy) / L2;
+    if (u >= 0 && u <= 1) continue;                     /* on the segment: END/NEA territory */
+    const px = a[0] + dx * u, py = a[1] + dy * u;
+    const perp = Math.hypot(w[0] - px, w[1] - py);
+    if (perp > t) continue;
+    const L = Math.sqrt(L2);
+    const past = u < 0 ? -u * L : (u - 1) * L;
+    if (past > Math.max(4 * L, 64 * t)) continue;       /* bounded reach */
+    out.push([px, py, 9, perp]);
+  }
+  return out;
+}
+
+/* Parallel: from the last picked point, the point that makes the new segment
+ * exactly parallel to an existing line. */
+export function parallelSnap(e, from, w, wtol){
+  if (!from || e.type !== 'line') return null;
+  const t = wtol == null ? 0.5 : wtol;
+  const dx = e.x2 - e.x1, dy = e.y2 - e.y1;
+  const L = Math.hypot(dx, dy);
+  if (L < 1e-9) return null;
+  const ux = dx / L, uy = dy / L;
+  const rx = w[0] - from[0], ry = w[1] - from[1];
+  const along = rx * ux + ry * uy;
+  if (Math.abs(along) < 2 * t) return null;             /* too close to be a direction yet */
+  const px = from[0] + ux * along, py = from[1] + uy * along;
+  const off = Math.hypot(w[0] - px, w[1] - py);
+  if (off > t) return null;
+  return [px, py, 10, off];
+}
+
+/* Apparent intersection: where two lines would cross if extended. Only pairs
+ * whose imaginary crossing lands under the cursor are considered, so this
+ * stays cheap and never fires in open space. */
+export function apparentIntSnaps(entities, isVisible, w, wtol){
+  const t = wtol == null ? 0.5 : wtol;
+  const lines = [];
+  for (const e of entities){
+    if (e.type !== 'line') continue;
+    if (isVisible && !isVisible(e.layer)) continue;
+    lines.push(e);
+    if (lines.length > 400) break;                      /* bounded pair work */
+  }
+  const out = [];
+  for (let i = 0; i < lines.length; i++){
+    const A = lines[i];
+    for (let j = i + 1; j < lines.length; j++){
+      const B = lines[j];
+      const hit = lineIntersect([A.x1, A.y1], [A.x2, A.y2], [B.x1, B.y1], [B.x2, B.y2]);
+      if (!hit) continue;
+      if (Math.hypot(hit[0] - w[0], hit[1] - w[1]) > t) continue;
+      const on = (P, x, y) => {
+        const dx = P.x2 - P.x1, dy = P.y2 - P.y1, L2 = dx * dx + dy * dy || 1e-12;
+        const u = ((x - P.x1) * dx + (y - P.y1) * dy) / L2;
+        return u >= -1e-9 && u <= 1 + 1e-9;
+      };
+      /* Both on their segments is a real INT and already offered. */
+      if (on(A, hit[0], hit[1]) && on(B, hit[0], hit[1])) continue;
+      out.push([hit[0], hit[1], 12]);
+    }
+  }
+  return out;
+}
 
 /* Collect every snap candidate near a world point, ranked by screen-pixel distance. */
-export function allSnapCandidates(entities, isVisible, w, fromPt){
+export function allSnapCandidates(entities, isVisible, w, fromPt, wtol){
   const out = [];
   for (const e of entities){
     if (isVisible && !isVisible(e.layer)) continue;
     for (const p of entPoints(e)) out.push(p);
     const n = nearestOnEntity(e, w);
     if (n) out.push(n);
+    quadSnaps(e).forEach(q => out.push(q));
+    extensionSnaps(e, w, wtol).forEach(x => out.push(x));
     if (fromPt){
       const p = perpSnap(e, fromPt);
       if (p) out.push(p);
       if (e.type === 'circle'){
         tanPoints(e, fromPt).forEach(t => out.push(t));
       }
+      const par = parallelSnap(e, fromPt, w, wtol);
+      if (par) out.push(par);
     }
   }
   out.push(...intersectionSnaps(entities, isVisible));
+  out.push(...apparentIntSnaps(entities, isVisible, w, wtol));
   return out;
 }
 

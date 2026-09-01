@@ -260,6 +260,32 @@ describe('randomised operations against a full snapshot oracle', () => {
   });
 });
 
+describe('solids are part of the document undo', () => {
+  beforeEach(reset);
+
+  it('undoing an extrusion removes the mesh, redo brings it back', () => {
+    state.solids = [];
+    L(0, 0, 10, 0);
+    pushUndo(undoScope([]));
+    state.solids = state.solids.concat([{ verts: [[0, 0, 0]], faces: [] }]);
+    afterChange();
+    expect(state.solids.length).toBe(1);
+    doUndo();
+    expect(state.solids.length).toBe(0);
+    doRedo();
+    expect(state.solids.length).toBe(1);
+  });
+
+  it('clearing solids is undoable through a full record too', () => {
+    state.solids = [{ verts: [], faces: [] }, { verts: [], faces: [] }];
+    pushUndo();
+    state.solids = [];
+    afterChange();
+    doUndo();
+    expect(state.solids.length).toBe(2);
+  });
+});
+
 describe('the point of all this: cost no longer scales with the drawing', () => {
   beforeEach(reset);
 

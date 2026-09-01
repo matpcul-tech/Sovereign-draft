@@ -152,6 +152,7 @@ function snapshot(){
     entities: deep(state.entities),
     layers: deep(state.layers),
     constraints: deep(state.constraints || []),
+    solids: deep(state.solids || []),
     dimStyles: deep(state.dimStyles),
     textStyles: deep(state.textStyles || []),
     plotStyles: deep(state.plotStyles || []),
@@ -167,6 +168,7 @@ function restore(s){
   state.entities = s.entities;
   state.layers = s.layers;
   state.constraints = s.constraints || [];
+  state.solids = s.solids || [];
   if (s.dimStyles) state.dimStyles = s.dimStyles;
   if (s.textStyles) state.textStyles = s.textStyles;
   if (s.plotStyles) state.plotStyles = s.plotStyles;
@@ -217,7 +219,11 @@ function sparseSnapshot(ids){
     gSeq: state.gSeq,
     selIds: state.selIds.slice(),
     currentLayer: state.currentLayer,
-    constraints: deep(state.constraints || [])
+    constraints: deep(state.constraints || []),
+    /* Meshes are only ever appended or cleared, never edited in place, so
+     * holding references restores them without copying megabytes of
+     * triangles into every record. */
+    solids: (state.solids || []).slice()
   };
 }
 
@@ -234,6 +240,7 @@ function sparseRestore(rec){
   state.idSeq = rec.idSeq;
   state.gSeq = rec.gSeq;
   state.constraints = deep(rec.constraints || []);
+  state.solids = (rec.solids || []).slice();
   if (rec.currentLayer && layerByName(rec.currentLayer)) state.currentLayer = rec.currentLayer;
 }
 

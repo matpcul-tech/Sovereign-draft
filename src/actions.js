@@ -63,7 +63,7 @@ export function snapPt(sx, sy, fromPt){
   let best = null, bd = 14;
   if (state.snapOn){
     const w = S2W(sx, sy);
-    const cands = allSnapCandidates(state.entities, layerVisible, w, fromPt || state.lastPt);
+    const cands = allSnapCandidates(state.entities, layerVisible, w, fromPt || state.lastPt, 14 / state.view.scale);
     for (const cand of cands){
       const s = W2S(cand[0], cand[1]);
       const d = dist(sx, sy, s[0], s[1]);
