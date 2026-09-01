@@ -99,6 +99,41 @@ export function roofOverModel(kind, pitch, overhang){
   return addSolid(mk(x, y, bb[5], w, d, rise), 'ROOF');
 }
 
+/* ---------- stacking stories ----------
+ * The mesh paradigm's multi-story: one modelled storey, replicated
+ * vertically. Every non-roof solid is copied up n-1 times at the story
+ * height (measured from the massing's own z extent unless given), named
+ * with a -L2, -L3 suffix per level so upper windows still read as openings
+ * in elevations, and any existing roof rides to the top. Stacking a stack
+ * is refused: undo or model fresh, or the tower doubles.
+ */
+export function stackStories(n, storyH){
+  const count = Math.floor(Number(n));
+  if (!(count >= 2)) throw new Error('STACK wants a story count of 2 or more');
+  if ((state.solids || []).some(s => /-L\d+$/.test(s.name))){
+    throw new Error('Already stacked: undo first, or model fresh');
+  }
+  const base = (state.solids || []).filter(s => s && !/^ROOF/.test(s.name));
+  if (!base.length) throw new Error('Nothing to stack: MODEL first, or make a solid');
+  let z0 = Infinity, z1 = -Infinity;
+  for (const s of base){
+    const b = meshBBox(s.mesh);
+    z0 = Math.min(z0, b[2]);
+    z1 = Math.max(z1, b[5]);
+  }
+  const h = Number(storyH) > 0 ? Number(storyH) : (z1 - z0);
+  const made = [];
+  for (let k = 1; k < count; k++){
+    for (const s of base){
+      made.push(addSolid(translateMesh(s.mesh, 0, 0, h * k), s.name + '-L' + (k + 1)));
+    }
+  }
+  for (const s of state.solids){
+    if (/^ROOF/.test(s.name)) s.mesh = translateMesh(s.mesh, 0, 0, h * (count - 1));
+  }
+  return { made, stories: count, storyHeight: h };
+}
+
 export function createSolid(kind, args, name){
   const mk = MAKERS[kind];
   if (!mk) throw new Error('Unknown solid kind ' + kind);

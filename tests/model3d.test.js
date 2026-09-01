@@ -373,6 +373,46 @@ describe('pitched roofs', () => {
   });
 });
 
+describe('stacked stories', () => {
+  beforeEach(reset);
+
+  it('STACK replicates the storey, names levels, lifts the roof, refuses to stack twice', async () => {
+    const { stackStories, roofOverModel, solidByName: byName } = await import('../src/core/model3d.js');
+    const { meshBBox: bbOf } = await import('../src/core/mesh.js');
+    addSolid(makeBox(0, 0, 0, 30, 20, 8), 'WALL');
+    addSolid(makeBox(8, 0.15, 4, 4, 0.2, 3), 'WINDOW');
+    roofOverModel('gable', 6, 1);
+    const r = stackStories(3);
+    expect(r.stories).toBe(3);
+    expect(r.storyHeight).toBeCloseTo(8, 9);
+    expect(solidNames()).toContain('WALL-L2');
+    expect(solidNames()).toContain('WINDOW-L3');
+    expect(V(byName('WALL-L2').mesh)).toBeCloseTo(4800, 6);
+    /* The roof rode to the top of the new massing. */
+    expect(bbOf(byName('ROOF').mesh)[2]).toBeCloseTo(24, 9);
+    expect(() => stackStories(2)).toThrow();
+    expect(lookupCommand('STACK').action).toBe('stack');
+  });
+
+  it('a stacked elevation shows one window per storey at exact sills, and no floor seams', async () => {
+    const { stackStories, elevationToPlan } = await import('../src/core/model3d.js');
+    addSolid(makeBox(0, 0, 0, 20, 10, 8), 'WALL');
+    addSolid(makeBox(8, 0.15, 4, 4, 0.2, 3), 'WINDOW');
+    stackStories(3, 8);
+    const r = elevationToPlan('S');
+    expect(r.openings).toBe(3);
+    const sills = state.entities.filter(e => e.layer === 'OPENINGS')
+      .map(o => Math.min(...o.pts.map(p => p[1]))).sort((a, b) => a - b);
+    expect(sills[0]).toBeCloseTo(4, 6);
+    expect(sills[1]).toBeCloseTo(12, 6);
+    expect(sills[2]).toBeCloseTo(20, 6);
+    /* Flush stacked walls are one facade: the coplanar suppression keeps
+     * the storey joints off the drawing. */
+    expect(r.edges).toBe(0);
+    expect(r.area).toBeCloseTo(20 * 24, 1);
+  });
+});
+
 describe('the whole set from one command', () => {
   beforeEach(reset);
 
