@@ -6,6 +6,7 @@ import {
   lineIntersectStrict, rotatePt, scalePt, mirrorPt, copyStyle, perpFoot
 } from './geometry.js';
 import { hasBulge, bulgeLength, bulgeArea, polyOutline, arcToBulge } from './bulge.js';
+import { splineLength, splineToPoly } from './spline.js';
 
 function lineEnds(e){
   if (e.type === 'line') return [[e.x1, e.y1], [e.x2, e.y2]];
@@ -228,6 +229,19 @@ export function transformEnt(e, fn, extra){
     if (extra && extra.addAng) e.rot = (e.rot || 0) + extra.addAng;
     if (extra && extra.scaleR) e.scale = (e.scale == null ? 1 : e.scale) * extra.scaleR;
     if (extra && extra.mirrorAng != null) e.rot = extra.mirrorAng * 2 - (e.rot || 0);
+  } else if (e.type === 'spline'){
+    /* The curve is its control points: transforming them transforms every
+     * point on it, because the basis functions are affine invariant. */
+    e.ctrl = (e.ctrl || []).map(pt => { const p = fn(pt[0], pt[1]); return [p[0], p[1]]; });
+  } else if (e.type === 'mtext'){
+    const p = fn(e.x, e.y);
+    e.x = p[0]; e.y = p[1];
+    if (extra && extra.scaleR){
+      e.size *= extra.scaleR;
+      if (e.width > 0) e.width *= extra.scaleR;
+    }
+    if (extra && extra.addAng) e.rot = (e.rot || 0) + extra.addAng;
+    if (extra && extra.mirrorAng != null) e.rot = extra.mirrorAng * 2 - (e.rot || 0);
   } else if (e.type === 'xline'){
     const a = fn(e.x1, e.y1), b = fn(e.x2, e.y2);
     e.x1 = a[0]; e.y1 = a[1]; e.x2 = b[0]; e.y2 = b[1];
@@ -437,6 +451,7 @@ export function entityLength(e){
     if ((e.closed || e.type === 'cloud') && pts.length > 2) L += dist(pts[pts.length - 1][0], pts[pts.length - 1][1], pts[0][0], pts[0][1]);
     return L;
   }
+  if (e.type === 'spline') return splineLength(e);
   if (e.type === 'dim') return dist(e.x1, e.y1, e.x2, e.y2);
   return 0;
 }
@@ -445,6 +460,7 @@ export function entityArea(e){
   if (e.type === 'circle') return Math.PI * e.r * e.r;
   if (e.type === 'ellipse') return Math.PI * (e.rx || 0) * (e.ry || 0);
   if (e.type === 'room') return e.area != null ? e.area : 0;
+  if (e.type === 'spline' && e.closed) return entityArea(splineToPoly(e, 0.005));
   if ((e.type === 'poly' && e.closed) || e.type === 'hatch' || e.type === 'cloud'){
     /* Arcs contribute exactly, not as a fine chord approximation. */
     if (e.type === 'poly' && hasBulge(e)) return bulgeArea(e);

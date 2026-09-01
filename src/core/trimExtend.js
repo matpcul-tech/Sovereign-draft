@@ -4,10 +4,12 @@
  * target — or {ok:false, msg} when nothing can be done.
  */
 import { dist, distToSeg, clamp, segSegParam, lineCircleTs, angDeg, onArc, arcSpan, deep } from './geometry.js';
+import { polyOutline } from './bulge.js';
+import { splinePoints } from './spline.js';
 
 const CUT_EPS = 1e-4;
 
-function isCutter(o){ return o.type === 'line' || o.type === 'poly' || o.type === 'circle' || o.type === 'arc'; }
+function isCutter(o){ return o.type === 'line' || o.type === 'poly' || o.type === 'circle' || o.type === 'arc' || o.type === 'spline'; }
 
 /* All parameters t along segment a-b where a cutter crosses it. */
 export function lineCutTs(entities, isVisible, ax, ay, bx, by, excludeId, selfPoly, selfSeg){
@@ -19,11 +21,22 @@ export function lineCutTs(entities, isVisible, ax, ay, bx, by, excludeId, selfPo
       const r = segSegParam(ax, ay, bx, by, o.x1, o.y1, o.x2, o.y2);
       if (r && r.u > -1e-9 && r.u < 1 + 1e-9) ts.push(r.t);
     } else if (o.type === 'poly'){
-      const n = o.pts.length, segs = o.closed ? n : n - 1;
+      /* Another polyline cuts along its real outline, arcs included. The
+       * polyline being edited keeps its raw segments, because the segment
+       * being trimmed is excluded by index and tessellation would renumber
+       * them. */
+      const pts = o === selfPoly ? o.pts : polyOutline(o);
+      const n = pts.length, segs = o.closed ? n : n - 1;
       for (let i = 0; i < segs; i++){
         if (o === selfPoly && i === selfSeg) continue;
         const j = (i + 1) % n;
-        const r = segSegParam(ax, ay, bx, by, o.pts[i][0], o.pts[i][1], o.pts[j][0], o.pts[j][1]);
+        const r = segSegParam(ax, ay, bx, by, pts[i][0], pts[i][1], pts[j][0], pts[j][1]);
+        if (r && r.u > -1e-9 && r.u < 1 + 1e-9) ts.push(r.t);
+      }
+    } else if (o.type === 'spline'){
+      const pts = splinePoints(o);
+      for (let i = 0; i + 1 < pts.length; i++){
+        const r = segSegParam(ax, ay, bx, by, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
         if (r && r.u > -1e-9 && r.u < 1 + 1e-9) ts.push(r.t);
       }
     } else if (o.type === 'circle'){

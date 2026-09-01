@@ -918,7 +918,7 @@ export function explodeSelection(){
     } else if (e.type === 'grid'){
       expandGrid(e).forEach(f => add.push(f));
       kill.push(e.id);
-    } else if (e.type === 'room' || e.type === 'xline'){
+    } else if (e.type === 'room' || e.type === 'xline' || e.type === 'spline' || e.type === 'mtext'){
       explodeForIO(e).forEach(f => add.push(f));
       kill.push(e.id);
     } else {

@@ -6,6 +6,7 @@ import { hatchLines } from '../core/hatch.js';
 import { polyOutline } from '../core/bulge.js';
 import { mtextLayout } from '../core/mtext.js';
 import { styleFor, metricsOpts } from '../core/textstyle.js';
+import { splinePoints } from '../core/spline.js';
 import { expandInsert } from '../core/dynblock.js';
 import { tableFrags } from '../core/schedule.js';
 
@@ -80,6 +81,10 @@ export function buildSVG(entities, layers, opts){
       hatchLines(e).forEach(seg => {
         parts.push('<line x1="' + tx(seg[0][0]) + '" y1="' + ty(seg[0][1]) + '" x2="' + tx(seg[1][0]) + '" y2="' + ty(seg[1][1]) + '" stroke="' + c + '" fill="none" stroke-width="0.02"/>');
       });
+    } else if (e.type === 'spline'){
+      const sp = splinePoints(e);
+      const d = sp.map((p, i) => (i ? 'L' : 'M') + tx(p[0]) + ' ' + ty(p[1])).join(' ') + (e.closed ? ' Z' : '');
+      parts.push('<path d="' + d + '" stroke="' + c + '" fill="none" stroke-width="0.03"/>');
     } else if (e.type === 'mtext'){
       mtextLayout(e, metricsOpts(styleFor(e, styles))).forEach(l => {
         const rot = e.rot ? ' transform="rotate(' + fmtN(-e.rot) + ' ' + tx(l.x) + ' ' + ty(l.y) + ')"' : '';

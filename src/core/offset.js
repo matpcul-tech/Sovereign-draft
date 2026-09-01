@@ -2,6 +2,8 @@
  * Returns a new entity (no id) or null when the offset is impossible.
  */
 import { dist, distToSeg, lineIntersect } from './geometry.js';
+import { hasBulge, polyOutline } from './bulge.js';
+import { splineToPoly } from './spline.js';
 
 export function offsetEntity(e, d, tapW){
   if (e.type === 'line'){
@@ -20,7 +22,15 @@ export function offsetEntity(e, d, tapW){
     const r = e.r + s * d; if (r <= 0.05) return null;
     return { type: 'arc', layer: e.layer, cx: e.cx, cy: e.cy, r, a1: e.a1, a2: e.a2 };
   }
+  if (e.type === 'spline'){
+    /* Offsetting the tessellation is honest: a true spline offset is not a
+     * spline anyway, and the polyline it returns follows the curve to the
+     * same tolerance everything else draws it at. */
+    return offsetEntity(splineToPoly(e), d, tapW);
+  }
   if (e.type === 'poly'){
+    const src = hasBulge(e) ? { type: 'poly', layer: e.layer, closed: e.closed, pts: polyOutline(e), lt: e.lt, lw: e.lw } : e;
+    if (src !== e) return offsetEntity(src, d, tapW);
     const pts = e.pts; if (pts.length < 2) return null;
     const n = pts.length, segs = e.closed ? n : n - 1;
     let bi = 0, bd = 1e18;

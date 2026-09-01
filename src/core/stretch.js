@@ -29,6 +29,12 @@ export function stretchEntities(entities, box, dx, dy){
       if (inBox(e.x, e.y, box)){ e.x += dx; e.y += dy; n++; }
     } else if (e.type === 'insert'){
       if (inBox(e.x, e.y, box)){ e.x += dx; e.y += dy; n++; }
+    } else if (e.type === 'spline'){
+      /* Control points inside the window stretch; the rest of the curve
+       * follows through the basis, which is the point of a spline. */
+      (e.ctrl || []).forEach(p => { if (inBox(p[0], p[1], box)){ movePt(p, dx, dy); n++; } });
+    } else if (e.type === 'mtext'){
+      if (inBox(e.x, e.y, box)){ e.x += dx; e.y += dy; n++; }
     } else if (e.type === 'dim' && e.kind === 'angular'){
       if (inBox(e.x1, e.y1, box)){ e.x1 += dx; e.y1 += dy; n++; }
       if (inBox(e.x2, e.y2, box)){ e.x2 += dx; e.y2 += dy; n++; }

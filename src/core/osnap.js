@@ -4,6 +4,8 @@
  */
 import { dist, distToSeg, closestOnSeg, perpFoot, segSegIntersect, lineCircleTs, angDeg, onArc, arcPoints, tanPoints, ellipsePoints, cloudPoints } from './geometry.js';
 import { entPoints, flattenEnt, spanXline } from './entities.js';
+import { polyOutline } from './bulge.js';
+import { splinePoints } from './spline.js';
 
 function segsOf(e){
   if (e.type === 'insert'){
@@ -28,9 +30,17 @@ function segsOf(e){
   }
   if (e.type === 'line') return [[[e.x1, e.y1], [e.x2, e.y2]]];
   if (e.type === 'poly' && e.pts){
+    /* Snap along the arcs, not the chords a bulged polyline stores. */
+    const pts = polyOutline(e);
     const s = [];
-    const n = e.pts.length, segs = e.closed ? n : n - 1;
-    for (let i = 0; i < segs; i++) s.push([e.pts[i], e.pts[(i + 1) % n]]);
+    const n = pts.length, segs = e.closed ? n : n - 1;
+    for (let i = 0; i < segs; i++) s.push([pts[i], pts[(i + 1) % n]]);
+    return s;
+  }
+  if (e.type === 'spline'){
+    const pts = splinePoints(e);
+    const s = [];
+    for (let i = 0; i + 1 < pts.length; i++) s.push([pts[i], pts[i + 1]]);
     return s;
   }
   if (e.type === 'hatch' && e.pts){
@@ -118,11 +128,14 @@ export function nearestOnEntity(e, w){
     const c = closestOnSeg(w[0], w[1], e.x1, e.y1, e.x2, e.y2);
     return [c.x, c.y, 4, c.d];
   }
-  if (e.type === 'poly'){
+  if (e.type === 'poly' || e.type === 'spline'){
+    /* Nearest point on the curve itself: the arcs of a bulged polyline and
+     * the tessellation of a spline, never the stored chords or hull. */
+    const pts = e.type === 'spline' ? splinePoints(e) : polyOutline(e);
     let best = null;
-    const n = e.pts.length, segs = e.closed ? n : n - 1;
+    const n = pts.length, segs = (e.type === 'poly' && e.closed) ? n : n - 1;
     for (let i = 0; i < segs; i++){
-      const a = e.pts[i], b = e.pts[(i + 1) % n];
+      const a = pts[i], b = pts[(i + 1) % n];
       const c = closestOnSeg(w[0], w[1], a[0], a[1], b[0], b[1]);
       if (!best || c.d < best[3]) best = [c.x, c.y, 4, c.d];
     }

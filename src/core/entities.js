@@ -380,6 +380,12 @@ export function gripPts(e){
     g.push({ x: e.x2, y: e.y2, apply(p){ e.x2 = p[0]; e.y2 = p[1]; } });
   } else if (e.type === 'poly' || e.type === 'hatch' || e.type === 'cloud' || e.type === 'leader' || e.type === 'room'){
     (e.pts || []).forEach((pt, i) => { g.push({ x: pt[0], y: pt[1], apply(p){ e.pts[i] = [p[0], p[1]]; } }); });
+  } else if (e.type === 'spline'){
+    /* Dragging a control point reshapes the curve, which is the whole reason
+     * to draw a spline instead of a polyline. */
+    (e.ctrl || []).forEach((pt, i) => { g.push({ x: pt[0], y: pt[1], apply(p){ e.ctrl[i] = [p[0], p[1]]; } }); });
+  } else if (e.type === 'mtext'){
+    g.push({ x: e.x, y: e.y, apply(p){ e.x = p[0]; e.y = p[1]; } });
   } else if (e.type === 'circle'){
     g.push({ x: e.cx + e.r, y: e.cy, apply(p){ e.r = Math.max(dist(p[0], p[1], e.cx, e.cy), 0.05); } });
   } else if (e.type === 'ellipse'){
