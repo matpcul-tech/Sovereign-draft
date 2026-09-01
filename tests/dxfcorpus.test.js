@@ -148,3 +148,52 @@ describe('random mutation never crashes or hangs the parser', () => {
     }
   });
 });
+
+describe('island hatches round trip', () => {
+  /* A HATCH the way AutoCAD writes one: elevation point, pattern name,
+   * then two boundary paths each opened by its group 92 flags. */
+  const ISLAND_HATCH = '0\nSECTION\n2\nENTITIES\n' +
+    '0\nHATCH\n8\n0\n10\n0\n20\n0\n30\n0\n2\nANSI31\n70\n0\n71\n0\n91\n2\n' +
+    '92\n7\n72\n0\n73\n1\n93\n4\n' +
+    '10\n0\n20\n0\n10\n10\n20\n0\n10\n10\n20\n10\n10\n0\n20\n10\n' +
+    '92\n22\n72\n0\n73\n1\n93\n4\n' +
+    '10\n4\n20\n4\n10\n6\n20\n4\n10\n6\n20\n6\n10\n4\n20\n6\n' +
+    '75\n0\n76\n1\n98\n0\n' +
+    '0\nENDSEC\n0\nEOF\n';
+
+  it('a foreign two path HATCH parses to a hatch with its island', async () => {
+    const { hatchArea } = await import('../src/core/hatch.js');
+    const { polyArea } = await import('../src/core/geometry.js');
+    const out = parseDXF(ISLAND_HATCH, n => n || '0');
+    const h = out.find(e => e.type === 'hatch');
+    expect(h).toBeTruthy();
+    expect(Math.abs(polyArea(h.pts))).toBeCloseTo(100, 9);
+    expect(h.holes.length).toBe(1);
+    expect(Math.abs(polyArea(h.holes[0]))).toBeCloseTo(4, 9);
+    expect(hatchArea(h)).toBeCloseTo(96, 9);
+  });
+
+  it('a holed hatch writes both boundaries and its pattern avoids the cavity', async () => {
+    const { insideWithHoles, hatchLines } = await import('../src/core/hatch.js');
+    const { polyArea } = await import('../src/core/geometry.js');
+    const src = {
+      type: 'hatch', layer: '0', pattern: 'ANSI31', scale: 1,
+      pts: [[0, 0], [10, 0], [10, 10], [0, 10]],
+      holes: [[[4, 4], [6, 4], [6, 6], [4, 6]]]
+    };
+    const doc = buildDXF([src], LAYERS, { ver: 'R2000' });
+    const back = parseDXF(doc, n => n || '0');
+    const polys = back.filter(e => e.type === 'poly' && e.closed);
+    const areas = polys.map(p => Math.abs(polyArea(p.pts))).sort((a, b) => a - b);
+    expect(areas.length).toBe(2);
+    expect(areas[0]).toBeCloseTo(4, 9);
+    expect(areas[1]).toBeCloseTo(100, 9);
+    /* Every pattern line written respects the island. */
+    const segs = back.filter(e => e.type === 'line');
+    expect(segs.length).toBe(hatchLines(src, undefined).length);
+    for (const s of segs){
+      const mx = (s.x1 + s.x2) / 2, my = (s.y1 + s.y2) / 2;
+      expect(insideWithHoles(mx, my, src.pts, src.holes)).toBe(true);
+    }
+  });
+});

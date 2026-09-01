@@ -288,6 +288,14 @@ function writeEnt(w, e, r2000, inBlock, paper){
         w(0, 'LWPOLYLINE'); common();
         w(90, e.pts.length, 70, 1);
         e.pts.forEach(p => w(10, fmtN(p[0]), 20, fmtN(p[1])));
+        /* Island boundaries travel too, or a reopened section loses its
+         * cavities' outlines even though the pattern lines respect them. */
+        (e.holes || []).forEach(h => {
+          if (!h || h.length < 2) return;
+          w(0, 'LWPOLYLINE'); common();
+          w(90, h.length, 70, 1);
+          h.forEach(p => w(10, fmtN(p[0]), 20, fmtN(p[1])));
+        });
       }
     }
   } else if (e.type === 'dim' && e.kind !== 'angular' && e.kind !== 'radius' && e.kind !== 'diameter'){
@@ -474,8 +482,26 @@ export function parseDXF(txt, ensureLayer, sink){
         });
       }
     }
-    else if (t === 'HATCH' && cur._pts && cur._pts.length >= 3){
-      emit(style({ type: 'hatch', layer: ly, pts: cur._pts, pattern: cur[2] || 'ANSI31', scale: num(cur[41]) || 1 }));
+    else if (t === 'HATCH'){
+      /* Boundary paths were split at every group 92; the leftover points
+       * are the last path. Splitting also keeps the hatch's elevation
+       * point (its own 10/20, before any path) out of the boundary, since
+       * a pre-path fragment can never reach three vertices. The largest
+       * ring is the outer boundary, the rest are islands. */
+      const rings = (cur._rings || [])
+        .concat(cur._pts && cur._pts.length ? [cur._pts] : [])
+        .filter(r => r.length >= 3);
+      if (rings.length){
+        const area = r => {
+          let a = 0;
+          for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][0] + r[i][0]) * (r[j][1] - r[i][1]);
+          return Math.abs(a / 2);
+        };
+        rings.sort((a, b) => area(b) - area(a));
+        const h = style({ type: 'hatch', layer: ly, pts: rings[0], pattern: cur[2] || 'ANSI31', scale: num(cur[41]) || 1 });
+        if (rings.length > 1) h.holes = rings.slice(1);
+        emit(h);
+      }
     }
     else if (t === 'ELLIPSE' && cur[10] !== undefined){
       const mx = num(cur[11]), my = num(cur[21]);
@@ -554,11 +580,19 @@ export function parseDXF(txt, ensureLayer, sink){
       flush();
       cur = { _t: v };
       if (v === 'LWPOLYLINE' || v === 'HATCH' || v === 'SPLINE' || v === 'LEADER') cur._pts = [];
+      if (v === 'HATCH') cur._rings = [];
       if (v === 'SPLINE') cur._knots = [];
       continue;
     }
     if (!cur) continue;
     if (cur._t === 'SPLINE' && c === 40){ cur._knots.push(num(v)); continue; }
+    /* Every HATCH boundary path opens with its type flags in group 92;
+     * close out the points gathered so far as the previous ring. */
+    if (cur._t === 'HATCH' && c === 92){
+      if (cur._pts.length) cur._rings.push(cur._pts);
+      cur._pts = [];
+      continue;
+    }
     if ((cur._t === 'LWPOLYLINE' || cur._t === 'HATCH' || cur._t === 'SPLINE' || cur._t === 'LEADER') && (c === 10 || c === 20 || c === 11 || c === 21)){
       const xcode = (c === 10 || c === 11);
       const ycode = (c === 20 || c === 21);
