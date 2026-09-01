@@ -413,6 +413,48 @@ describe('stacked stories', () => {
   });
 });
 
+describe('wing roofs over rectilinear plans', () => {
+  beforeEach(reset);
+
+  const hipVol = (w, d, pitch) => {
+    const Ss = Math.min(w, d), L = Math.max(w, d), r = Ss / 2 * pitch / 12;
+    return (L - Ss) * Ss * r / 2 + Ss * Ss * r / 3;
+  };
+
+  it('an L plan gets two wing hips whose union is exact at zero overhang', async () => {
+    const { roofOverModel } = await import('../src/core/model3d.js');
+    addSolid(makeBox(0, 0, 0, 30, 20, 8), 'A');
+    addSolid(makeBox(0, 20, 0, 14, 16, 8), 'B');
+    const roof = roofOverModel('hip', 6, 0);
+    expect(Math.abs(V(roof.mesh))).toBeCloseTo(hipVol(30, 20, 6) + hipVol(14, 16, 6), 6);
+  });
+
+  it('with an overhang the union obeys inclusion-exclusion against the wing hips', async () => {
+    const { roofOverModel } = await import('../src/core/model3d.js');
+    const { makeHip } = await import('../src/core/mesh.js');
+    const { csgIntersect: inter } = await import('../src/core/csg.js');
+    addSolid(makeBox(0, 0, 0, 30, 20, 8), 'A');
+    addSolid(makeBox(0, 20, 0, 14, 16, 8), 'B');
+    const roof = roofOverModel('hip', 6, 1);
+    const m1 = makeHip(-1, -1, 8, 32, 22, 22 / 4);
+    const m2 = makeHip(-1, 19, 8, 16, 18, 16 / 4);
+    const rhs = Math.abs(V(m1)) + Math.abs(V(m2)) - Math.abs(V(inter(m1, m2)));
+    expect(Math.abs(V(roof.mesh))).toBeCloseTo(rhs, 6);
+  });
+
+  it('the roof plan of an L draws its valleys, and a plain rectangle is unchanged', async () => {
+    const { roofOverModel, roofPlanToPlan } = await import('../src/core/model3d.js');
+    addSolid(makeBox(0, 0, 0, 30, 20, 8), 'A');
+    addSolid(makeBox(0, 20, 0, 14, 16, 8), 'B');
+    roofOverModel('hip', 6, 0);
+    expect(roofPlanToPlan().edges).toBeGreaterThan(8);
+    reset();
+    addSolid(makeBox(0, 0, 0, 30, 20, 8), 'WALL');
+    const r = roofOverModel('gable', 6, 1);
+    expect(Math.abs(V(r.mesh))).toBeCloseTo(22 * 5.5 / 2 * 32, 6);
+  });
+});
+
 describe('push-pull on the exact kernel', () => {
   beforeEach(reset);
 

@@ -80,6 +80,69 @@ export const MAKERS = {
  * ignored when measuring, so re-roofing replaces the idea rather than
  * stacking hats on hats.
  */
+/* ---------- wing decomposition ----------
+ * A rectilinear footprint splits into band rectangles: sweep the unique
+ * coordinates of one axis, and within each band the interior is a set of
+ * intervals on the other axis. Bands with identical intervals merge, so a
+ * plain rectangle stays one rectangle and an L becomes its two wings. Both
+ * sweep directions are tried and the one with fewer rectangles wins, which
+ * puts each wing's ridge along its own length.
+ */
+function ringsRectilinear(rings){
+  for (const r of rings){
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++){
+      const dx = Math.abs(r[i][0] - r[j][0]), dy = Math.abs(r[i][1] - r[j][1]);
+      if (dx > 1e-6 && dy > 1e-6) return false;
+    }
+  }
+  return true;
+}
+
+function insideRings(rings, x, y){
+  let hit = false;
+  for (const r of rings){
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++){
+      const xi = r[i][0], yi = r[i][1], xj = r[j][0], yj = r[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi) hit = !hit;
+    }
+  }
+  return hit;
+}
+
+function bandRects(rings, axis){
+  /* axis 0: bands along y, intervals in x; axis 1: the transpose. */
+  const q = axis === 0 ? p => p : p => [p[1], p[0]];
+  const R = rings.map(r => r.map(q));
+  const cuts = [...new Set(R.flat().map(p => Math.round(p[1] * 1e6) / 1e6))].sort((a, b) => a - b);
+  const xs = [...new Set(R.flat().map(p => Math.round(p[0] * 1e6) / 1e6))].sort((a, b) => a - b);
+  const bands = [];
+  for (let i = 0; i + 1 < cuts.length; i++){
+    const ymid = (cuts[i] + cuts[i + 1]) / 2;
+    const ivs = [];
+    for (let k = 0; k + 1 < xs.length; k++){
+      if (insideRings(R, (xs[k] + xs[k + 1]) / 2, ymid)){
+        if (ivs.length && Math.abs(ivs[ivs.length - 1][1] - xs[k]) < 1e-6) ivs[ivs.length - 1][1] = xs[k + 1];
+        else ivs.push([xs[k], xs[k + 1]]);
+      }
+    }
+    bands.push({ y0: cuts[i], y1: cuts[i + 1], ivs });
+  }
+  /* Merge vertically contiguous bands with identical intervals. */
+  const rects = [];
+  let open = [];
+  const sameIvs = (a, b) => a.length === b.length && a.every((v, i2) => Math.abs(v[0] - b[i2][0]) < 1e-6 && Math.abs(v[1] - b[i2][1]) < 1e-6);
+  for (const band of bands){
+    if (open.length && sameIvs(open[0].ivs, band.ivs) && Math.abs(open[0].y1 - band.y0) < 1e-6){
+      open[0].y1 = band.y1;
+    } else {
+      for (const ob of open) for (const iv of ob.ivs) rects.push({ x0: iv[0], y0: ob.y0, x1: iv[1], y1: ob.y1 });
+      open = band.ivs.length ? [{ y0: band.y0, y1: band.y1, ivs: band.ivs }] : [];
+    }
+  }
+  for (const ob of open) for (const iv of ob.ivs) rects.push({ x0: iv[0], y0: ob.y0, x1: iv[1], y1: ob.y1 });
+  return rects.map(r => axis === 0 ? r : { x0: r.y0, y0: r.x0, x1: r.y1, y1: r.x1 });
+}
+
 export function roofOverModel(kind, pitch, overhang){
   const list = (state.solids || []).filter(s => s && !/^ROOF/.test(s.name));
   if (!list.length) throw new Error('Nothing to roof: MODEL first, or make a solid');
@@ -92,12 +155,28 @@ export function roofOverModel(kind, pitch, overhang){
     ] : b;
   }
   const o = overhang == null ? 1 : Math.max(0, Number(overhang));
-  const x = bb[0] - o, y = bb[1] - o;
-  const w = bb[3] - bb[0] + 2 * o, d = bb[4] - bb[1] + 2 * o;
   const p = Number(pitch) > 0 ? Number(pitch) : 6;
-  const rise = Math.min(w, d) / 2 * p / 12;
   const mk = kind === 'hip' ? makeHip : makeGable;
-  return addSolid(mk(x, y, bb[5], w, d, rise), 'ROOF');
+  const wing = r => {
+    const x = r.x0 - o, y = r.y0 - o;
+    const w = r.x1 - r.x0 + 2 * o, d = r.y1 - r.y0 + 2 * o;
+    const rise = Math.min(w, d) / 2 * p / 12;
+    return mk(x, y, bb[5], w, d, rise);
+  };
+  /* The footprint decides: a rectilinear plan is roofed wing by wing and
+   * the union makes the valleys; anything else gets the bbox roof. */
+  const foot = silhouette(mergeMeshes(list.map(s => s.mesh)), 'z', (A, B, op) => polyBoolean(A, B, op));
+  let rects = null;
+  if (foot.length && ringsRectilinear(foot)){
+    const r0 = bandRects(foot, 0), r1 = bandRects(foot, 1);
+    rects = (r1.length < r0.length ? r1 : r0);
+  }
+  if (!rects || !rects.length || rects.length > 12){
+    rects = [{ x0: bb[0], y0: bb[1], x1: bb[3], y1: bb[4] }];
+  }
+  let mesh = wing(rects[0]);
+  for (let i = 1; i < rects.length; i++) mesh = csg('union', mesh, wing(rects[i]));
+  return addSolid(mesh, 'ROOF');
 }
 
 /* ---------- push-pull ----------
