@@ -809,7 +809,9 @@ function wirePicking(){
       else commitMove(pick.moved);
       return;
     }
-    if (controls) controls.enabled = true;
+    /* A live placing tool keeps the camera parked, or the next drag
+     * would orbit instead of placing. */
+    if (controls) controls.enabled = !PLACING[place.tool];
     /* No drag: a small click measures in measure mode, otherwise it
      * selects what it hit, or clears. */
     if (pick.down && Math.hypot(ev.clientX - pick.down.x, ev.clientY - pick.down.y) < 5){
@@ -840,6 +842,12 @@ function wirePicking(){
         setSelected(null);
         ev.preventDefault(); ev.stopPropagation();
       }
+      return;
+    }
+    if (PLACING[place.tool] && place.a){
+      /* A placement drag owns the keyboard the same way a move does, or
+       * a stray digit focuses the 2D command line mid-drag. */
+      ev.stopPropagation();
       return;
     }
     if (pick.dragging){
@@ -877,6 +885,9 @@ function wirePicking(){
       ev.stopPropagation();
     }
     if ((ev.key === 'm' || ev.key === 'M') && !ev.ctrlKey && !ev.metaKey && !ev.altKey){
+      /* Measuring and placing are both click-owners; leave the tool
+       * before taking the clicks for measurement. */
+      if (PLACING[place.tool]) setTool3dView('orbit');
       setMeasureMode(!meas.on);
       ev.preventDefault();
       ev.stopPropagation();
