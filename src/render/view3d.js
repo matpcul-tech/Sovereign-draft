@@ -479,6 +479,10 @@ function ensureDom(){
       <button type="button" data-tool3d="cyl">CYL</button>
       <button type="button" data-tool3d="sphere">SPH</button>
       <button type="button" data-tool3d="cone">CONE</button>
+      <button type="button" data-mode3d="edit">EDIT</button>
+      <button type="button" data-mode3d="rotate">ROT</button>
+      <button type="button" data-mode3d="pushpull">PUSH</button>
+      <button type="button" data-mode3d="measure">MEAS</button>
       <button type="button" data-act="union">UNI</button>
       <button type="button" data-act="subtract">SUB</button>
       <button type="button" data-act="sample">PART</button>
@@ -524,6 +528,7 @@ function wireHud(hooks){
       const b = ev.target.closest('button');
       if (!b) return;
       if (b.dataset.tool3d){ setTool3dView(b.dataset.tool3d); return; }
+      if (b.dataset.mode3d){ toggleMode3d(b.dataset.mode3d); return; }
       const act = b.dataset.act;
       if (act === 'union' && hooks.onBool) hooks.onBool('union');
       else if (act === 'subtract' && hooks.onBool) hooks.onBool('subtract');
@@ -684,6 +689,36 @@ function commitPlace(a, b){
   if (viewHooks.onPlaceMesh) viewHooks.onPlaceMesh(mesh, place.tool);
 }
 
+/* The rail's mode buttons are the touch spelling of E, R, P and M:
+ * same toggles, highlighted to the live mode, honest when nothing is
+ * selected to act on. */
+function syncModeButtons(){
+  document.querySelectorAll('#v3dRail button[data-mode3d]').forEach(b => {
+    const m = b.dataset.mode3d;
+    b.classList.toggle('on', m === 'measure' ? meas.on : (!!pick.selected && pick.mode === m && !meas.on));
+  });
+}
+
+function toggleMode3d(m){
+  if (m === 'measure'){
+    if (PLACING[place.tool]) setTool3dView('orbit');
+    setMeasureMode(!meas.on);
+    syncModeButtons();
+    return;
+  }
+  if (!pick.selected){
+    if (typeof window !== 'undefined' && window.document){
+      const hint = hud && hud.querySelector('.v3d-hint');
+      if (hint) hint.textContent = 'Tap a solid first, then ' + m.toUpperCase();
+    }
+    return;
+  }
+  if (meas.on) setMeasureMode(false);
+  pick.mode = pick.mode === m ? 'move' : m;
+  setSelected(pick.selected);
+  syncModeButtons();
+}
+
 export function setTool3dView(name){
   place.tool = name || 'orbit';
   place.a = null;
@@ -692,6 +727,7 @@ export function setTool3dView(name){
   document.querySelectorAll('#v3dRail button[data-tool3d]').forEach(b => {
     b.classList.toggle('on', b.dataset.tool3d === place.tool);
   });
+  syncModeButtons();
   const hint = hud && hud.querySelector('.v3d-hint');
   if (hint){
     hint.textContent = place.tool === 'box' ? 'Drag a footprint on the workplane'
@@ -782,6 +818,7 @@ function setSelected(name){
     el.style.display = name ? 'block' : 'none';
   }
   if (pick.onSolidInfo) pick.onSolidInfo(name);
+  syncModeButtons();
   render();
 }
 
@@ -1331,6 +1368,7 @@ function wirePicking(){
        * before taking the clicks for measurement. */
       if (PLACING[place.tool]) setTool3dView('orbit');
       setMeasureMode(!meas.on);
+      syncModeButtons();
       ev.preventDefault();
       ev.stopPropagation();
     }
