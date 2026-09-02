@@ -2,7 +2,7 @@
 import './cad.css';
 import { state, onChange, pushUndo, doUndo, doRedo, afterChange, selMembers, layerByName, ensureLayer, addLayer, entById, addEntity, OFFSETS, activeLayout, defaultLayers } from './core/state.js';
 import { fmtFtIn } from './core/format.js';
-import { homeView, zoomFit } from './core/viewport.js';
+import { homeView, zoomFit , zoomToPlan} from './core/viewport.js';
 import { ix } from './interaction.js';
 import { initCanvas, resize, draw } from './render/draw.js';
 import { bindInput } from './input.js';
@@ -110,6 +110,7 @@ export function boot(root){
     const btn = $('mSample');
     if (btn){
       btn.click();
+      zoomToPlan(); draw();
       let toured = false;
       try { toured = !!localStorage.getItem('sd-tour-done'); } catch (e){ /* private mode */ }
       if (toured){
@@ -1150,8 +1151,11 @@ function wireUi(){
     if ($('projName')) $('projName').value = '24x36 Cabin';
     state.layouts = generateSheetSet(state.entities, state.layers, { projectName: state.projectName });
     state.currentLayout = state.layouts[0].id;
-    state.space = state.layouts[0].id;
-    afterChange(); zoomFit(); draw();
+    /* Open on the drawing itself, fitted to the building: the sheets
+     * are one tap away on the tabs, and a first screen should be a
+     * plan, not a title block. */
+    state.space = 'model';
+    afterChange(); zoomToPlan(); draw();
     renderLayouts(); renderSpaceTabs();
     toast(state.layouts.length + ' sheets — cover, overall, one page per room');
   });

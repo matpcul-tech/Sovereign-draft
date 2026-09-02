@@ -147,11 +147,14 @@ function drawGrip(c, s, kind){
 function paperMap(){
   const L = activeLayout(); if (!L) return null;
   const sh = sheetOf(L.sheet);
-  /* Fit the sheet into the canvas with padding. */
-  const pad = 36;
-  const scl = Math.min((vp.CW - pad * 2) / sh.w, (vp.CH - pad * 2) / sh.h);
+  /* Fit the sheet into the part of the canvas the chrome leaves free:
+   * the top bar hides ~96px and the tool panel ~210px, and a sheet
+   * centred in the full window parked its title block under them. */
+  const padX = 36, top = 100, bot = 214;
+  const scl = Math.min((vp.CW - padX * 2) / sh.w, Math.max(120, vp.CH - top - bot) / sh.h);
   const ox = (vp.CW - sh.w * scl) / 2;
-  const oy = (vp.CH + sh.h * scl) / 2; /* paper Y-up → screen Y-down */
+  const cy = top + Math.max(120, vp.CH - top - bot) / 2;
+  const oy = cy + sh.h * scl / 2; /* paper Y-up -> screen Y-down */
   return { L, sh, scl, ox, oy, p2s: (px, py) => [ox + px * scl, oy - py * scl] };
 }
 
@@ -216,6 +219,38 @@ function drawPaper(){
       const paper = (t.rowH || 0.85) < 0.4;
       const ts = paper ? 1 : ((t.rowH || 0.22) / 0.85);
       const r = annotationRect(a);
+      const rowPx = (paper ? (t.rowH || 0.22) : 0.85 * ts) * scl;
+      if (r && rowPx < 9){
+        /* Rows this small on screen are mush: an 8px font floor above a
+         * 6px row was text piled on text. The screen shows a clean
+         * titled panel; the readable rows live in the issued PDF, which
+         * is the artifact. */
+        const tl = p2s(r[0], r[3]), br = p2s(r[2], r[1]);
+        ctx.fillStyle = '#f4efe4';
+        ctx.fillRect(tl[0], tl[1], br[0] - tl[0], br[1] - tl[1]);
+        ctx.strokeStyle = '#8b7f66';
+        ctx.strokeRect(tl[0], tl[1], br[0] - tl[0], br[1] - tl[1]);
+        const panelW = br[0] - tl[0];
+        const title = String(t.title || 'TABLE');
+        /* Sized and clipped to the panel: a fixed 11px title overran a
+         * phone-width card and bled past the sheet edge. */
+        const tf = Math.max(7, Math.min(11, panelW / (title.length * 0.68)));
+        ctx.save();
+        ctx.beginPath(); ctx.rect(tl[0], tl[1], panelW, br[1] - tl[1]); ctx.clip();
+        ctx.fillStyle = '#07101f';
+        ctx.font = '600 ' + tf.toFixed(1) + 'px Outfit, system-ui';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        const rows = (t.cells || []).length - 1;
+        ctx.fillText(title, (tl[0] + br[0]) / 2, (tl[1] + br[1]) / 2 - tf * 0.65);
+        if (panelW > 58){
+          ctx.font = Math.max(6, tf - 1.5).toFixed(1) + 'px Outfit, system-ui';
+          ctx.fillStyle = '#5a5344';
+          ctx.fillText(rows > 0 ? rows + ' rows - prints in full' : 'prints in full', (tl[0] + br[0]) / 2, (tl[1] + br[1]) / 2 + tf * 0.75);
+        }
+        ctx.restore();
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        return;
+      }
       if (r){
         const tl = p2s(r[0], r[3]), br = p2s(r[2], r[1]);
         ctx.fillStyle = '#f4efe4';
@@ -227,7 +262,9 @@ function drawPaper(){
           ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
         } else if (f.type === 'text'){
           const q = p2s(f.x, f.y);
-          ctx.font = Math.max(8, f.size * ts * scl) + 'px Outfit, system-ui';
+          /* Sized to the row, never past it: the old 8px floor overran
+           * small rows and piled the schedule onto itself. */
+          ctx.font = Math.min(Math.max(7, rowPx * 0.62), Math.max(7, f.size * ts * scl)) + 'px Outfit, system-ui';
           ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
           ctx.fillStyle = '#07101f';
           ctx.fillText(f.content || '', q[0], q[1]);
