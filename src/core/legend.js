@@ -67,6 +67,20 @@ export function entsInBBox(entities, bbox, pad){
       if (e.x1 == null || e.y1 == null || e.x2 == null || e.y2 == null) return false;
       return ptInBox(e.x1, e.y1, box) && ptInBox(e.x2, e.y2, box);
     }
+    /* A callout belongs to the sheet holding the thing it points at.
+     * Its bbox spans the whole leader, so overlap testing dragged every
+     * part's label onto every other part's sheet, leaders slashing
+     * corner to corner. Same reasoning for a bare leader: its tip. */
+    if (e.type === 'callout'){
+      if (e.visibleIn) return true;
+      const a = e.anchor || (e.pts && e.pts[0]);
+      return !!a && ptInBox(a[0], a[1], box);
+    }
+    if (e.type === 'leader'){
+      if (e.visibleIn) return true;
+      const tip = e.pts && e.pts[0];
+      return !!tip && ptInBox(tip[0], tip[1], box);
+    }
     const eb = [1e9, 1e9, -1e9, -1e9];
     entBBox(e, eb);
     if (eb[0] > 1e8) return false;

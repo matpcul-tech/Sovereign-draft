@@ -66,3 +66,20 @@ describe('edit mode grabs and moves mesh features exactly', () => {
     expect(Math.abs(meshVolume(out))).toBeCloseTo(Math.abs(meshVolume(g)), 9);
   });
 });
+
+describe('callouts stay on the sheet holding what they point at', () => {
+  it('a callout leaks onto a sheet only when its anchor is inside the window', async () => {
+    const { entsInBBox } = await import('../src/core/legend.js');
+    /* An engine callout: anchor at the engine (y=2), label parked far
+     * above (y=88). Its bbox crosses every station of a 90 ft rocket. */
+    const engine = { type: 'callout', layer: 'NOTES', anchor: [10, 2], pts: [[10, 2], [28, 88]], content: 'ENGINE', textH: 1 };
+    const nose = { type: 'callout', layer: 'NOTES', anchor: [12, 85], pts: [[12, 85], [30, 86]], content: 'NOSE', textH: 1 };
+    const lead = { type: 'leader', layer: 'NOTES', pts: [[11, 3], [26, 70]], content: 'note', textH: 1 };
+    const noseBox = [0, 78, 34, 92];
+    const kept = entsInBBox([engine, nose, lead], noseBox, 0.4);
+    expect(kept.map(e => e.content)).toEqual(['NOSE']);
+    const engineBox = [0, 0, 34, 12];
+    const keptE = entsInBBox([engine, nose, lead], engineBox, 0.4);
+    expect(keptE.map(e => e.content).sort()).toEqual(['ENGINE', 'note']);
+  });
+});
