@@ -105,3 +105,44 @@ describe('a forbidden fill is stripped from a draft, not fatal to it', () => {
     expect(stripImpliedFill(ents, 'plan').stripped).toBe(0);
   });
 });
+
+describe('the ACAD keymap gives four letters back to AutoCAD hands', () => {
+  it('E, M, U, X resolve per keymap; full words never change', async () => {
+    const { lookupCommand, setKeymap, getKeymap } = await import('../src/core/command.js');
+    setKeymap('sd');
+    expect(lookupCommand('E').name).toBe('EXTEND');
+    expect(lookupCommand('M').name).toBe('MEASURE');
+    expect(lookupCommand('U').name).toBe('COPY');
+    expect(lookupCommand('X').name).toBe('TRIM');
+    setKeymap('acad');
+    expect(getKeymap()).toBe('acad');
+    expect(lookupCommand('E').name).toBe('ERASE');
+    expect(lookupCommand('M').name).toBe('MOVE');
+    expect(lookupCommand('U').name).toBe('UNDO');
+    expect(lookupCommand('X').name).toBe('EXPLODE');
+    /* Full spellings are identical in both maps. */
+    expect(lookupCommand('TRIM').name).toBe('TRIM');
+    expect(lookupCommand('EXTEND').name).toBe('EXTEND');
+    expect(lookupCommand('COPY').name).toBe('COPY');
+    setKeymap('sd');
+    expect(lookupCommand('E').name).toBe('EXTEND');
+  });
+});
+
+describe('face grab moves the whole coplanar patch', () => {
+  it('the top face of a box is its four corners, and lifting it is exact', async () => {
+    const { facePoints, moveMeshPoints } = await import('../src/core/snap3d.js');
+    const { makeBox, meshVolume, isWatertight } = await import('../src/core/mesh.js');
+    const m = makeBox(0, 0, 0, 10, 8, 6);
+    /* Find a triangle on the top plane z = 6. */
+    const seed = m.faces.findIndex(f => f.every(vi => m.verts[vi][2] === 6));
+    expect(seed).toBeGreaterThanOrEqual(0);
+    const pts = facePoints(m, seed);
+    expect(pts.length).toBe(4);
+    pts.forEach(p => expect(p[2]).toBe(6));
+    /* Lifting the whole face by 2 is a pure prism: 10 x 8 x 2 more. */
+    const out = moveMeshPoints(m, pts, [0, 0, 2]);
+    expect(isWatertight(out)).toBe(true);
+    expect(Math.abs(meshVolume(out))).toBeCloseTo(640, 9);
+  });
+});

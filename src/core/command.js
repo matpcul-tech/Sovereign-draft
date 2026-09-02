@@ -61,6 +61,9 @@ export const COMMANDS = {
   ERASE:   { aliases: ['ERASE', 'ER', 'Q'],             tool: 'erase',   prompt: 'Select objects to erase' },
   SYMBOL:  { aliases: ['SYMBOL', 'BLOCK', 'S', 'INSERT'], tool: 'symbol', prompt: 'Specify insertion point' },
   EXPLODE: { aliases: ['EXPLODE', 'XP'],                 tool: null,     action: 'explode' },
+  UNDO:    { aliases: ['UNDO'],                          tool: null,     action: 'undo' },
+  REDO:    { aliases: ['REDO'],                          tool: null,     action: 'redo' },
+  KEYMAP:  { aliases: ['KEYMAP'],                        tool: null,     action: 'keymap' },
   FLIP:    { aliases: ['FLIP'],                          tool: null,     action: 'flip' },
   ZFIT:    { aliases: ['ZOOMFIT', 'ZFIT'],              tool: null,     action: 'zoomfit' },
   SHEETSET:{ aliases: ['SHEETSET', 'SS', 'SHEETS'],     tool: null,     action: 'sheetset' },
@@ -140,10 +143,19 @@ for (const [name, c] of Object.entries(COMMANDS)){
   for (const a of c.aliases) ALIAS[a] = name;
 }
 
+/* The ACAD keymap gives the four single letters back to AutoCAD muscle
+ * memory. Everything else, full words included, is identical in both
+ * maps; KEYMAP ACAD / KEYMAP SD switches, and the choice is a device
+ * preference, not document data. */
+let KEYMAP_MODE = 'sd';
+export function setKeymap(m){ KEYMAP_MODE = m === 'acad' ? 'acad' : 'sd'; }
+export function getKeymap(){ return KEYMAP_MODE; }
+const ACAD_ALIAS = { E: 'ERASE', M: 'MOVE', U: 'UNDO', X: 'EXPLODE' };
+
 export function lookupCommand(s){
   if (!s) return null;
   const k = String(s).trim().toUpperCase();
-  const name = ALIAS[k];
+  const name = (KEYMAP_MODE === 'acad' && ACAD_ALIAS[k]) || ALIAS[k];
   if (!name) return null;
   return { name, ...COMMANDS[name] };
 }

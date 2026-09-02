@@ -11,7 +11,7 @@ import {
   makeBox, makeCylinder, makeSphere, makeCone
 } from '../core/mesh.js';
 import { pushPullPrism } from '../core/model3d.js';
-import { snapPoints, makeSnapIndex, inferMove, grabTarget, moveMeshPoints } from '../core/snap3d.js';
+import { snapPoints, makeSnapIndex, inferMove, grabTarget, moveMeshPoints, facePoints } from '../core/snap3d.js';
 import { sunVector } from '../core/sun.js';
 import { samplePath, easeInOut } from '../core/campath.js';
 
@@ -777,8 +777,8 @@ function setSelected(name){
         : pick.mode === 'pushpull'
           ? name + ' · push-pull: drag a face along its normal · type a distance, Enter · P back to move · esc'
           : pick.mode === 'edit'
-            ? name + ' · edit: drag a corner or an edge · shift lifts · type a distance, Enter · E back to move · esc'
-            : name + ' · drag moves · shift lifts · ctrl copies · R rotates · P push-pulls · E edits corners · type a distance, Enter · esc';
+            ? name + ' · edit: drag a corner, edge or face · shift lifts · type a distance, Enter · E or Tab back · esc'
+            : name + ' · drag moves · shift lifts · ctrl copies · R rotates · P push-pulls · E or Tab edits · type a distance, Enter · esc';
     el.style.display = name ? 'block' : 'none';
   }
   if (pick.onSolidInfo) pick.onSolidInfo(name);
@@ -1070,7 +1070,13 @@ function wirePicking(){
        * midpoint, of the exact kernel mesh under the click. */
       const rec = lastSolidsList.find(x => x && x.name === pick.selected);
       const cad = [hit.point.x, hit.point.z, hit.point.y];
-      const target = rec ? grabTarget(rec.mesh, cad, 0.9) : null;
+      let target = rec ? grabTarget(rec.mesh, cad, 0.9) : null;
+      if (!target && rec && hit.faceIndex != null){
+        /* Away from any corner or edge, the grab is the whole coplanar
+         * face, Blender style: every vertex of the patch travels. */
+        const pts = facePoints(rec.mesh, hit.faceIndex);
+        if (pts && pts.length) target = { kind: 'face', at: cad, points: pts };
+      }
       if (!target) return;
       pick.dragging = true;
       pick.typed = '';
@@ -1306,7 +1312,7 @@ function wirePicking(){
       ev.preventDefault();
       ev.stopPropagation();
     }
-    if ((ev.key === 'e' || ev.key === 'E') && pick.selected && !meas.on && !ev.ctrlKey && !ev.metaKey && !ev.altKey){
+    if ((ev.key === 'e' || ev.key === 'E' || ev.key === 'Tab') && pick.selected && !meas.on && !ev.ctrlKey && !ev.metaKey && !ev.altKey){
       pick.mode = pick.mode === 'edit' ? 'move' : 'edit';
       setSelected(pick.selected);
       ev.preventDefault();

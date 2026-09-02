@@ -110,7 +110,13 @@ export function boot(root){
     const btn = $('mSample');
     if (btn){
       btn.click();
-      setTimeout(() => toast('Sample cabin loaded. Try DRAWINGS HIP 6 SHEETS, or the Build row below', 6000), 900);
+      let toured = false;
+      try { toured = !!localStorage.getItem('sd-tour-done'); } catch (e){ /* private mode */ }
+      if (toured){
+        setTimeout(() => toast('Sample cabin loaded. Try DRAWINGS HIP 6 SHEETS, or the Build row below', 6000), 900);
+      } else {
+        setTimeout(() => startTour(), 1100);
+      }
     }
   }
   booted = true;
@@ -172,6 +178,55 @@ async function loadView3d(){
     }
   }
   return view3dMod;
+}
+
+/* Sixty seconds, once: the sample cabin builds itself so the app's
+ * best trick introduces itself. Real commands run, all of it undoable,
+ * and Skip is always one tap away. */
+function startTour(){
+  const card = document.createElement('div');
+  card.id = 'tourcard';
+  card.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 150px);z-index:60;' +
+    'max-width:340px;background:var(--navy-2,#0b1830);border:1px solid var(--gold,#d4a843);border-radius:12px;' +
+    'padding:14px 16px;color:var(--ink,#e8e4dd);font-family:Outfit,system-ui,sans-serif;font-size:13px;line-height:1.45;box-shadow:0 8px 30px rgba(0,0,0,.45)';
+  const msg = document.createElement('div');
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:8px;margin-top:12px;justify-content:flex-end';
+  const skip = document.createElement('button');
+  const next = document.createElement('button');
+  skip.textContent = 'Skip';
+  skip.style.cssText = 'background:none;border:none;color:var(--ink-dim,#8fa0bd);font-size:12px;padding:6px 10px';
+  next.style.cssText = 'background:var(--gold,#d4a843);border:none;color:#0b1830;font-weight:600;font-size:12px;border-radius:8px;padding:7px 14px';
+  row.appendChild(skip); row.appendChild(next);
+  card.appendChild(msg); card.appendChild(row);
+  document.body.appendChild(card);
+  const done = () => {
+    try { localStorage.setItem('sd-tour-done', '1'); } catch (e){ /* private mode */ }
+    card.remove();
+  };
+  skip.addEventListener('click', done);
+  let step = 0;
+  const steps = [
+    { text: 'This sample cabin is a finished 2D plan: walls, doors, dims, sheets. Watch it become a building.', btn: 'Build it' },
+    { text: 'MODEL turned every wall into an exact solid, doors and windows cut through with headers and sills.', btn: 'Roof it',
+      run: async () => { const { modelPlan } = await import('./actions.js'); modelPlan(); } },
+    { text: 'ROOF raised a hip roof over the massing. Valleys, ridges, all of it measured, none of it drawn.', btn: 'See it in 3D',
+      run: async () => { const { makeRoof } = await import('./actions.js'); makeRoof('HIP 6'); } },
+    { text: 'Drag to orbit. Tap a solid, then E to pull its corners. When you are ready, DWGS on the Build tab makes the whole drawing set.', btn: 'Got it',
+      run: async () => { await openView3d(); } },
+  ];
+  const show = () => { msg.textContent = steps[step].text; next.textContent = steps[step].btn; };
+  next.addEventListener('click', async () => {
+    step++;
+    if (step >= steps.length){ done(); return; }
+    if (steps[step].run){
+      next.disabled = true;
+      try { await steps[step].run(); } catch (e){ /* the cards continue regardless */ }
+      next.disabled = false;
+    }
+    show();
+  });
+  show();
 }
 
 function solidOpts(){

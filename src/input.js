@@ -32,7 +32,7 @@ import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
 import { setTool } from './ui/tools.js';
 import { openSheet, closeSheets, anySheetOpen } from './ui/sheets.js';
 import { toast } from './ui/toast.js';
-import { lookupCommand, defaultPrompt } from './core/command.js';
+import { lookupCommand, defaultPrompt, setKeymap, getKeymap } from './core/command.js';
 import { continueDim, baselineDim } from './core/dimStyle.js';
 import { addEntity } from './core/state.js';
 import { paramOnCl, locateInsert, syncHostWall } from './core/dynblock.js';
@@ -344,6 +344,15 @@ function onWheel(ev){
   draw();
 }
 
+/* Under KEYMAP ACAD the four letters an AutoCAD hand types without
+ * thinking do what that hand expects; every other key is shared. */
+const ACAD_KEYS = {
+  e: () => setTool('erase'),
+  m: () => setTool('move'),
+  u: () => doUndo(),
+  x: () => handleCommand('EXPLODE'),
+};
+
 const TOOL_KEYS = {
   v: 'select', h: 'pan', l: 'line', p: 'poly', r: 'rect', c: 'circle',
   a: 'arc', s: 'symbol', o: 'offset', x: 'trim', e: 'extend', d: 'dim', m: 'measure',
@@ -449,6 +458,7 @@ function onKeyDown(ev){
       if (el){ el.value = ev.key; el.focus(); }
       ev.preventDefault();
     }
+    else if (getKeymap() === 'acad' && ACAD_KEYS[k]){ ACAD_KEYS[k](); }
     else if (TOOL_KEYS[k]){ setTool(TOOL_KEYS[k]); }
   }
 }
@@ -531,6 +541,16 @@ export function handleCommand(text){
   if (res.action === 'elev'){ makeElevation(res.rest); return; }
   if (res.action === 'modelplan'){ modelPlan(); return; }
   if (res.action === 'zoomfit'){ zoomFit(); draw(); return; }
+  if (res.action === 'undo'){ doUndo(); return; }
+  if (res.action === 'redo'){ doRedo(); return; }
+  if (res.action === 'keymap'){
+    const want = /ACAD/i.test(res.rest || '') ? 'acad' : (/SD|SOVEREIGN|DEFAULT/i.test(res.rest || '') ? 'sd' : null);
+    if (!want){ toast('KEYMAP ACAD for AutoCAD keys (E erase, M move, U undo, X explode) · KEYMAP SD restores'); return; }
+    setKeymap(want);
+    try { localStorage.setItem('sd-keymap', want); } catch (e){ /* private mode */ }
+    toast(want === 'acad' ? 'ACAD keymap: E erase · M move · U undo · X explode' : 'Sovereign keymap restored');
+    return;
+  }
   if (res.action === 'explode'){ explodeSelection(); return; }
   if (res.action === 'flip'){ flipSelection(); return; }
   if (res.action === 'cleanup'){ applyCleanup(); return; }
@@ -618,6 +638,10 @@ export function bindInput(cv){
   cv.addEventListener('pointercancel', endPointer);
   cv.addEventListener('wheel', onWheel, { passive: false });
   cv.addEventListener('contextmenu', preventMenu);
+  try {
+    const savedMap = localStorage.getItem('sd-keymap');
+    if (savedMap) setKeymap(savedMap);
+  } catch (e){ /* private mode */ }
   document.addEventListener('keydown', onKeyDown);
   return function unbind(){
     cv.removeEventListener('pointerdown', onPointerDown);

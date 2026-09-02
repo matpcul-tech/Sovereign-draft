@@ -162,3 +162,46 @@ export function moveMeshPoints(mesh, points, delta){
     : [v[0], v[1], v[2]]);
   return { verts, faces: mesh.faces.map(f => f.slice()) };
 }
+
+/* The vertex coordinates of the coplanar patch around a seed triangle:
+ * what a face grab in edit mode moves. Connectivity is by shared
+ * vertex position, so a CSG seam does not split a flat face, and the
+ * patch stops at any crease. Returns deduped points, or null. */
+export function facePoints(mesh, seed){
+  if (!mesh || !mesh.faces || !mesh.faces[seed]) return null;
+  const n = faceNormal(mesh.verts, mesh.faces[seed]);
+  const v0 = mesh.verts[mesh.faces[seed][0]];
+  const w = n[0] * v0[0] + n[1] * v0[1] + n[2] * v0[2];
+  const byVert = new Map();
+  mesh.faces.forEach((f, i) => f.forEach(vi => {
+    const k = keyOf(mesh.verts[vi]);
+    const arr = byVert.get(k);
+    if (arr) arr.push(i); else byVert.set(k, [i]);
+  }));
+  const onPlane = i => {
+    const ni = faceNormal(mesh.verts, mesh.faces[i]);
+    if (ni[0] * n[0] + ni[1] * n[1] + ni[2] * n[2] < 0.999) return false;
+    return mesh.faces[i].every(vi => {
+      const v = mesh.verts[vi];
+      return Math.abs(n[0] * v[0] + n[1] * v[1] + n[2] * v[2] - w) < 1e-6;
+    });
+  };
+  const inPatch = new Set([seed]);
+  const queue = [seed];
+  while (queue.length){
+    const i = queue.pop();
+    for (const vi of mesh.faces[i]){
+      for (const j of byVert.get(keyOf(mesh.verts[vi])) || []){
+        if (!inPatch.has(j) && onPlane(j)){ inPatch.add(j); queue.push(j); }
+      }
+    }
+  }
+  const pts = new Map();
+  for (const i of inPatch){
+    for (const vi of mesh.faces[i]){
+      const v = mesh.verts[vi];
+      pts.set(keyOf(v), [v[0], v[1], v[2]]);
+    }
+  }
+  return [...pts.values()];
+}
