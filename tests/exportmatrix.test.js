@@ -19,7 +19,7 @@ const CASES = [
   ['text', { type: 'text', layer: 'TEXT', x: 1, y: 1, size: 1, content: 'hello' }, { text: 1 }],
   ['mtext', { type: 'mtext', layer: 'TEXT', x: 1, y: 3, w: 10, size: 1, content: 'wrapped words here' }, { text: 1 }, { mtext: 1 }],
   ['dim', { type: 'dim', layer: 'DIMS', x1: 0, y1: 0, x2: 10, y2: 0, off: 2 }, { line: 5, text: 1 }, { dim: 1 }],
-  ['hatch', { type: 'hatch', layer: 'HATCH', pts: [[0, 0], [4, 0], [4, 4], [0, 4]], pattern: 'ANSI31', scale: 1, angle: 0 }, { line: 8 }, { line: 8, poly: 1 }],
+  ['hatch', { type: 'hatch', layer: 'HATCH', pts: [[0, 0], [4, 0], [4, 4], [0, 4]], pattern: 'ANSI31', scale: 1, angle: 0 }, { line: 8 }, { hatch: 1 }],
   ['ellipse', { type: 'ellipse', layer: 'WALLS', cx: 5, cy: 5, rx: 4, ry: 2, rot: 15 }, { poly: 1 }],
   ['leader', { type: 'leader', layer: 'TEXT', pts: [[0, 0], [4, 4]], content: 'note', textH: 1 }, { poly: 1, text: 1 }],
   ['cloud', { type: 'cloud', layer: 'TEXT', pts: [[0, 0], [6, 0], [6, 4], [0, 4]], amp: 0.7 }, { poly: 1 }],
@@ -31,7 +31,7 @@ const CASES = [
   ['profile', { type: 'profile', layer: 'WALLS', pts: [[0, 0], [6, 0], [6, 4], [0, 4]], fill: false }, { poly: 1 }],
   ['centerline', { type: 'centerline', layer: 'CENTER', pts: [[0, 0], [10, 10]] }, { poly: 1 }],
   ['callout', { type: 'callout', layer: 'TEXT', anchor: [0, 0], pts: [[0, 0], [4, 4]], content: 'CO', textH: 1 }, { poly: 2, text: 1 }],
-  ['hatchRegion', { type: 'hatchRegion', layer: 'HATCH', pts: [[0, 0], [4, 0], [4, 4], [0, 4]], pattern: 'ANSI31' }, { line: 8 }, { line: 8, poly: 1 }],
+  ['hatchRegion', { type: 'hatchRegion', layer: 'HATCH', pts: [[0, 0], [4, 0], [4, 4], [0, 4]], pattern: 'ANSI31' }, { line: 8 }, { hatch: 1 }],
   ['fcf', { type: 'fcf', layer: 'DIMS', x: 0, y: 0, char: 'position', tol: '0.1', dia: true, datums: ['A', 'B'], h: 1 }, { poly: 4, text: 4 }],
   ['datum', { type: 'datum', layer: 'DIMS', x: 2, y: 0, letter: 'A', h: 1 }, { poly: 2, text: 1 }],
   ['finish', { type: 'finish', layer: 'DIMS', x: 4, y: 0, roughness: '3.2', h: 1 }, { poly: 1, text: 1 }],
@@ -62,6 +62,19 @@ describe('every entity type has a stated DXF and DWG round trip', () => {
       expect(Object.keys(roundTrip(ent, 'R2000')).length, name + ' vanished from the R2000 DXF').toBeGreaterThan(0);
       expect(Object.keys(roundTrip(ent)).length, name + ' vanished from the R12 DXF').toBeGreaterThan(0);
     }
+  });
+
+  it('an island hatch round trips as one hatch, semantics intact', () => {
+    const h = { type: 'hatch', layer: 'HATCH', pts: [[0, 0], [10, 0], [10, 10], [0, 10]],
+      holes: [[[3, 3], [7, 3], [7, 7], [3, 7]]], pattern: 'ANSI31', scale: 2, angle: 15 };
+    const back = openDXF(buildDXF([h], layers, { solid: false, ver: 'R2000' }), () => {}).entities;
+    expect(back.length).toBe(1);
+    expect(back[0].type).toBe('hatch');
+    expect(back[0].holes.length).toBe(1);
+    expect(back[0].holes[0].length).toBe(4);
+    expect(back[0].pattern).toBe('ANSI31');
+    expect(back[0].scale).toBeCloseTo(2, 9);
+    expect(back[0].angle).toBeCloseTo(15, 9);
   });
 
   it('a dimension round trips with its exact geometry, offset included', () => {

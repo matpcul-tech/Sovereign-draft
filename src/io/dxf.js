@@ -5,7 +5,7 @@
  */
 import { fmtN, dimGeom, arcPoints } from '../core/geometry.js';
 import { LTYPE_NAMES, LINETYPES } from '../core/style.js';
-import { hatchLines } from '../core/hatch.js';
+import { hatchLines, HATCH_PATTERNS, REFERENCE_SCALE } from '../core/hatch.js';
 import { explodeForIO, isComposite, membersBBox } from '../core/entities.js';
 import { knotsOf, splineToPoly, makeSpline } from '../core/spline.js';
 import { hasBulge, bulgeAt } from '../core/bulge.js';
@@ -279,17 +279,45 @@ function writeEnt(w, e, r2000, inBlock, paper){
       mtextToTexts(e).forEach(t => writeEnt(w, t, r2000, inBlock, paper));
     }
   } else if (e.type === 'hatch'){
-    hatchLines(e).forEach(seg => {
-      w(0, 'LINE'); common();
-      w(10, fmtN(seg[0][0]), 20, fmtN(seg[0][1]), 30, 0, 11, fmtN(seg[1][0]), 21, fmtN(seg[1][1]), 31, 0);
-    });
-    if (e.pts && e.pts.length >= 2 && !inBlock){
-      if (r2000){
+    if (r2000 && !inBlock && e.pts && e.pts.length >= 3){
+      /* A real HATCH entity: boundary paths carry the outer ring and
+       * every island, odd-parity style, so AutoCAD sees one editable
+       * hatch instead of a shower of clipped lines. The pattern
+       * definition lines are the model-space families this app draws,
+       * spacing = paper spacing x user scale at the reference plot
+       * scale, so the file shows exactly what the canvas shows. */
+      const pat = HATCH_PATTERNS[e.pattern] || HATCH_PATTERNS.ANSI31;
+      const rings = [e.pts].concat((e.holes || []).filter(h => h && h.length >= 3));
+      w(0, 'HATCH'); common();
+      w(10, 0, 20, 0, 30, 0, 210, 0, 220, 0, 230, 1);
+      w(2, pat.name, 70, pat.solid ? 1 : 0, 71, 0, 91, rings.length);
+      rings.forEach(r => {
+        w(92, 2, 72, 0, 73, 1, 93, r.length);
+        r.forEach(p => w(10, fmtN(p[0]), 20, fmtN(p[1])));
+        w(97, 0);
+      });
+      w(75, 0, 76, 1);
+      if (!pat.solid){
+        const rot = e.angle || 0;
+        const spacing = (pat.paper * (e.scale || 1)) / REFERENCE_SCALE;
+        const fams = pat.cross ? [pat.angle + rot, pat.angle + rot + 90] : [pat.angle + rot];
+        w(52, fmtN(rot), 41, fmtN(e.scale || 1), 77, 0, 78, fams.length);
+        fams.forEach(a => {
+          const rad = a * Math.PI / 180;
+          w(53, fmtN(a), 43, 0, 44, 0,
+            45, fmtN(-Math.sin(rad) * spacing), 46, fmtN(Math.cos(rad) * spacing), 79, 0);
+        });
+      }
+      w(98, 0);
+    } else {
+      hatchLines(e).forEach(seg => {
+        w(0, 'LINE'); common();
+        w(10, fmtN(seg[0][0]), 20, fmtN(seg[0][1]), 30, 0, 11, fmtN(seg[1][0]), 21, fmtN(seg[1][1]), 31, 0);
+      });
+      if (e.pts && e.pts.length >= 2 && !inBlock && r2000){
         w(0, 'LWPOLYLINE'); common();
         w(90, e.pts.length, 70, 1);
         e.pts.forEach(p => w(10, fmtN(p[0]), 20, fmtN(p[1])));
-        /* Island boundaries travel too, or a reopened section loses its
-         * cavities' outlines even though the pattern lines respect them. */
         (e.holes || []).forEach(h => {
           if (!h || h.length < 2) return;
           w(0, 'LWPOLYLINE'); common();
@@ -502,6 +530,7 @@ export function parseDXF(txt, ensureLayer, sink){
         };
         rings.sort((a, b) => area(b) - area(a));
         const h = style({ type: 'hatch', layer: ly, pts: rings[0], pattern: cur[2] || 'ANSI31', scale: num(cur[41]) || 1 });
+        if (cur[52] !== undefined && num(cur[52])) h.angle = num(cur[52]);
         if (rings.length > 1) h.holes = rings.slice(1);
         emit(h);
       }

@@ -173,8 +173,13 @@ describe('island hatches round trip', () => {
     expect(hatchArea(h)).toBeCloseTo(96, 9);
   });
 
-  it('a holed hatch writes both boundaries and its pattern avoids the cavity', async () => {
-    const { insideWithHoles, hatchLines } = await import('../src/core/hatch.js');
+  it('a holed hatch writes one HATCH entity whose rings carry the cavity', async () => {
+    /* The R2000 writer used to explode a hatch into clipped lines plus
+     * two boundary polylines; it now writes the real HATCH entity, so
+     * the reopened file has one editable hatch whose outer ring and
+     * island hold their exact areas, pattern and scale intact. The
+     * pattern-avoids-the-cavity property lives in the renderer and is
+     * covered by the insideWithHoles tests. */
     const { polyArea } = await import('../src/core/geometry.js');
     const src = {
       type: 'hatch', layer: '0', pattern: 'ANSI31', scale: 1,
@@ -183,17 +188,13 @@ describe('island hatches round trip', () => {
     };
     const doc = buildDXF([src], LAYERS, { ver: 'R2000' });
     const back = parseDXF(doc, n => n || '0');
-    const polys = back.filter(e => e.type === 'poly' && e.closed);
-    const areas = polys.map(p => Math.abs(polyArea(p.pts))).sort((a, b) => a - b);
-    expect(areas.length).toBe(2);
-    expect(areas[0]).toBeCloseTo(4, 9);
-    expect(areas[1]).toBeCloseTo(100, 9);
-    /* Every pattern line written respects the island. */
-    const segs = back.filter(e => e.type === 'line');
-    expect(segs.length).toBe(hatchLines(src, undefined).length);
-    for (const s of segs){
-      const mx = (s.x1 + s.x2) / 2, my = (s.y1 + s.y2) / 2;
-      expect(insideWithHoles(mx, my, src.pts, src.holes)).toBe(true);
-    }
+    const hatches = back.filter(e => e.type === 'hatch');
+    expect(hatches.length).toBe(1);
+    expect(back.filter(e => e.type === 'line').length).toBe(0);
+    expect(Math.abs(polyArea(hatches[0].pts))).toBeCloseTo(100, 9);
+    expect(hatches[0].holes.length).toBe(1);
+    expect(Math.abs(polyArea(hatches[0].holes[0]))).toBeCloseTo(4, 9);
+    expect(hatches[0].pattern).toBe('ANSI31');
+    expect(hatches[0].scale).toBeCloseTo(1, 9);
   });
 });
