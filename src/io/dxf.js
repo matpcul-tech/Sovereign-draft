@@ -6,7 +6,7 @@
 import { fmtN, dimGeom, arcPoints } from '../core/geometry.js';
 import { LTYPE_NAMES, LINETYPES } from '../core/style.js';
 import { hatchLines } from '../core/hatch.js';
-import { explodeForIO, membersBBox } from '../core/entities.js';
+import { explodeForIO, isComposite, membersBBox } from '../core/entities.js';
 import { knotsOf, splineToPoly, makeSpline } from '../core/spline.js';
 import { hasBulge, bulgeAt } from '../core/bulge.js';
 import { makeMText, decodeMText, encodeMText, attachCode, justFromCode, mtextToTexts } from '../core/mtext.js';
@@ -331,7 +331,10 @@ function writeEnt(w, e, r2000, inBlock, paper){
     w(11, fmtN(b[0]), 21, fmtN(b[1]), 31, fmtN(b[2] || 0));
     w(12, fmtN(c[0]), 22, fmtN(c[1]), 32, fmtN(c[2] || 0));
     w(13, fmtN(d[0]), 23, fmtN(d[1]), 33, fmtN(d[2] || 0));
-  } else if (e.type === 'insert' || e.type === 'xref' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || e.type === 'profile' || e.type === 'centerline' || e.type === 'callout' || e.type === 'hatchRegion' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
+  } else if (isComposite(e) || e.type === 'insert' || e.type === 'xref' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
+    /* Every composite goes through its expander: the GD&T frames, datum
+     * triangles and finish marks were silently absent from the file when
+     * this list named the composites one by one and drifted. */
     explodeForIO(e).forEach(f => writeEnt(w, f, r2000, inBlock, paper));
   }
   void arcPoints;

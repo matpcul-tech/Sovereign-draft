@@ -4,7 +4,7 @@
  */
 import { arcPoints, dimGeom } from '../core/geometry.js';
 import { fmtFtIn } from '../core/format.js';
-import { membersBBox, explodeForIO } from '../core/entities.js';
+import { membersBBox, explodeForIO, isComposite } from '../core/entities.js';
 import { hatchLines, hatchPlan, ppfToScaleFactor } from '../core/hatch.js';
 import { polyOutline } from '../core/bulge.js';
 import { paperTextPts } from '../core/annoscale.js';
@@ -236,7 +236,7 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts,
   const list = [];
   visible.forEach(e => {
     if (e.type === 'image' && e.src && imageName(e.src)){ list.push(e); return; }
-    if (e.type === 'insert' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || e.type === 'spline' || e.type === 'profile' || e.type === 'centerline' || e.type === 'callout' || e.type === 'hatchRegion' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
+    if (isComposite(e) || e.type === 'insert' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || e.type === 'spline' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
       explodeForIO(e).forEach(f => list.push(f));
     } else list.push(e);
   });

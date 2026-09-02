@@ -44,7 +44,7 @@ Starters in `examples/`:
 | Command line (`L`, `TR`, `@8<45`, F8) | Invented materials or tolerances |
 | Issued sheets: title block, copyright, ISO lineweights, 24×36 PDF | A substitute for a professional of record |
 | Associative dims that follow stretch / move | |
-| R2000 DXF AutoCAD Open path + DWG this app reopens | ODA-grade DWG every AutoCAD opens without Recover |
+| R2000 DXF AutoCAD Open path + DWG this app reopens; every entity type has a stated, tested round trip | ODA-grade DWG every AutoCAD opens without Recover |
 | Cutting planes (`SE`) that hatch a true section + a sheet | Pretending 8'-0" is a known story height |
 | 3D modelling: `BOX` `CYL` `EXTRUDE` `REVOLVE` `LOFT` `SWEEP`, CSG, push-pull, STL in/out, OBJ/glTF | B-rep, NURBS, Parasolid, STEP, or a PE stamp |
 | One model, whole set: `MODEL` `STACK` `ROOF` `DORMER` `DRAWINGS SHEETS` | Parametric BIM objects or a worksharing server |
