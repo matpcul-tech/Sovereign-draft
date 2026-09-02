@@ -28,9 +28,15 @@ export function setTool(t){
   if (t === 'bstack'){ makeStack('2'); try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ } return; }
   if (t === 'broof'){ makeRoof('HIP 6'); try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ } return; }
   if (t === 'bdormer'){
-    const el = document.getElementById('cmdinput');
-    if (el){ el.value = 'DORMER '; el.focus(); }
-    toast('DORMER x y width: type a point on the roof, in plan feet');
+    /* Placement is a tap on the plan: the 3D view steps aside and a
+     * paper sheet flips back to model space, or the tap would pan. */
+    try {
+      document.dispatchEvent(new Event('sd-view2d'));
+      document.dispatchEvent(new CustomEvent('sd-space', { detail: { space: 'model' } }));
+    } catch (e){ /* node */ }
+    setTool('dormer');
+    zoomFit(); draw();
+    toast('Tap the roof in plan · 6 ft dormer · DORMER x y w types it exactly');
     return;
   }
   if (t === 'bdwgs'){ makeDrawings('HIP 6 SHEETS'); zoomFit(); draw(); return; }

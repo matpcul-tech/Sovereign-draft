@@ -83,3 +83,25 @@ describe('callouts stay on the sheet holding what they point at', () => {
     expect(keptE.map(e => e.content).sort()).toEqual(['ENGINE', 'note']);
   });
 });
+
+describe('a forbidden fill is stripped from a draft, not fatal to it', () => {
+  it('stripImpliedFill removes what the assert would have died on', async () => {
+    const { stripImpliedFill, assertNoImpliedFill } = await import('../src/core/annotate.js');
+    const ents = [
+      { type: 'profile', layer: 'PROFILE', pts: [[0, 0], [4, 0], [4, 4]], fill: 'ANSI31' },
+      { type: 'hatch', layer: 'HATCH', pts: [[0, 0], [4, 0], [4, 4]] },
+      { type: 'hatchRegion', layer: 'HATCH', pts: [[0, 0], [4, 0], [4, 4]], pattern: 'ANSI31' },
+      { type: 'line', layer: 'PROFILE', x1: 0, y1: 0, x2: 4, y2: 0 },
+    ];
+    expect(() => assertNoImpliedFill(ents, 'elevation')).toThrow(/implied fill/);
+    const out = stripImpliedFill(ents, 'elevation');
+    expect(out.stripped).toBe(2);
+    /* The profile survives unfilled, the implied hatch is gone, the
+     * explicit hatchRegion and the line pass untouched. */
+    expect(out.entities.length).toBe(3);
+    expect(out.entities[0].fill).toBe(false);
+    expect(() => assertNoImpliedFill(out.entities, 'elevation')).not.toThrow();
+    /* A plan allows implied hatch: nothing stripped there. */
+    expect(stripImpliedFill(ents, 'plan').stripped).toBe(0);
+  });
+});

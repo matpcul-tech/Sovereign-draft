@@ -48,6 +48,22 @@ export function assertNoImpliedFill(entities, drawingType){
   return true;
 }
 
+/* The forgiving sibling of the assert: strip whatever fill the drawing
+ * type forbids instead of refusing the whole draft over it. A rocket
+ * elevation with seven implied hatches is a rocket elevation with the
+ * hatches removed, not a failure. Returns how many were stripped. */
+export function stripImpliedFill(entities, drawingType){
+  if (impliedFillAllowed(drawingType)) return { entities: entities || [], stripped: 0 };
+  let stripped = 0;
+  const out = [];
+  for (const e of entities || []){
+    if (e.type === 'profile' && e.fill){ out.push(Object.assign({}, e, { fill: false })); stripped++; }
+    else if (e.type === 'hatch' && !e.explicit){ stripped++; }
+    else out.push(e);
+  }
+  return { entities: out, stripped };
+}
+
 /* Only a plan reports floor area. */
 export function reportsArea(drawingType){ return rulesFor(drawingType).areaTags; }
 

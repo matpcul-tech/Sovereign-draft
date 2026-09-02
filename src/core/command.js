@@ -157,6 +157,7 @@ export function defaultPrompt(tool, state){
     chamfer: 'CHAMFER Specify distance <' + fmtFtIn(d) + '>:',
     offset:  'OFFSET Specify distance <' + fmtFtIn(off) + '>:',
     scale:   'SCALE Specify scale factor <1.0>:',
+    dormer:  'DORMER Tap a point on the roof (6 ft wide):',
     rotate:  'ROTATE Specify rotation angle <90>:',
     line:    'LINE Specify next point:',
     poly:    'PLINE Specify next point:',

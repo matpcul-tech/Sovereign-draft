@@ -50,7 +50,7 @@ function findGrip(sx, sy){
 }
 
 const DRAW_TOOLS = ['line', 'rect', 'circle', 'dim', 'dimali', 'measure', 'wall', 'ellipse', 'image', 'calibrate', 'xline', 'grid', 'arraypolar', 'section', 'detail', 'fcf', 'mtext'];
-const TAP_TOOLS = ['erase', 'text', 'symbol', 'offset', 'trim', 'extend', 'match', 'area', 'list', 'id', 'dimrad', 'dimdia', 'schedule', 'datum', 'finish', 'arcseg'];
+const TAP_TOOLS = ['erase', 'text', 'symbol', 'offset', 'trim', 'extend', 'match', 'area', 'list', 'id', 'dimrad', 'dimdia', 'schedule', 'datum', 'finish', 'arcseg', 'dormer'];
 const TWO_PICK = ['fillet', 'chamfer', 'mirror', 'move', 'copy', 'rotate', 'scale'];
 const POLY_TOOLS = ['poly', 'hatch', 'cloud', 'leader', 'spline'];
 
@@ -254,6 +254,12 @@ function endPointer(ev){
     const el = document.getElementById('txtval'); if (el) el.value = '';
     openSheet('sheetText');
     setTimeout(() => { const t = document.getElementById('txtval'); if (t) t.focus(); }, 200);
+  }
+  else if (drag.kind === 'dormertap'){
+    /* The tap is the point on the roof, in plan; width defaults to 6 ft
+     * and DORMER x y w on the command line still takes exact numbers. */
+    const p = snapPt(sx, sy);
+    makeDormer(p[0].toFixed(2) + ' ' + p[1].toFixed(2) + ' 6');
   }
   else if (drag.kind === 'datumtap'){ placeDatumAt(snapPt(sx, sy)); }
   else if (drag.kind === 'finishtap'){ placeFinishAt(snapPt(sx, sy)); }
@@ -506,7 +512,11 @@ export function handleCommand(text){
   if (res.action === 'plans'){ makePlans(); return; }
   if (res.action === 'roofplan'){ makeRoofPlan(); return; }
   if (res.action === 'takeoff3d'){ makeTakeoff3d(); return; }
-  if (res.action === 'dormer'){ makeDormer(res.rest); return; }
+  if (res.action === 'dormer'){
+    if (String(res.rest || '').trim()) makeDormer(res.rest);
+    else setTool('dormer');
+    return;
+  }
   if (res.action === 'sun'){ setSunStudy(res.rest); return; }
   if (res.action === 'mat'){ setMaterial(res.rest); return; }
   if (res.action === 'render'){ requestRender(res.rest); return; }

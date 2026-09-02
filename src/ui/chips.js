@@ -122,7 +122,8 @@ export function syncCtx(){
 }
 
 export function markActiveTool(){
-  document.querySelectorAll('.tool').forEach(b => b.classList.toggle('active', b.dataset.tool === state.tool));
+  document.querySelectorAll('.tool').forEach(b => b.classList.toggle('active',
+    b.dataset.tool === state.tool || (state.tool === 'dormer' && b.dataset.tool === 'bdormer')));
 }
 
 function uniq(ms, get){

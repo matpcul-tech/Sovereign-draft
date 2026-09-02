@@ -11,7 +11,7 @@ import { alignedDim } from '../core/dimStyle.js';
 import { SYMBOLS } from '../core/symbols.js';
 import { filletLines } from '../core/modify.js';
 import { makeInsert, locateInsert } from '../core/dynblock.js';
-import { rulesFor, closeDimChains, placeLabel, textBox, dimObstacles, polygonArea, centroidOf, assertNoImpliedFill } from '../core/annotate.js';
+import { rulesFor, closeDimChains, placeLabel, textBox, dimObstacles, polygonArea, centroidOf, stripImpliedFill } from '../core/annotate.js';
 import { makeLayout, makeViewport, fitViewport, PLOT_SCALES, SHEETS } from '../core/layout.js';
 import { normalizeSheets, defaultSheetNumber } from '../core/document.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation, makeDetailCallout } from '../core/sheetspace.js';
@@ -239,7 +239,7 @@ export function itemsToEntities(items, ensureLayer){
 
 /* Realize a constrained schema into entities. Never mutates existing ones. */
 export function schemaToEntities(schema, ensureLayer){
-  const fresh = [];
+  let fresh = [];
   /* One resolved value drives every downstream pass. */
   const drawingType = normalizeDrawingType(schema.drawingType);
   const rules = rulesFor(drawingType);
@@ -466,7 +466,11 @@ export function schemaToEntities(schema, ensureLayer){
   });
 
   /* Nothing downstream may reintroduce a fill the drawing type forbids. */
-  assertNoImpliedFill(fresh, drawingType);
+  /* A fill the drawing type forbids is stripped, not fatal: the user
+   * asked for a rocket, not for a lecture about hatches. The note below
+   * says what was removed. */
+  const fillCheck = stripImpliedFill(fresh, drawingType);
+  fresh = fillCheck.entities;
 
   if (!fresh.length) throw new Error('Nothing drawable in the response');
 

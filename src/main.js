@@ -156,7 +156,21 @@ function download(name, data, mime){
 
 let view3dMod = null;
 async function loadView3d(){
-  if (!view3dMod) view3dMod = await import('./render/view3d.js');
+  if (!view3dMod){
+    try {
+      view3dMod = await import('./render/view3d.js');
+    } catch (e){
+      /* A deploy moved the hashed chunk out from under this cached page:
+       * the classic "Failed to fetch dynamically imported module". A
+       * reload picks up the new build; without it 3D is dead until the
+       * user thinks of refreshing, which the field showed they do not. */
+      if (/import|fetch/i.test(String(e && e.message))){
+        toast('App updated behind this page — reloading for the new version');
+        setTimeout(() => location.reload(), 900);
+      }
+      throw e;
+    }
+  }
   return view3dMod;
 }
 
@@ -1346,6 +1360,7 @@ function wireUi(){
     } catch (e){ /* ignore */ }
   });
   document.addEventListener('sd-view2d', () => closeView3d());
+  document.addEventListener('sd-space', ev => goToSpace(ev.detail && ev.detail.space || 'model'));
   document.addEventListener('sd-view-save', async ev => {
     const m = await loadView3d();
     if (!m.isView3dOpen()){ toast('Open 3D first, frame the shot, then VIEW SAVE'); return; }
