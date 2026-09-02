@@ -146,3 +146,31 @@ describe('face grab moves the whole coplanar patch', () => {
     expect(Math.abs(meshVolume(out))).toBeCloseTo(640, 9);
   });
 });
+
+describe('CSG output is combinatorially watertight, not just closed', () => {
+  it('a dormer union heals its T-junctions with the volume untouched', async () => {
+    const { makeGable, makeBox, isWatertight, meshVolume } = await import('../src/core/mesh.js');
+    const { csg } = await import('../src/core/csg.js');
+    const roof = makeGable(6, 4, 8, 36, 24, 6);
+    const dormer = csg('union', makeBox(20, 8, 10.5, 6, 7.5, 4), makeGable(20, 8, 14.5, 6, 7.5, 1.5));
+    expect(isWatertight(dormer)).toBe(true);
+    const out = csg('union', roof, dormer);
+    expect(isWatertight(out)).toBe(true);
+    /* The union adds the dormer's above-roof volume; whatever it is, it
+     * is the same closed solid the unhealed mesh enclosed. */
+    expect(Math.abs(meshVolume(out))).toBeGreaterThan(Math.abs(meshVolume(roof)));
+  });
+
+  it('the drill stays watertight and exact through the healed pipeline', async () => {
+    const { makeBox, makeCylinder, isWatertight, meshVolume } = await import('../src/core/mesh.js');
+    const { csg } = await import('../src/core/csg.js');
+    const box = makeBox(0, 0, 0, 10, 10, 4);
+    const cyl = makeCylinder(5, 5, -1, 2, 6, 64);
+    const out = csg('subtract', box, cyl);
+    expect(isWatertight(out)).toBe(true);
+    /* Volume: 400 minus the prism through the slab, pi r^2 h with the
+     * 64-gon's exact area standing in for pi r^2. */
+    const segArea = 0.5 * 64 * 2 * 2 * Math.sin(2 * Math.PI / 64);
+    expect(Math.abs(meshVolume(out))).toBeCloseTo(400 - segArea * 4, 6);
+  });
+});

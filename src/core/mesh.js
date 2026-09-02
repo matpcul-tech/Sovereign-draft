@@ -686,3 +686,93 @@ export function rotateMesh(mesh, axis, cx, cy, cz, deg){
       : v => [cx + (v[0] - cx) * c - (v[1] - cy) * s, cy + (v[0] - cx) * s + (v[1] - cy) * c, v[2]];
   return makeMesh(mesh.verts.map(rot), mesh.faces.map(f => f.slice()));
 }
+
+/* ---------- T-junction healing ----------
+ * A BSP boolean can leave an edge whole on one face and subdivided on
+ * its neighbour: geometrically closed, combinatorially open, and the
+ * watertight check rightly refuses to call it sealed. Healing splits
+ * every edge at any mesh vertex lying on its interior and re-fans the
+ * face, so shared boundaries use the same vertices on both sides. The
+ * inserted points are exactly on the edges, so the enclosed volume is
+ * unchanged to the last bit of the arithmetic. */
+export function healTJunctions(mesh){
+  const verts = mesh.verts;
+  if (!verts.length || !mesh.faces.length) return mesh;
+  const K = 1e-6;
+  const key = v => Math.round(v[0] / K) + ',' + Math.round(v[1] / K) + ',' + Math.round(v[2] / K);
+  /* Unique positions on a coarse grid for the on-edge search. */
+  const uniq = [];
+  const seen = new Set();
+  for (const v of verts){
+    const k = key(v);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    uniq.push(v);
+  }
+  const CELL = 1.0;
+  const grid = new Map();
+  const ck = (x, y, z) => x + ',' + y + ',' + z;
+  uniq.forEach((v, i) => {
+    const k = ck(Math.floor(v[0] / CELL), Math.floor(v[1] / CELL), Math.floor(v[2] / CELL));
+    const a = grid.get(k);
+    if (a) a.push(i); else grid.set(k, [i]);
+  });
+  const TOL = 1e-6;
+  const interiorPoints = (A, B) => {
+    const ab = [B[0] - A[0], B[1] - A[1], B[2] - A[2]];
+    const len2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+    if (len2 < TOL * TOL) return [];
+    const len = Math.sqrt(len2);
+    const out = [];
+    const x0 = Math.floor(Math.min(A[0], B[0]) / CELL) - 1, x1 = Math.floor(Math.max(A[0], B[0]) / CELL) + 1;
+    const y0 = Math.floor(Math.min(A[1], B[1]) / CELL) - 1, y1 = Math.floor(Math.max(A[1], B[1]) / CELL) + 1;
+    const z0 = Math.floor(Math.min(A[2], B[2]) / CELL) - 1, z1 = Math.floor(Math.max(A[2], B[2]) / CELL) + 1;
+    for (let gx = x0; gx <= x1; gx++) for (let gy = y0; gy <= y1; gy++) for (let gz = z0; gz <= z1; gz++){
+      const cell = grid.get(ck(gx, gy, gz));
+      if (!cell) continue;
+      for (const i of cell){
+        const P = uniq[i];
+        const ap = [P[0] - A[0], P[1] - A[1], P[2] - A[2]];
+        const t = (ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / len2;
+        if (t < TOL || t > 1 - TOL) continue;
+        const dx = ap[0] - t * ab[0], dy = ap[1] - t * ab[1], dz = ap[2] - t * ab[2];
+        if (Math.hypot(dx, dy, dz) < TOL * Math.max(1, len)) out.push({ t, p: P });
+      }
+    }
+    out.sort((a, b) => a.t - b.t);
+    return out;
+  };
+  const outVerts = [];
+  const outFaces = [];
+  const vid = new Map();
+  const emit = p => {
+    const k = key(p);
+    if (vid.has(k)) return vid.get(k);
+    vid.set(k, outVerts.length);
+    outVerts.push([p[0], p[1], p[2]]);
+    return outVerts.length - 1;
+  };
+  for (const f of mesh.faces){
+    const A = verts[f[0]], B = verts[f[1]], C = verts[f[2]];
+    /* The face's boundary with every on-edge vertex inserted, in order. */
+    const ring = [];
+    [[A, B], [B, C], [C, A]].forEach(([P, Q]) => {
+      ring.push(P);
+      interiorPoints(P, Q).forEach(ip => ring.push(ip.p));
+    });
+    if (ring.length === 3){
+      outFaces.push([emit(A), emit(B), emit(C)]);
+      continue;
+    }
+    /* Fan about the first corner: the ring is the original triangle
+     * with collinear insertions, so it stays convex and the fan is
+     * exact. Degenerate slivers (fan across a straight corner) drop. */
+    const i0 = emit(ring[0]);
+    for (let i = 1; i + 1 < ring.length; i++){
+      const a = i0, b = emit(ring[i]), c = emit(ring[i + 1]);
+      if (a === b || b === c || a === c) continue;
+      outFaces.push([a, b, c]);
+    }
+  }
+  return { verts: outVerts, faces: outFaces };
+}

@@ -18,7 +18,7 @@
  * vol(A) + vol(B) = vol(A u B) + vol(A n B), and every operation in the
  * test suite is held to that identity rather than to eyeballing.
  */
-import { makeMesh } from './mesh.js';
+import { makeMesh, healTJunctions } from './mesh.js';
 
 const EPS = 1e-7;
 
@@ -313,8 +313,14 @@ export function csgIntersect(meshA, meshB){
 }
 
 export function csg(op, meshA, meshB){
-  if (op === 'union') return csgUnion(meshA, meshB);
-  if (op === 'subtract' || op === 'difference') return csgSubtract(meshA, meshB);
-  if (op === 'intersect') return csgIntersect(meshA, meshB);
-  throw new Error('Unknown CSG operation ' + op);
+  /* Every boolean is healed on the way out: the BSP can leave an edge
+   * whole on one face and split on its neighbour, which is closed
+   * geometry that fails the watertight edge count. Splitting at the
+   * on-edge vertices makes both sides agree; volume is untouched. */
+  let out;
+  if (op === 'union') out = csgUnion(meshA, meshB);
+  else if (op === 'subtract' || op === 'difference') out = csgSubtract(meshA, meshB);
+  else if (op === 'intersect') out = csgIntersect(meshA, meshB);
+  else throw new Error('Unknown CSG operation ' + op);
+  return healTJunctions(out);
 }
