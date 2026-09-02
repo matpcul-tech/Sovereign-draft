@@ -28,6 +28,8 @@ writeFileSync('plan.dwg', Buffer.from(toDWG(set)))
 
 The editor is a PWA. The kernel is the product (`src/api.js`). No DOM.
 
+New here? The **[Field Guide](docs/field-guide.html)** walks the whole app in ten short sections, from first tap to issued sheet set.
+
 Starters in `examples/`:
 
 | File | What it is | What it is not |
