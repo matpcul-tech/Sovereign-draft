@@ -82,7 +82,10 @@ export function wrapPDFPages(pages, embed){
     (embed ? ' /F3 ' + embedRef + ' 0 R' : '');
   const logo = logoPayload();
   const logoRef = logo ? (embed ? embedRef + 5 : fontB + 1) : 0;
-  const xobjRes = logo ? ' /XObject << /Lg ' + logoRef + ' 0 R >>' : '';
+  const imgBase = logo ? logoRef + 1 : (embed ? embedRef + 5 : fontB + 1);
+  const xobjEntries = (logo ? '/Lg ' + logoRef + ' 0 R' : '') +
+    IMAGES.map((im, i) => (logo || i ? ' ' : '') + '/' + im.name + ' ' + (imgBase + i) + ' 0 R').join('');
+  const xobjRes = xobjEntries ? ' /XObject << ' + xobjEntries + ' >>' : '';
   pages.forEach((pg, i) => {
     const pageNum = 3 + i * 2, contentNum = 4 + i * 2;
     objs.push(pageNum + ' 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pg.pageW + ' ' + pg.pageH +
@@ -97,6 +100,11 @@ export function wrapPDFPages(pages, embed){
       ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + logo.bytes.length +
       ' >>\nstream\n' + bytesToLatin1(logo.bytes) + '\nendstream\nendobj');
   }
+  IMAGES.forEach((im, i) => {
+    objs.push((imgBase + i) + ' 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + im.w + ' /Height ' + im.h +
+      ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + im.bytes.length +
+      ' >>\nstream\n' + bytesToLatin1(im.bytes) + '\nendstream\nendobj');
+  });
   return assemblePDF(objs);
 }
 
@@ -117,6 +125,27 @@ function wrapPDF(stream, pageW, pageH){
  */
 let EMBED = null;
 const EMBED_SEEN = new Set();
+/* Placed images: RENDER PLACE perspectives and IMG underlays enter the
+ * document as baseline JPEG data URLs, and each unique one becomes an
+ * XObject the pages share, the same verbatim DCTDecode path the logo
+ * uses. A src that is not a baseline JPEG (an old project's PNG) falls
+ * back to the dashed frame, honestly, rather than a blank box. */
+let IMAGES = [];
+const IMAGE_BY_SRC = new Map();
+function resetImages(){ IMAGES = []; IMAGE_BY_SRC.clear(); }
+function imageName(src){
+  if (IMAGE_BY_SRC.has(src)) return IMAGE_BY_SRC.get(src);
+  let name = null;
+  const bytes = dataUrlToBytes(src);
+  const info = bytes && jpegInfo(bytes);
+  if (info && !info.progressive){
+    name = 'Rd' + (IMAGES.length + 1);
+    IMAGES.push({ name, bytes, w: info.width, h: info.height });
+  }
+  IMAGE_BY_SRC.set(src, name);
+  return name;
+}
+
 /* The firm's logo: raw JPEG bytes, passed to PDF verbatim under DCTDecode.
  * Armed per build like the font; USED flips only when a page draws it, so a
  * document with no stamp carries no image object. */
@@ -206,6 +235,7 @@ function assemblePDF(objs){
 function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts, issued, styles, table, named){
   const list = [];
   visible.forEach(e => {
+    if (e.type === 'image' && e.src && imageName(e.src)){ list.push(e); return; }
     if (e.type === 'insert' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || e.type === 'spline' || e.type === 'profile' || e.type === 'centerline' || e.type === 'callout' || e.type === 'hatchRegion' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
       explodeForIO(e).forEach(f => list.push(f));
     } else list.push(e);
@@ -226,7 +256,18 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts,
     /* Screening scales the ink toward paper white. With no table, or a table
      * at full tone, this is the same value the writer has always used. */
     P(f2(table ? styledGray(e, table, isDim) : (isDim ? DIM_GRAY : SOLID_GRAY)) + ' G');
-    if (e.type === 'line') seg(e.x1, e.y1, e.x2, e.y2);
+    if (e.type === 'image'){
+      /* The unit image square maps through cm: rotation about the
+       * lower-left corner, width and height in points at this view's
+       * scale. World y-up and PDF y-up agree, so nothing flips. */
+      const nm = imageName(e.src);
+      const rad = (e.rot || 0) * Math.PI / 180;
+      const c = Math.cos(rad), sn = Math.sin(rad);
+      const wp = (e.w || 1) * ppf, hp = (e.h || 1) * ppf;
+      P('q ' + f2(wp * c) + ' ' + f2(wp * sn) + ' ' + f2(-hp * sn) + ' ' + f2(hp * c) +
+        ' ' + f2(TX(e.x)) + ' ' + f2(TY(e.y)) + ' cm /' + nm + ' Do Q');
+    }
+    else if (e.type === 'line') seg(e.x1, e.y1, e.x2, e.y2);
     else if (e.type === 'poly') path(polyOutline(e), e.closed);
     else if (e.type === 'circle') path(circlePts(e.cx, e.cy, e.r), false);
     else if (e.type === 'arc') path(arcPoints(e), false);
@@ -286,6 +327,7 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts,
 export function buildPDF(entities, opts){
   setEmbeddedFont((opts && opts.font) || null);
   setLogo(opts && opts.firm && opts.firm.logo);
+  resetImages();
   opts = opts || {};
   if (opts.layout) return buildLayoutPDF(entities, opts);
   const layerVisible = opts.layerVisible || (() => true);
@@ -621,6 +663,7 @@ export function buildLayoutPDF(entities, opts){
 export function buildAllSheetsPDF(entities, opts){
   setEmbeddedFont((opts && opts.font) || null);
   setLogo(opts && opts.firm && opts.firm.logo);
+  resetImages();
   const o = opts || {};
   const sheets = Array.isArray(o.sheets) ? o.sheets.filter(Boolean) : [];
   if (!sheets.length) return buildPDF(entities, o);

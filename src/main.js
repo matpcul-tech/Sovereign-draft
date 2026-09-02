@@ -1269,8 +1269,8 @@ function wireUi(){
   $('fileImage') && $('fileImage').addEventListener('change', ev => {
     const f = ev.target.files[0]; if (!f) return;
     const rd = new FileReader();
-    rd.onload = () => {
-      ix.imageSrc = String(rd.result || '');
+    rd.onload = async () => {
+      ix.imageSrc = await toDocJpeg(String(rd.result || ''));
       state.tool = 'image';
       toast('Tap two corners to place the underlay');
       draw();
@@ -1378,6 +1378,25 @@ function wireUi(){
     download(fileSlug() + '-turntable.webm', blob, 'video/webm');
     toast('Turntable saved, ' + Math.round(blob.size / 1024) + ' KB webm');
   });
+  /* Rasters enter the document as baseline JPEG so the PDF writer can
+   * embed them verbatim under DCTDecode. Alpha flattens onto white, the
+   * paper the sheet prints on. */
+  const toDocJpeg = src => new Promise(resolve => {
+    if (/^data:image\/jpeg/.test(src)) return resolve(src);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const cv = document.createElement('canvas');
+        cv.width = img.naturalWidth || 1; cv.height = img.naturalHeight || 1;
+        const cx = cv.getContext('2d');
+        cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, cv.width, cv.height);
+        cx.drawImage(img, 0, 0);
+        resolve(cv.toDataURL('image/jpeg', 0.9));
+      } catch (e){ resolve(src); }
+    };
+    img.onerror = () => resolve(src);
+    img.src = src;
+  });
   document.addEventListener('sd-render', async ev => {
     try {
       const m = await loadView3d();
@@ -1397,7 +1416,7 @@ function wireUi(){
         pushUndo();
         ensureLayer('RENDER');
         const w = 40, h = w * res.h / res.w;
-        addEntity({ type: 'image', layer: 'RENDER', x: maxX + 10, y: maxY - h, w, h, rot: 0, src: res.url });
+        addEntity({ type: 'image', layer: 'RENDER', x: maxX + 10, y: maxY - h, w, h, rot: 0, src: await toDocJpeg(res.url) });
         afterChange();
         closeView3d();
         zoomFit(); draw();
