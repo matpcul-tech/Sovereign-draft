@@ -600,6 +600,7 @@ const pick = {
   editAt: null,          /* CAD point the grab took hold of */
   onSolidMove: null,
   onSolidEdit: null,
+  onDormerAt: null,
   onSolidInfo: null,
   onSolidCopy: null,
   onSolidRotate: null,
@@ -734,6 +735,7 @@ export function setTool3dView(name){
       : place.tool === 'cyl' ? 'Click center, drag radius'
       : place.tool === 'sphere' ? 'Click center, drag radius'
       : place.tool === 'cone' ? 'Click center, drag radius'
+      : place.tool === 'dormer' ? 'Tap the roof where the dormer goes · 6 ft wide'
       : 'Drag to orbit · click a solid to select · M measures';
   }
 }
@@ -1078,6 +1080,21 @@ function wirePicking(){
   canvas.addEventListener('pointerdown', ev => {
     if (ev.button !== 0) return;
     pick.down = { x: ev.clientX, y: ev.clientY };
+    if (place.tool === 'dormer'){
+      /* The tap is the dormer's seat: the hit point on the roof surface
+       * carries the plan coordinates the kernel needs, and the view
+       * stays open so the dormer lands in front of the person placing
+       * it. */
+      const hit = raycastSolid(ev);
+      setTool3dView('orbit');
+      if (!hit){
+        const hint = hud && hud.querySelector('.v3d-hint');
+        if (hint) hint.textContent = 'That tap missed the roof - DORMER again and tap a slope';
+        return;
+      }
+      if (pick.onDormerAt) pick.onDormerAt(hit.point.x, hit.point.z);
+      return;
+    }
     if (PLACING[place.tool]){
       const p = hitWorkplane(ev);
       if (!p) return;
@@ -1424,6 +1441,7 @@ export function showView3d(opts){
   wireHud(o);
   pick.onSolidMove = o.onSolidMove || null;
   pick.onSolidEdit = o.onSolidEdit || null;
+  pick.onDormerAt = o.onDormerAt || null;
   pick.onSolidInfo = o.onSolidInfo || null;
   pick.onSolidCopy = o.onSolidCopy || null;
   pick.onSolidRotate = o.onSolidRotate || null;

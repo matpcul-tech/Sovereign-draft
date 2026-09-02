@@ -250,6 +250,11 @@ function solidOpts(){
     onSample: () => loadSamplePart(),
     onStl: () => { try { document.dispatchEvent(new Event('sd-export-stl')); } catch (e){ /* node */ } },
     onObj: () => { try { document.dispatchEvent(new Event('sd-export-obj')); } catch (e){ /* node */ } },
+    onDormerAt: async (x, y) => {
+      const { makeDormer } = await import('./actions.js');
+      makeDormer(x.toFixed(2) + ' ' + y.toFixed(2) + ' 6');
+      syncOpen3d();
+    },
     onSolidEdit: async (name, points, delta) => {
       const { transformSolid, describeSolid, solidByName } = await import('./core/model3d.js');
       const { moveMeshPoints } = await import('./core/snap3d.js');
@@ -1417,6 +1422,10 @@ function wireUi(){
       const m = await loadView3d();
       if (m.setTool3dView) m.setTool3dView(ev.detail && ev.detail.tool);
     } catch (e){ /* ignore */ }
+  });
+  document.addEventListener('sd-dormer3d', async () => {
+    const mod = await loadView3d();
+    if (mod.isView3dOpen()) mod.setTool3dView('dormer');
   });
   document.addEventListener('sd-view2d', () => closeView3d());
   document.addEventListener('sd-space', ev => goToSpace(ev.detail && ev.detail.space || 'model'));

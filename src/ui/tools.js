@@ -28,10 +28,15 @@ export function setTool(t){
   if (t === 'bstack'){ makeStack('2'); try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ } return; }
   if (t === 'broof'){ makeRoof('HIP 6'); try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ } return; }
   if (t === 'bdormer'){
-    /* Placement is a tap on the plan: the 3D view steps aside and a
-     * paper sheet flips back to model space, or the tap would pan. */
+    /* In 3D the dormer places where you tap the roof itself; from the
+     * plan (or a paper sheet, which flips back to model space so the
+     * tap does not pan) it places at a tap on the plan. */
+    if (typeof document !== 'undefined' && document.body && document.body.classList.contains('view3d')){
+      try { document.dispatchEvent(new Event('sd-dormer3d')); } catch (e){ /* node */ }
+      toast('Tap the roof slope where the dormer goes · 6 ft wide');
+      return;
+    }
     try {
-      document.dispatchEvent(new Event('sd-view2d'));
       document.dispatchEvent(new CustomEvent('sd-space', { detail: { space: 'model' } }));
     } catch (e){ /* node */ }
     setTool('dormer');
