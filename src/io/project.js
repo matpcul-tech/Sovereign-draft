@@ -12,9 +12,35 @@ import { serializeSolids, validateSolids } from '../core/model3d.js';
 
 export const AUTOSAVE_KEY = 'sovereign-draft.autosave.v1';
 
+/* The compact serialization (autosave, share links) cannot carry every
+ * raster: localStorage has a quota and a URL has a length. Each image
+ * may keep up to IMG_CAP characters of data URL, and all images
+ * together up to IMG_BUDGET; past the budget the largest go first,
+ * so a sheet of small details survives one oversized hero render.
+ * A stripped image keeps its frame and is marked srcOmitted, which the
+ * canvas labels and the restore path announces: the pixels are in the
+ * saved project file, never silently gone. */
+const IMG_CAP = 300000;
+const IMG_BUDGET = 2500000;
 function stripHeavy(entities){
-  return (entities || []).map(e => {
-    if (e.type !== 'image' || !e.src || String(e.src).length < 120000) return e;
+  const list = (entities || []).slice();
+  const omit = new Set();
+  const imgs = [];
+  list.forEach((e, i) => {
+    if (e.type !== 'image' || !e.src) return;
+    const len = String(e.src).length;
+    if (len >= IMG_CAP) omit.add(i);
+    else imgs.push({ i, len });
+  });
+  let total = imgs.reduce((a, b) => a + b.len, 0);
+  imgs.sort((a, b) => b.len - a.len);
+  for (const im of imgs){
+    if (total <= IMG_BUDGET) break;
+    omit.add(im.i);
+    total -= im.len;
+  }
+  return list.map((e, i) => {
+    if (!omit.has(i)) return e;
     const c = Object.assign({}, e);
     delete c.src;
     c.srcOmitted = true;

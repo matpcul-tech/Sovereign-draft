@@ -196,6 +196,17 @@ export function drawEnt(c, e, color, sel, toS, scl, bg, styles, annoPpf){
     c.strokeStyle = sel ? '#d4a843' : color;
     c.setLineDash([6, 4]);
     c.strokeRect(0, -h, w, h);
+    if (!im && e.srcOmitted){
+      /* The pixels were too big for the autosave or share that carried
+       * this drawing. Say so on the frame instead of a bare ghost. */
+      c.setLineDash([]);
+      c.fillStyle = sel ? '#d4a843' : color;
+      c.font = Math.max(10, Math.min(14, w / 18)) + 'px system-ui, sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText('image not carried here', w / 2, -h / 2 - (h / 12));
+      c.fillText('it lives in the saved project file', w / 2, -h / 2 + (h / 12));
+    }
     c.restore();
   }
   else if (e.type === 'grid'){

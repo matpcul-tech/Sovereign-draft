@@ -81,6 +81,9 @@ export function boot(root){
   if (restored && (restored.entities.length || restored.userBlocks.length)){
     applyProject(state, restored);
     if ($('projName')) $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
+    if (state.entities.some(e2 => e2 && e2.srcOmitted)){
+      setTimeout(() => toast('A placed image was too big for the autosave. Its pixels live in the saved project file; re-render or reopen that file to bring them back.', 6000), 600);
+    }
   }
   const savedFirm = loadFirm();
   if (savedFirm.company || savedFirm.copyright || savedFirm.drawnBy){
@@ -136,7 +139,9 @@ async function loadShareFromLocation(){
     applyProject(state, p);
     if ($('projName')) $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
     afterChange(); zoomFit(); draw();
-    toast('Opened shared drawing');
+    toast(state.entities.some(e2 => e2 && e2.srcOmitted)
+      ? 'Opened shared drawing. A placed image was too big for the link; ask for the project file to see it.'
+      : 'Opened shared drawing');
   } catch (err){
     toast('Share link could not be read');
   }
