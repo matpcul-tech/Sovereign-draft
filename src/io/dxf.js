@@ -536,7 +536,17 @@ export function parseDXF(txt, ensureLayer, sink){
       emit(style({ type: 'line', layer: ly, lt: lt || 'DASHED', x1: x, y1: y, x2: x + dx / L * 200, y2: y + dy / L * 200 }));
     }
     else if ((t === 'DIMENSION' || t === 'ALIGNED_DIMENSION') && cur[13] !== undefined){
-      emit(style({ type: 'dim', layer: ly || 'DIMS', x1: num(cur[13]), y1: num(cur[23]), x2: num(cur[14]), y2: num(cur[24]), off: 2 }));
+      /* Group 10/20 is a point on the dimension line, so the offset is
+       * its signed distance from the measured segment: what the writer
+       * added, recovered exactly, instead of a guessed 2 ft that moved
+       * every reopened dimension line. */
+      const dx1 = num(cur[13]), dy1 = num(cur[23]), dx2 = num(cur[14]), dy2 = num(cur[24]);
+      let off = 2;
+      if (cur[10] !== undefined){
+        const ddx = dx2 - dx1, ddy = dy2 - dy1, dlen = Math.hypot(ddx, ddy) || 1;
+        off = (-ddy / dlen) * (num(cur[10]) - dx1) + (ddx / dlen) * (num(cur[20]) - dy1);
+      }
+      emit(style({ type: 'dim', layer: ly || 'DIMS', x1: dx1, y1: dy1, x2: dx2, y2: dy2, off }));
     }
     else if (t === 'LEADER' && cur._pts && cur._pts.length >= 2){
       emit(style({ type: 'leader', layer: ly, pts: cur._pts, content: String(cur[1] || '') }));

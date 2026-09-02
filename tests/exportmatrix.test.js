@@ -3,21 +3,23 @@ import { buildDXF, openDXF } from '../src/io/dxf.js';
 import { buildPDF } from '../src/io/pdf.js';
 import { defaultLayers } from '../src/core/state.js';
 
-/* One of every authorable entity type, and what the R2000 DXF round trip
- * is contracted to give back: the entity itself, or a specific explosion
- * into primitives. The DWG is this DXF in an AC1015 wrapper, so this
- * matrix is also the DWG self round trip. A change that silently demotes
- * a type (the way GD&T frames once round tripped to nothing at all)
- * fails here by name. */
+/* One of every authorable entity type, and what the DXF round trip is
+ * contracted to give back under each writer: the R2000 path (the app's
+ * default, and the payload of the DWG, so this is also the DWG self
+ * round trip) and the legacy R12 path. R2000 keeps mtext, dim and
+ * spline as themselves; R12 explodes them. A change that silently
+ * demotes a type (the way GD&T frames once round tripped to nothing at
+ * all) fails here by name. Each case is [name, entity, r12, r2000?];
+ * a missing r2000 column means both writers agree. */
 const CASES = [
   ['line', { type: 'line', layer: 'WALLS', x1: 0, y1: 0, x2: 10, y2: 0 }, { line: 1 }],
   ['poly', { type: 'poly', layer: 'WALLS', closed: false, pts: [[0, 0], [5, 5], [10, 0]] }, { poly: 1 }],
   ['circle', { type: 'circle', layer: 'WALLS', cx: 5, cy: 5, r: 3 }, { circle: 1 }],
   ['arc', { type: 'arc', layer: 'WALLS', cx: 5, cy: 5, r: 3, a1: 0, a2: 90 }, { arc: 1 }],
   ['text', { type: 'text', layer: 'TEXT', x: 1, y: 1, size: 1, content: 'hello' }, { text: 1 }],
-  ['mtext', { type: 'mtext', layer: 'TEXT', x: 1, y: 3, w: 10, size: 1, content: 'wrapped words here' }, { text: 1 }],
-  ['dim', { type: 'dim', layer: 'DIMS', x1: 0, y1: 0, x2: 10, y2: 0, off: 2 }, { line: 5, text: 1 }],
-  ['hatch', { type: 'hatch', layer: 'HATCH', pts: [[0, 0], [4, 0], [4, 4], [0, 4]], pattern: 'ANSI31', scale: 1, angle: 0 }, { line: 8 }],
+  ['mtext', { type: 'mtext', layer: 'TEXT', x: 1, y: 3, w: 10, size: 1, content: 'wrapped words here' }, { text: 1 }, { mtext: 1 }],
+  ['dim', { type: 'dim', layer: 'DIMS', x1: 0, y1: 0, x2: 10, y2: 0, off: 2 }, { line: 5, text: 1 }, { dim: 1 }],
+  ['hatch', { type: 'hatch', layer: 'HATCH', pts: [[0, 0], [4, 0], [4, 4], [0, 4]], pattern: 'ANSI31', scale: 1, angle: 0 }, { line: 8 }, { line: 8, poly: 1 }],
   ['ellipse', { type: 'ellipse', layer: 'WALLS', cx: 5, cy: 5, rx: 4, ry: 2, rot: 15 }, { poly: 1 }],
   ['leader', { type: 'leader', layer: 'TEXT', pts: [[0, 0], [4, 4]], content: 'note', textH: 1 }, { poly: 1, text: 1 }],
   ['cloud', { type: 'cloud', layer: 'TEXT', pts: [[0, 0], [6, 0], [6, 4], [0, 4]], amp: 0.7 }, { poly: 1 }],
@@ -25,11 +27,11 @@ const CASES = [
   ['room', { type: 'room', layer: 'ROOMS', name: 'DEN', pts: [[0, 0], [8, 0], [8, 8], [0, 8]], cx: 4, cy: 4, area: 64 }, { poly: 1, text: 1 }],
   ['grid', { type: 'grid', layer: 'CENTER', x: 0, y: 0, cols: 3, rows: 2, cx: 10, ry: 8, rot: 0, bubble: 1 }, { line: 7, circle: 7, text: 7 }],
   ['xline', { type: 'xline', layer: 'CENTER', x1: 0, y1: 0, x2: 1, y2: 1 }, { line: 1 }],
-  ['spline', { type: 'spline', layer: 'WALLS', ctrl: [[0, 0], [3, 6], [7, -2], [10, 3]], degree: 3 }, { poly: 1 }],
+  ['spline', { type: 'spline', layer: 'WALLS', ctrl: [[0, 0], [3, 6], [7, -2], [10, 3]], degree: 3 }, { poly: 1 }, { spline: 1 }],
   ['profile', { type: 'profile', layer: 'WALLS', pts: [[0, 0], [6, 0], [6, 4], [0, 4]], fill: false }, { poly: 1 }],
   ['centerline', { type: 'centerline', layer: 'CENTER', pts: [[0, 0], [10, 10]] }, { poly: 1 }],
   ['callout', { type: 'callout', layer: 'TEXT', anchor: [0, 0], pts: [[0, 0], [4, 4]], content: 'CO', textH: 1 }, { poly: 2, text: 1 }],
-  ['hatchRegion', { type: 'hatchRegion', layer: 'HATCH', pts: [[0, 0], [4, 0], [4, 4], [0, 4]], pattern: 'ANSI31' }, { line: 8 }],
+  ['hatchRegion', { type: 'hatchRegion', layer: 'HATCH', pts: [[0, 0], [4, 0], [4, 4], [0, 4]], pattern: 'ANSI31' }, { line: 8 }, { line: 8, poly: 1 }],
   ['fcf', { type: 'fcf', layer: 'DIMS', x: 0, y: 0, char: 'position', tol: '0.1', dia: true, datums: ['A', 'B'], h: 1 }, { poly: 4, text: 4 }],
   ['datum', { type: 'datum', layer: 'DIMS', x: 2, y: 0, letter: 'A', h: 1 }, { poly: 2, text: 1 }],
   ['finish', { type: 'finish', layer: 'DIMS', x: 4, y: 0, roughness: '3.2', h: 1 }, { poly: 1, text: 1 }],
@@ -38,25 +40,42 @@ const CASES = [
 ];
 
 const layers = defaultLayers();
-const roundTrip = ent => {
-  const back = openDXF(buildDXF([ent], layers, { solid: false }), () => {});
+const roundTrip = (ent, ver) => {
+  const back = openDXF(buildDXF([ent], layers, { solid: false, ver }), () => {});
   const types = {};
   (back.entities || []).forEach(e => { types[e.type] = (types[e.type] || 0) + 1; });
   return types;
 };
 
 describe('every entity type has a stated DXF and DWG round trip', () => {
-  for (const [name, ent, expected] of CASES){
-    it(name + ' round trips as ' + JSON.stringify(expected), () => {
-      expect(roundTrip(ent)).toEqual(expected);
+  for (const [name, ent, r12, r2000] of CASES){
+    it(name + ' round trips as ' + JSON.stringify(r2000 || r12) + ' (R2000)' , () => {
+      expect(roundTrip(ent, 'R2000')).toEqual(r2000 || r12);
+    });
+    it(name + ' round trips as ' + JSON.stringify(r12) + ' (R12)', () => {
+      expect(roundTrip(ent)).toEqual(r12);
     });
   }
 
-  it('nothing round trips to nothing', () => {
+  it('nothing round trips to nothing, in either version', () => {
     for (const [name, ent] of CASES){
-      const types = roundTrip(ent);
-      expect(Object.keys(types).length, name + ' vanished from the DXF').toBeGreaterThan(0);
+      expect(Object.keys(roundTrip(ent, 'R2000')).length, name + ' vanished from the R2000 DXF').toBeGreaterThan(0);
+      expect(Object.keys(roundTrip(ent)).length, name + ' vanished from the R12 DXF').toBeGreaterThan(0);
     }
+  });
+
+  it('a dimension round trips with its exact geometry, offset included', () => {
+    /* The reader used to guess off: 2, which moved every reopened
+     * dimension line. The offset is recovered from the dimension line
+     * point, sign included, to the file's own coordinate precision. */
+    const dim = { type: 'dim', layer: 'DIMS', x1: 1.25, y1: 2.5, x2: 13.75, y2: 8.5, off: -6.25 };
+    const back = openDXF(buildDXF([dim], layers, { solid: false, ver: 'R2000' }), () => {}).entities;
+    expect(back.length).toBe(1);
+    expect(back[0].x1).toBeCloseTo(1.25, 9);
+    expect(back[0].y1).toBeCloseTo(2.5, 9);
+    expect(back[0].x2).toBeCloseTo(13.75, 9);
+    expect(back[0].y2).toBeCloseTo(8.5, 9);
+    expect(back[0].off).toBeCloseTo(-6.25, 4);
   });
 
   it('GD&T marks reach the issued PDF as drawn geometry', () => {
