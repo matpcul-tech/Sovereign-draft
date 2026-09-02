@@ -144,6 +144,26 @@ function drawGrip(c, s, kind){
   c.stroke();
 }
 
+/* The sheet view's own zoom and pan: a device-side preference over the
+ * fitted base, never document data, reset whenever the sheet changes.
+ * z multiplies the fitted scale; px/py shift in screen pixels. */
+const paperView = { z: 1, px: 0, py: 0 };
+export function paperResetView(){ paperView.z = 1; paperView.px = 0; paperView.py = 0; }
+export function paperPan(dx, dy){ paperView.px += dx; paperView.py += dy; }
+export function paperZoomAt(sx, sy, factor){
+  const m0 = paperMap(); if (!m0) return;
+  const z1 = Math.max(1, Math.min(24, paperView.z * factor));
+  if (z1 === paperView.z) return;
+  /* The paper point under the pointer stays under the pointer: read it
+   * at the old view, recentre at the new zoom, then pan it back. */
+  const Px = (sx - m0.ox) / m0.scl, Py = (m0.oy - sy) / m0.scl;
+  paperView.z = z1; paperView.px = 0; paperView.py = 0;
+  const m1 = paperMap();
+  paperView.px = sx - (m1.ox + Px * m1.scl);
+  paperView.py = sy - (m1.oy - Py * m1.scl);
+}
+export function paperZoom(){ return paperView.z; }
+
 function paperMap(){
   const L = activeLayout(); if (!L) return null;
   const sh = sheetOf(L.sheet);
@@ -151,10 +171,11 @@ function paperMap(){
    * the top bar hides ~96px and the tool panel ~210px, and a sheet
    * centred in the full window parked its title block under them. */
   const padX = 36, top = 100, bot = 214;
-  const scl = Math.min((vp.CW - padX * 2) / sh.w, Math.max(120, vp.CH - top - bot) / sh.h);
-  const ox = (vp.CW - sh.w * scl) / 2;
+  const base = Math.min((vp.CW - padX * 2) / sh.w, Math.max(120, vp.CH - top - bot) / sh.h);
+  const scl = base * paperView.z;
+  const ox = (vp.CW - sh.w * scl) / 2 + paperView.px;
   const cy = top + Math.max(120, vp.CH - top - bot) / 2;
-  const oy = cy + sh.h * scl / 2; /* paper Y-up -> screen Y-down */
+  const oy = cy + sh.h * scl / 2 + paperView.py; /* paper Y-up -> screen Y-down */
   return { L, sh, scl, ox, oy, p2s: (px, py) => [ox + px * scl, oy - py * scl] };
 }
 

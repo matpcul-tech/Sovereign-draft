@@ -4,7 +4,7 @@ import { state, onChange, pushUndo, doUndo, doRedo, afterChange, selMembers, lay
 import { fmtFtIn } from './core/format.js';
 import { homeView, zoomFit , zoomToPlan} from './core/viewport.js';
 import { ix } from './interaction.js';
-import { initCanvas, resize, draw } from './render/draw.js';
+import { initCanvas, resize, draw , paperResetView} from './render/draw.js';
 import { bindInput } from './input.js';
 import { setTool } from './ui/tools.js';
 import { syncCtx, renderHistory, renderProps, cycleCurrentLt, cycleCurrentLw, cycleDimStyle, cycleHatchPattern } from './ui/chips.js';
@@ -1557,6 +1557,7 @@ function renderSpaceTabs(){
 }
 
 function goToSpace(space){
+  paperResetView();
   if (space === 'model'){ state.space = 'model'; }
   else {
     state.currentLayout = space;

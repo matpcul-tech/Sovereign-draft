@@ -7,7 +7,7 @@ import { gripPts, translateEnt } from './core/entities.js';
 import { fmtFtIn } from './core/format.js';
 import { vp, W2S, S2W, zoomFit, zoomAt } from './core/viewport.js';
 import { ix } from './interaction.js';
-import { draw } from './render/draw.js';
+import { draw , paperZoomAt, paperPan, paperResetView} from './render/draw.js';
 import {
   snapPt, applyConstraint, hitTest, cancelPoly, deleteSelection, placeSymbolAt,
   offsetTap, trimTap, extendTap, eraseTap, boxSelect, finishDraw, applyFillet,
@@ -76,7 +76,14 @@ function onPointerDown(ev){
     draw(); return;
   }
   if (ix.pointers.size > 2 || ix.gesture) return;
-  if (state.space !== 'model'){ ix.drag = { kind: 'pan', last: [ev.clientX, ev.clientY] }; return; }
+  if (state.space !== 'model'){
+    /* A second tap in quick succession refits the sheet. */
+    const now = Date.now();
+    if (ix.paperTapAt && now - ix.paperTapAt < 320){ paperResetView(); draw(); ix.paperTapAt = 0; return; }
+    ix.paperTapAt = now;
+    ix.drag = { kind: 'paperpan', last: [ev.clientX, ev.clientY] };
+    return;
+  }
 
   const sx = ev.clientX, sy = ev.clientY;
   const tool = state.tool;
@@ -152,6 +159,17 @@ function onPointerMove(ev){
     return;
   }
   ix.pointers.set(ev.pointerId, [sx, sy]);
+  if (ix.gesture && ix.pointers.size >= 2 && state.space !== 'model'){
+    const pts = Array.from(ix.pointers.values());
+    const d = dist(pts[0][0], pts[0][1], pts[1][0], pts[1][1]);
+    const c = [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2];
+    const f = d / (ix.gesture.dPrev || ix.gesture.d0);
+    ix.gesture.dPrev = d;
+    paperZoomAt(c[0], c[1], f);
+    if (ix.gesture.cPrev) paperPan(c[0] - ix.gesture.cPrev[0], c[1] - ix.gesture.cPrev[1]);
+    ix.gesture.cPrev = c;
+    draw(); return;
+  }
   if (ix.gesture && ix.pointers.size >= 2){
     const pts = Array.from(ix.pointers.values());
     const d = dist(pts[0][0], pts[0][1], pts[1][0], pts[1][1]);
@@ -165,6 +183,10 @@ function onPointerMove(ev){
   const drag = ix.drag;
   if (drag.kind === 'box'){ drag.cur = [sx, sy]; draw(); return; }
   if (drag.kind === 'stretchbox'){ drag.cur = [sx, sy]; draw(); return; }
+  if (drag.kind === 'paperpan'){
+    paperPan(sx - drag.last[0], sy - drag.last[1]);
+    drag.last = [sx, sy]; draw(); return;
+  }
   if (drag.kind === 'pan' || drag.kind === 'panMaybe'){
     const dx = sx - drag.last[0], dy = sy - drag.last[1];
     if (drag.kind === 'panMaybe' && !drag.moved && dist(sx, sy, drag.s0[0], drag.s0[1]) < 6) return;
@@ -340,7 +362,8 @@ function endPointer(ev){
 function onWheel(ev){
   ev.preventDefault();
   const f = ev.deltaY < 0 ? 1.12 : 1 / 1.12;
-  zoomAt(ev.clientX, ev.clientY, f);
+  if (state.space !== 'model') paperZoomAt(ev.clientX, ev.clientY, f);
+  else zoomAt(ev.clientX, ev.clientY, f);
   draw();
 }
 
