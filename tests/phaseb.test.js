@@ -24,15 +24,15 @@ import {
  * reason. The guard's job, catching unintended pipeline changes against a
  * stable input, continues from the corrected cabin. */
 const PRE_REFACTOR_PDF = {
-  /* Regenerated 2026-09-02: room labels are now centered on their label
-   * point and included in the drawing extents (a field PDF showed a
-   * label cut mid-word by the sheet fit), which moves the room text and
-   * the fit framing in every cabin PDF. Verified by rendering the new
-   * output: labels centered inside their rooms, nothing cut. */
-  'cabin:fit': '9fedfc8f6b48b69d',
-  'cabin:18': 'c342ad1503d56d6d',
-  'cabin:9': '9fedfc8f6b48b69d',
-  'cabin:4.5': 'c5d3a2e10d609124'
+  /* Regenerated 2026-09-02 (second pass): schedule tables now read
+   * header-on-top everywhere, part-mark bubbles lift clear of their
+   * labels, and a room named by a text inside its loop prints one name
+   * (its live SF stays in the room schedule). Verified by rendering:
+   * every room named once, tables top-down, nothing colliding. */
+  'cabin:fit': 'd6f999eada939f59',
+  'cabin:18': 'e24a33bdf33ff4f8',
+  'cabin:9': 'd6f999eada939f59',
+  'cabin:4.5': '011f4e00abf877a4'
 };
 
 function pdfHash(ents, ppf, name){

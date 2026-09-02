@@ -108,6 +108,11 @@ export function makeTable(opts){
     colW,
     rowH: opts.rowH || 0.85,
     title: opts.title || '',
+    /* Header on top is how a schedule reads; the Y-up default drew the
+     * header row at the bottom with the caption underneath, upside down
+     * on every issued sheet. Explicit fromTop: false keeps the old
+     * behaviour for anything that wants it. */
+    fromTop: opts.fromTop !== false,
     cells
   };
 }

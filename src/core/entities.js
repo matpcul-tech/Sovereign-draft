@@ -120,6 +120,20 @@ export function flattenEnt(e){
   return [e];
 }
 
+/* Rooms whose name is already written inside their loop (the text that
+ * named them) print only their live SF, or every issued sheet carries
+ * the name twice. Returns shallow copies; nothing else is touched. */
+export function dedupeRoomLabels(list){
+  const texts = (list || []).filter(t => t.type === 'text' && t.content);
+  return (list || []).map(en => {
+    if (en.type !== 'room' || !en.name || !en.pts || en.pts.length < 3) return en;
+    const dup = texts.some(t =>
+      String(t.content).trim().toUpperCase() === String(en.name).trim().toUpperCase() &&
+      pointInPoly(t.x, t.y, en.pts));
+    return dup ? Object.assign({}, en, { sfOnly: true }) : en;
+  });
+}
+
 export function explodeForIO(e){
   if (!e) return [];
   if (isComposite(e)) return expandComposite(e);
@@ -148,11 +162,18 @@ export function explodeForIO(e){
   if (e.type === 'room'){
     const out = [];
     if (e.pts && e.pts.length > 2) out.push({ type: 'poly', closed: true, pts: e.pts, layer: e.layer || 'ROOMS' });
-    const label = (e.name || 'ROOM') + '  ' + Math.round(e.area != null ? e.area : 0) + ' SF';
+    /* A room named by a text entity inside its loop already has its
+     * name on the drawing; printing it again doubled every label on
+     * the issued sheets. sfOnly (set by dedupeRoomLabels) keeps the
+     * live area and lets the author's text be the name. */
+    const label = e.sfOnly
+      ? Math.round(e.area != null ? e.area : 0) + ' SF'
+      : (e.name || 'ROOM') + '  ' + Math.round(e.area != null ? e.area : 0) + ' SF';
+    const ly = e.sfOnly ? (e.cy || 0) - 2.1 : (e.cy || 0) - 0.3;
     /* Centered on the label point: a long name used to hang nine feet
      * off to one side of it. */
     out.push({ type: 'text', layer: e.layer || 'ROOMS',
-      x: (e.cx || 0) - boxWidth(label, 1.0) / 2, y: (e.cy || 0) - 0.3, size: 1.0, content: label });
+      x: (e.cx || 0) - boxWidth(label, 1.0) / 2, y: ly, size: 1.0, content: label });
     return out;
   }
   if (e.type === 'dim' && e.kind === 'angular'){

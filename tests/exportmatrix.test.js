@@ -135,3 +135,23 @@ describe('sheet fixes from the field: schedule units and room labels', () => {
     expect(bb[2]).toBeGreaterThan(5);
   });
 });
+
+describe('a room named by its text prints one name, not two', () => {
+  it('dedupeRoomLabels marks the room and its explode keeps only the SF', async () => {
+    const { dedupeRoomLabels, explodeForIO } = await import('../src/core/entities.js');
+    const room = { type: 'room', layer: 'ROOMS', name: 'KITCHEN', area: 182.3,
+      pts: [[0, 0], [14, 0], [14, 13], [0, 13]], cx: 7, cy: 6.5 };
+    const label = { type: 'text', layer: 'TEXT', x: 5.5, y: 6.5, size: 1, content: 'KITCHEN' };
+    const out = dedupeRoomLabels([room, label]);
+    expect(out[0].sfOnly).toBe(true);
+    const txt = explodeForIO(out[0]).find(f => f.type === 'text');
+    expect(txt.content).toBe('182 SF');
+    /* Without a matching text the full label stays. */
+    const alone = dedupeRoomLabels([room]);
+    expect(alone[0].sfOnly).toBeUndefined();
+    expect(explodeForIO(alone[0]).find(f => f.type === 'text').content).toBe('KITCHEN  182 SF');
+    /* A text with a different name does not steal the label. */
+    const other = dedupeRoomLabels([room, { ...label, content: 'PANTRY' }]);
+    expect(other[0].sfOnly).toBeUndefined();
+  });
+});

@@ -220,11 +220,16 @@ function buildSheet(opts, bbox){
 function stampMarks(layout, parts){
   const vp = layout && layout.viewports && layout.viewports[0];
   if (!vp || !parts || !parts.length) return layout;
+  /* The part's anchor is also its label's anchor, so a bubble stamped
+   * there prints on the first letters of the name. Lift it clear: half
+   * a label height at this view's scale, plus the bubble itself. */
+  const ppf = vp.ppf || layout.ppf || 18;
+  const lift = 0.5 * ppf / 72 + 0.26;
   let out = layout;
   parts.forEach(p => {
     const xy = modelToPaper(vp, p.x, p.y);
     if (!inViewport(vp, xy[0], xy[1])) return;
-    out = addAnnotation(out, makeMarkBubble(xy[0], xy[1], p.mark));
+    out = addAnnotation(out, makeMarkBubble(xy[0], xy[1] + lift, p.mark));
   });
   return out;
 }

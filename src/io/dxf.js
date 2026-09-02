@@ -6,7 +6,7 @@
 import { fmtN, dimGeom, arcPoints } from '../core/geometry.js';
 import { LTYPE_NAMES, LINETYPES } from '../core/style.js';
 import { hatchLines, HATCH_PATTERNS, REFERENCE_SCALE } from '../core/hatch.js';
-import { explodeForIO, isComposite, membersBBox } from '../core/entities.js';
+import { explodeForIO, isComposite, membersBBox, dedupeRoomLabels } from '../core/entities.js';
 import { knotsOf, splineToPoly, makeSpline } from '../core/spline.js';
 import { hasBulge, bulgeAt } from '../core/bulge.js';
 import { makeMText, decodeMText, encodeMText, attachCode, justFromCode, mtextToTexts } from '../core/mtext.js';
@@ -23,6 +23,7 @@ function lw370(e){
 
 export function buildDXF(entities, layers, opts){
   opts = opts || {};
+  entities = dedupeRoomLabels(entities);
   const r2000 = opts.ver === 'R2000' || opts.ver === 'AC1015';
   const L = [];
   function w(...args){ for (const a of args) L.push(String(a)); }

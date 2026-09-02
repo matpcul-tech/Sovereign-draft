@@ -4,7 +4,7 @@
  */
 import { arcPoints, dimGeom } from '../core/geometry.js';
 import { fmtFtIn } from '../core/format.js';
-import { membersBBox, explodeForIO, isComposite } from '../core/entities.js';
+import { membersBBox, explodeForIO, isComposite, dedupeRoomLabels } from '../core/entities.js';
 import { hatchLines, hatchPlan, ppfToScaleFactor } from '../core/hatch.js';
 import { polyOutline } from '../core/bulge.js';
 import { paperTextPts } from '../core/annoscale.js';
@@ -233,6 +233,7 @@ function assemblePDF(objs){
 }
 
 function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts, issued, styles, table, named){
+  visible = dedupeRoomLabels(visible);
   const list = [];
   visible.forEach(e => {
     if (e.type === 'image' && e.src && imageName(e.src)){ list.push(e); return; }
