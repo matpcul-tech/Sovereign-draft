@@ -136,7 +136,9 @@ describe('single sheet output is unchanged by the multi page writer', () => {
     /* Hash regenerated with the corrected cabin (fillet keeps wall
      * identity, west wall restored); see the note in phaseb.test.js. */
     const r = buildPDF(cabin24x36(), { ppf: 18, layerVisible: vis, projectName: 'CABIN', dateStr: '2026-01-01' });
-    expect(hash(r.pdf)).toBe('f4d5dbd61125c6b3');
+    /* Regenerated 2026-09-02 with the centered, extent-included room
+     * labels; matches the phaseb cabin:18 baseline as it always has. */
+    expect(hash(r.pdf)).toBe('c342ad1503d56d6d');
   });
 });
 

@@ -99,3 +99,39 @@ describe('every entity type has a stated DXF and DWG round trip', () => {
     expect(withG.length - base.length).toBeGreaterThan(500);
   });
 });
+
+describe('sheet fixes from the field: schedule units and room labels', () => {
+  it('the room schedule AREA column is plan dimensions, never feet-inches of an area', async () => {
+    const { roomRows } = await import('../src/core/schedule.js');
+    const room = { type: 'room', name: 'BEDROOM 1', area: 86.3,
+      pts: [[0, 0], [12.33, 0], [12.33, 7], [0, 7]], cx: 6, cy: 3.5 };
+    const rows = roomRows([room]);
+    expect(rows.length).toBe(1);
+    expect(rows[0][0]).toBe('BEDROOM 1');
+    expect(rows[0][1]).toBe('12\'-4" x 7\'-0"');
+    expect(rows[0][2]).toBe('86.3 SF');
+    /* The old bug: 86.3 SF through the length formatter read 86'-3 5/8". */
+    expect(rows[0][1]).not.toContain('86');
+  });
+
+  it('the exploded room label is centered on its label point', async () => {
+    const { explodeForIO } = await import('../src/core/entities.js');
+    const { boxWidth } = await import('../src/core/textmetrics.js');
+    const room = { type: 'room', name: 'BEDROOM 1', area: 86.3,
+      pts: [[0, 0], [12, 0], [12, 7], [0, 7]], cx: 6, cy: 3.5 };
+    const txt = explodeForIO(room).find(f => f.type === 'text');
+    const w = boxWidth(txt.content, 1.0);
+    expect(txt.x + w / 2).toBeCloseTo(6, 9);
+  });
+
+  it('room extents include the printed label so the sheet fit cannot cut it', async () => {
+    const { entBBox } = await import('../src/core/entities.js');
+    /* A small room with a long name: the label is wider than the loop. */
+    const room = { type: 'room', name: 'MECHANICAL CLOSET', area: 9,
+      pts: [[0, 0], [3, 0], [3, 3], [0, 3]], cx: 1.5, cy: 1.5 };
+    const bb = [1e9, 1e9, -1e9, -1e9];
+    entBBox(room, bb);
+    expect(bb[0]).toBeLessThan(-2);
+    expect(bb[2]).toBeGreaterThan(5);
+  });
+});

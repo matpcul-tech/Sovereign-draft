@@ -24,10 +24,15 @@ import {
  * reason. The guard's job, catching unintended pipeline changes against a
  * stable input, continues from the corrected cabin. */
 const PRE_REFACTOR_PDF = {
-  'cabin:fit': '91c749e294f0773a',
-  'cabin:18': 'f4d5dbd61125c6b3',
-  'cabin:9': '91c749e294f0773a',
-  'cabin:4.5': '1d97467c0a87a811'
+  /* Regenerated 2026-09-02: room labels are now centered on their label
+   * point and included in the drawing extents (a field PDF showed a
+   * label cut mid-word by the sheet fit), which moves the room text and
+   * the fit framing in every cabin PDF. Verified by rendering the new
+   * output: labels centered inside their rooms, nothing cut. */
+  'cabin:fit': '9fedfc8f6b48b69d',
+  'cabin:18': 'c342ad1503d56d6d',
+  'cabin:9': '9fedfc8f6b48b69d',
+  'cabin:4.5': 'c5d3a2e10d609124'
 };
 
 function pdfHash(ents, ppf, name){

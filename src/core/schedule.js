@@ -60,12 +60,26 @@ export function windowRows(entities){
   ]));
 }
 
+/* An area is not a length: 86.3 SF through the feet-inches formatter
+ * printed 86'-3" (and pdfSafe stripped the superscript that was meant
+ * to excuse it). The AREA column now carries what a schedule wants
+ * beside the square feet: the room's plan dimensions. */
+function planDims(pts){
+  if (!pts || pts.length < 3) return '';
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const p of pts){
+    if (p[0] < x0) x0 = p[0]; if (p[1] < y0) y0 = p[1];
+    if (p[0] > x1) x1 = p[0]; if (p[1] > y1) y1 = p[1];
+  }
+  return fmtFtIn(x1 - x0) + ' x ' + fmtFtIn(y1 - y0);
+}
+
 export function roomRows(entities){
   const live = (entities || []).filter(h => h.type === 'room');
   if (live.length){
     return live.map(h => {
       const area = h.area != null ? h.area : Math.abs(polyArea(h.pts || []));
-      return [h.name || 'ROOM', fmtFtIn(area) + '²', area.toFixed(1) + ' SF', 'LIVE'];
+      return [h.name || 'ROOM', planDims(h.pts), area.toFixed(1) + ' SF', 'LIVE'];
     });
   }
   const rooms = [];
@@ -74,7 +88,7 @@ export function roomRows(entities){
     const texts = (entities || []).filter(t => t.type === 'text' && pointInPoly(t.x, t.y, h.pts));
     const name = texts[0] ? String(texts[0].content || 'ROOM') : 'ROOM';
     const area = Math.abs(polyArea(h.pts));
-    rooms.push([name, fmtFtIn(area) + '²', (area).toFixed(1) + ' SF', h.pattern || 'ANSI31']);
+    rooms.push([name, planDims(h.pts), (area).toFixed(1) + ' SF', h.pattern || 'ANSI31']);
   });
   return rooms;
 }

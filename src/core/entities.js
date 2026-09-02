@@ -149,7 +149,10 @@ export function explodeForIO(e){
     const out = [];
     if (e.pts && e.pts.length > 2) out.push({ type: 'poly', closed: true, pts: e.pts, layer: e.layer || 'ROOMS' });
     const label = (e.name || 'ROOM') + '  ' + Math.round(e.area != null ? e.area : 0) + ' SF';
-    out.push({ type: 'text', layer: e.layer || 'ROOMS', x: (e.cx || 0) - 1.6, y: (e.cy || 0) - 0.3, size: 1.0, content: label });
+    /* Centered on the label point: a long name used to hang nine feet
+     * off to one side of it. */
+    out.push({ type: 'text', layer: e.layer || 'ROOMS',
+      x: (e.cx || 0) - boxWidth(label, 1.0) / 2, y: (e.cy || 0) - 0.3, size: 1.0, content: label });
     return out;
   }
   if (e.type === 'dim' && e.kind === 'angular'){
@@ -317,6 +320,13 @@ export function entBBox(e, bb){
   else if (e.type === 'poly' || e.type === 'hatch' || e.type === 'leader' || e.type === 'room'){
     const op = e.type === 'poly' ? polyOutline(e) : (e.pts || []);
     for (let i = 0; i < op.length; i++) add(op[i][0], op[i][1]);
+    if (e.type === 'room' && e.cx != null){
+      /* The printed label is part of the room: leaving it out of the
+       * extents let a sheet's fit cut a room name off mid-word. */
+      const label = (e.name || 'ROOM') + '  ' + Math.round(e.area != null ? e.area : 0) + ' SF';
+      const half = boxWidth(label, 1.0) / 2;
+      add(e.cx - half, e.cy - 1.3); add(e.cx + half, e.cy + 0.7);
+    }
   }
   else if (e.type === 'cloud'){ cloudPoints(e.pts || [], e.amp).forEach(p => add(p[0], p[1])); }
   else if (e.type === 'ellipse'){ ellipsePoints(e).forEach(p => add(p[0], p[1])); }
