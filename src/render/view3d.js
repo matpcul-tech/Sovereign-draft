@@ -11,7 +11,7 @@ import {
   makeBox, makeCylinder, makeSphere, makeCone
 } from '../core/mesh.js';
 import { pushPullPrism } from '../core/model3d.js';
-import { snapPoints, makeSnapIndex, inferMove } from '../core/snap3d.js';
+import { snapPoints, makeSnapIndex, inferMove, grabTarget, moveMeshPoints } from '../core/snap3d.js';
 import { sunVector } from '../core/sun.js';
 import { samplePath, easeInOut } from '../core/campath.js';
 
@@ -590,7 +590,11 @@ const pick = {
   ppN3: null,
   ppDist: 0,
   ppGhost: null,
+  editPts: null,         /* exact coordinates the grabbed feature owns */
+  editKind: null,        /* 'vertex' | 'edge' while editing */
+  editAt: null,          /* CAD point the grab took hold of */
   onSolidMove: null,
+  onSolidEdit: null,
   onSolidInfo: null,
   onSolidCopy: null,
   onSolidRotate: null,
@@ -772,7 +776,9 @@ function setSelected(name){
         ? name + ' · rotate: drag turns in 15° steps (shift 1°) · type degrees, Enter · R back to move · esc'
         : pick.mode === 'pushpull'
           ? name + ' · push-pull: drag a face along its normal · type a distance, Enter · P back to move · esc'
-          : name + ' · drag moves · shift lifts · ctrl copies · R rotates · P push-pulls · type a distance, Enter · esc';
+          : pick.mode === 'edit'
+            ? name + ' · edit: drag a corner or an edge · shift lifts · type a distance, Enter · E back to move · esc'
+            : name + ' · drag moves · shift lifts · ctrl copies · R rotates · P push-pulls · E edits corners · type a distance, Enter · esc';
     el.style.display = name ? 'block' : 'none';
   }
   if (pick.onSolidInfo) pick.onSolidInfo(name);
@@ -785,6 +791,13 @@ function dragHud(){
   if (!el || !pick.dragging) return;
   if (pick.mode === 'pushpull'){
     el.textContent = pick.selected + (pick.ppDist >= 0 ? ' · pull ' : ' · push ') + fmtFtIn(Math.abs(pick.ppDist)) +
+      (pick.typed ? ' · type: ' + pick.typed + ' Enter' : '');
+  } else if (pick.mode === 'edit'){
+    const [dx, dy, dz] = pick.moved;
+    el.textContent = pick.selected + ' · ' + (pick.editKind || 'vertex') +
+      ' · dx ' + fmtFtIn(dx) + ' · dy ' + fmtFtIn(dy) +
+      (dz ? ' · dz ' + fmtFtIn(dz) : '') +
+      (pick.snapKind ? ' · ' + pick.snapKind : '') +
       (pick.typed ? ' · type: ' + pick.typed + ' Enter' : '');
   } else if (pick.mode === 'rotate'){
     el.textContent = pick.selected + ' · ' + pick.rotDeg + '°' +
@@ -959,7 +972,21 @@ function cancelDrag(){
   endDrag();
   pick.copying = false;
   resetPreview();
+  removePpGhost();
+  pick.editPts = null;
   setSelected(pick.selected);
+}
+
+function commitEdit(delta){
+  const pts = pick.editPts;
+  endDrag();
+  resetPreview();
+  removePpGhost();
+  pick.editPts = null;
+  const [dx, dy, dz] = delta;
+  if (!(dx || dy || dz) || !pts){ setSelected(pick.selected); return; }
+  if (pick.onSolidEdit) pick.onSolidEdit(pick.selected, pts, [dx, dy, dz]);
+  else render();
 }
 
 function commitMove(delta){
@@ -1038,6 +1065,25 @@ function wirePicking(){
       canvas.setPointerCapture(ev.pointerId);
       return;
     }
+    if (hit && hit.object.userData.solidName === pick.selected && pick.mode === 'edit'){
+      /* Grabbing a feature: the nearest vertex, or an edge through its
+       * midpoint, of the exact kernel mesh under the click. */
+      const rec = lastSolidsList.find(x => x && x.name === pick.selected);
+      const cad = [hit.point.x, hit.point.z, hit.point.y];
+      const target = rec ? grabTarget(rec.mesh, cad, 0.9) : null;
+      if (!target) return;
+      pick.dragging = true;
+      pick.typed = '';
+      pick.moved = [0, 0, 0];
+      pick.editPts = target.points;
+      pick.editKind = target.kind;
+      pick.editAt = target.at;
+      pick.grab = hit.point.clone();
+      collectSnapData(pick.selected);
+      if (controls) controls.enabled = false;
+      canvas.setPointerCapture(ev.pointerId);
+      return;
+    }
     if (hit && hit.object.userData.solidName === pick.selected){
       /* Grabbing the selected solid starts a move; the camera stays put. */
       pick.dragging = true;
@@ -1103,6 +1149,35 @@ function wirePicking(){
     const d3 = at.clone().sub(pick.grab);
     /* three (x, y, z) is CAD (x, height, y). */
     const delta = ev.shiftKey ? [0, 0, d3.y] : [d3.x, d3.z, 0];
+    if (pick.mode === 'edit'){
+      pick.snapKind = null;
+      if (!ev.altKey){
+        const hit2 = pick.snapIdx
+          ? inferMove([{ p: pick.editAt }], delta, pick.snapIdx, FACE_TOL, ev.shiftKey ? 'lift' : 'plan')
+          : null;
+        if (hit2){
+          delta[0] = hit2.delta[0]; delta[1] = hit2.delta[1]; delta[2] = hit2.delta[2];
+          pick.snapKind = hit2.kind;
+        } else {
+          delta[0] = Math.round(delta[0] / GRID_STEP) * GRID_STEP;
+          delta[1] = Math.round(delta[1] / GRID_STEP) * GRID_STEP;
+          delta[2] = Math.round(delta[2] / GRID_STEP) * GRID_STEP;
+        }
+      }
+      pick.moved = delta;
+      /* The mesh deforms live: the ghost is the edited mesh itself. */
+      removePpGhost();
+      if (delta[0] || delta[1] || delta[2]){
+        const rec = lastSolidsList.find(x => x && x.name === pick.selected);
+        if (rec){
+          pick.ppGhost = cadMeshToThree(moveMeshPoints(rec.mesh, pick.editPts, delta), 0x2fa87a);
+          if (pick.ppGhost) scene.add(pick.ppGhost);
+        }
+      }
+      dragHud();
+      render();
+      return;
+    }
     pick.snapFace = false;
     pick.snapKind = null;
     if (!ev.altKey && pick.bboxSelf){
@@ -1143,6 +1218,7 @@ function wirePicking(){
     if (pick.dragging){
       if (pick.mode === 'pushpull') commitPushPull(pick.ppDist);
       else if (pick.mode === 'rotate') commitRotate(pick.rotDeg);
+      else if (pick.mode === 'edit') commitEdit(pick.moved);
       else commitMove(pick.moved);
       return;
     }
@@ -1201,6 +1277,14 @@ function wirePicking(){
         if (isFinite(n)){
           if (pick.mode === 'pushpull') commitPushPull((pick.ppDist < 0 ? -1 : 1) * n);
           else if (pick.mode === 'rotate') commitRotate(n);
+          else if (pick.mode === 'edit'){
+            const [dx, dy, dz] = pick.moved;
+            const ax = Math.abs(dz) >= Math.abs(dx) && Math.abs(dz) >= Math.abs(dy) ? 2
+              : (Math.abs(dy) > Math.abs(dx) ? 1 : 0);
+            const d = [0, 0, 0];
+            d[ax] = ([dx, dy, dz][ax] < 0 ? -1 : 1) * n;
+            commitEdit(d);
+          }
           else {
             /* The typed number sets the distance along whichever axis the
              * drag was going; a leading minus reverses the direction. */
@@ -1221,6 +1305,13 @@ function wirePicking(){
       setSelected(pick.selected);
       ev.preventDefault();
       ev.stopPropagation();
+    }
+    if ((ev.key === 'e' || ev.key === 'E') && pick.selected && !meas.on && !ev.ctrlKey && !ev.metaKey && !ev.altKey){
+      pick.mode = pick.mode === 'edit' ? 'move' : 'edit';
+      setSelected(pick.selected);
+      ev.preventDefault();
+      ev.stopPropagation();
+      return;
     }
     if ((ev.key === 'p' || ev.key === 'P') && pick.selected && !meas.on && !ev.ctrlKey && !ev.metaKey && !ev.altKey){
       pick.mode = pick.mode === 'pushpull' ? 'move' : 'pushpull';
@@ -1288,6 +1379,7 @@ export function showView3d(opts){
   }
   wireHud(o);
   pick.onSolidMove = o.onSolidMove || null;
+  pick.onSolidEdit = o.onSolidEdit || null;
   pick.onSolidInfo = o.onSolidInfo || null;
   pick.onSolidCopy = o.onSolidCopy || null;
   pick.onSolidRotate = o.onSolidRotate || null;

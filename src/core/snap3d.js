@@ -64,7 +64,8 @@ export function snapPoints(mesh, cap){
     if (!feature) continue;
     const [ia, ib] = k.split('_').map(Number);
     const a = out[ia].p, b = out[ib].p;
-    out.push({ p: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], kind: 'midpoint' });
+    /* ends lets edit mode move the edge itself: both endpoints follow. */
+    out.push({ p: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], kind: 'midpoint', ends: [a, b] });
   }
   return out;
 }
@@ -129,4 +130,35 @@ export function inferMove(selfPts, delta, index, tol, mode){
     ? [delta[0], delta[1], t[2] - m[2]]
     : [t[0] - m[0], t[1] - m[1], delta[2]];
   return { delta: out, kind: win.point.kind, from: win.from.p, to: t };
+}
+
+/* What a click in edit mode takes hold of: the nearest vertex within
+ * tolerance, or failing that the nearest feature-edge midpoint, in
+ * which case both endpoints move together so the edge stays an edge.
+ * Returns { kind, at, points } where points are the exact coordinates
+ * every matching mesh vertex must follow, or null out of tolerance. */
+export function grabTarget(mesh, p, tol){
+  const feats = snapPoints(mesh);
+  const d3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  let best = null, bestD = tol || 0.6;
+  for (const f of feats){
+    const d = d3(f.p, p);
+    if (d < bestD || (d === bestD && best && f.kind === 'vertex' && best.kind !== 'vertex')){
+      best = f; bestD = d;
+    }
+  }
+  if (!best) return null;
+  if (best.kind === 'midpoint' && best.ends) return { kind: 'edge', at: best.p, points: best.ends };
+  return { kind: 'vertex', at: best.p, points: [best.p] };
+}
+
+/* Move every mesh vertex that sits on one of the given points, exactly.
+ * Topology never changes: the same faces reference the same vertex
+ * slots, so a watertight mesh stays watertight. Returns a new mesh. */
+export function moveMeshPoints(mesh, points, delta){
+  const keys = new Set(points.map(keyOf));
+  const verts = mesh.verts.map(v => keys.has(keyOf(v))
+    ? [v[0] + delta[0], v[1] + delta[1], v[2] + delta[2]]
+    : [v[0], v[1], v[2]]);
+  return { verts, faces: mesh.faces.map(f => f.slice()) };
 }

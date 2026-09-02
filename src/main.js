@@ -180,6 +180,16 @@ function solidOpts(){
     onSample: () => loadSamplePart(),
     onStl: () => { try { document.dispatchEvent(new Event('sd-export-stl')); } catch (e){ /* node */ } },
     onObj: () => { try { document.dispatchEvent(new Event('sd-export-obj')); } catch (e){ /* node */ } },
+    onSolidEdit: async (name, points, delta) => {
+      const { transformSolid, describeSolid, solidByName } = await import('./core/model3d.js');
+      const { moveMeshPoints } = await import('./core/snap3d.js');
+      pushUndo();
+      transformSolid(name, mm => moveMeshPoints(mm, points, delta));
+      afterChange();
+      const rec = solidByName(name);
+      if (rec) toast(describeSolid(rec), 3000);
+      syncOpen3d();
+    },
     onSolidMove: async (name, dx, dy, dz) => {
       const { moveSolid, describeSolid, solidByName } = await import('./core/model3d.js');
       pushUndo();
