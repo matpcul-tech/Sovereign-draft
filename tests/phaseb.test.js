@@ -24,17 +24,15 @@ import {
  * reason. The guard's job, catching unintended pipeline changes against a
  * stable input, continues from the corrected cabin. */
 const PRE_REFACTOR_PDF = {
-  /* Regenerated 2026-09-03 (fourth pass): room labels are a paper
-   * height on sheets. A 14x12 bedroom's name printed half an inch tall
-   * at 1/2" and vanished at 1/16" because the label was 1 ft of model
-   * text. It is now 1/8" on paper at every scale, and the label shrinks
-   * to the room before it would cross a wall. cabin:fit and cabin:9 did
-   * not move: at 1/8" scale a 1/8" label is exactly the 1 ft it was,
-   * which is the conversion being exact. */
-  'cabin:fit': 'ab1c108c585c5eff',
-  'cabin:18': 'd4a8a5d68b53b59d',
-  'cabin:9': 'ab1c108c585c5eff',
-  'cabin:4.5': 'ff722c9a60f2a4ac'
+  /* Regenerated 2026-09-03 (fifth pass): every room label now sits on
+   * a paper white card painted after the hatch, so a name reads on a
+   * dense fill instead of vanishing into it. The card is one white
+   * rectangle per room label; the label text and its size are exactly
+   * what the fourth pass baselined. */
+  'cabin:fit': '1750869cd230e6a7',
+  'cabin:18': '77c2985126ea55da',
+  'cabin:9': '1750869cd230e6a7',
+  'cabin:4.5': '3135d83f7c490c4e'
 };
 
 function pdfHash(ents, ppf, name){

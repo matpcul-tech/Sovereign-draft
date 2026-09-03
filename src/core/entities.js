@@ -209,7 +209,9 @@ export function explodeForIO(e, opts){
     const ly = e.sfOnly ? (e.cy || 0) - 2.1 * size : (e.cy || 0) - 0.3 * size;
     /* Centered on the label point: a long name used to hang nine feet
      * off to one side of it. */
-    out.push({ type: 'text', layer: e.layer || 'ROOMS',
+    /* mask asks the sheet for a paper white card under the label, the
+     * way a room tag sits on a hatch by hand. */
+    out.push({ type: 'text', layer: e.layer || 'ROOMS', mask: true,
       x: (e.cx || 0) - boxWidth(label, size) / 2, y: ly, size, content: label });
     return out;
   }

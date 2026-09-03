@@ -246,7 +246,12 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts,
       explodeForIO(e, e.type === 'room' ? { annoPpf: ppf } : undefined).forEach(f => list.push(f));
     } else list.push(e);
   });
+  /* Masked labels are drawn after everything else, so the white card
+   * under a room name covers the hatch that was drawn before it, not
+   * the other way round. */
+  const masked = [];
   list.forEach(e => {
+    if (e.type === 'text' && e.mask){ masked.push(e); return; }
     const isDim = e.layer === 'DIMS';
     const isWall = e.layer === 'WALLS' || e.kind === 'wall';
     /* An issued sheet always plots at real lineweights. The quick export
@@ -326,6 +331,14 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts,
       const nx = -Math.sin(ang), ny = Math.cos(ang);
       textAt(mx - Math.cos(ang) * wtxt / 2 + nx * 2.5, my - Math.sin(ang) * wtxt / 2 + ny * 2.5, sz, txt, ang, false, 0.25);
     }
+  });
+  masked.forEach(e => {
+    const th = e.paperTextH ? e.paperTextH : paperTextPts(e, ppf);
+    const w = helveticaWidth(e.content || '', th, false);
+    const pad = th * 0.22;
+    P('1 g');
+    P(f2(TX(e.x) - pad) + ' ' + f2(TY(e.y) - th * 0.28) + ' ' + f2(w + pad * 2) + ' ' + f2(th * 1.3) + ' re f');
+    textAt(TX(e.x), TY(e.y), th, e.content || '', 0, false, 0.1);
   });
 }
 

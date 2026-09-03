@@ -323,11 +323,7 @@ export function generateSheetSet(entities, layers, opts){
    * window, not the fit box: at 1/2" a sheet shows far more than the
    * room it was fitted to. */
   const kept = [];
-  built.forEach(b => {
-    const host = b.sec.source === 'room'
-      ? kept.find(k => k.sec.source === 'room' && bboxInside(b.sec.bbox, visibleWindow(k.layout), 0.5))
-      : null;
-    if (!host){ kept.push(b); return; }
+  const absorb = (host, b) => {
     host.sec = {
       name: mergeSectionName(host.sec, b.sec),
       bbox: unionBBox(host.sec.bbox, b.sec.bbox),
@@ -336,6 +332,28 @@ export function generateSheetSet(entities, layers, opts){
     host.layout.section = Object.assign({}, host.layout.section, {
       name: host.sec.name, bbox: host.sec.bbox, geo: unionBBox(host.layout.section.geo || host.sf.geo, b.sf.geo)
     });
+  };
+  built.forEach(b => {
+    if (b.sec.source !== 'room'){ kept.push(b); return; }
+    const ppfOf = x => (x.layout.viewports[0] && x.layout.viewports[0].ppf) || x.layout.ppf;
+    const sameScale = (x, y) => Math.abs(ppfOf(x) - ppfOf(y)) < 1e-9;
+    const host = kept.find(k => k.sec.source === 'room' && sameScale(k, b) && bboxInside(b.sec.bbox, visibleWindow(k.layout), 0.5));
+    if (host){ absorb(host, b); return; }
+    /* The other direction: this sheet prints an earlier room whole, so
+     * the earlier sheet is the redundant one. It keeps its place in the
+     * set and takes this viewport, the way A-108 Pool was a corner of
+     * A-110 Tennis Court on a set that came back from the field. */
+    const shown = kept.find(k => k.sec.source === 'room' && sameScale(k, b) && bboxInside(k.sec.bbox, visibleWindow(b.layout), 0.5));
+    if (shown){
+      const wasSec = shown.sec;
+      shown.layout = b.layout; shown.sf = b.sf;
+      shown.sec = b.sec;
+      absorb(shown, { sec: wasSec, sf: shown.sf });
+      shown.sec.name = mergeSectionName(wasSec, b.sec);
+      shown.layout.section = Object.assign({}, shown.layout.section, { name: shown.sec.name });
+      return;
+    }
+    kept.push(b);
   });
   kept.forEach(({ sec, layout }, i) => {
     const num = 'A-' + String(102 + i);

@@ -192,7 +192,7 @@ One model space + N layouts. Each layout has a sheet (Letter / Tabloid / Arch D 
 
 - **G-001** cover — drawing index plus a **parts schedule** (`MARK` / `QTY` / `DESCRIPTION` / `SIZE` / `MATL` when a material was named) or a room schedule on floor plans. Marks (`P-01`, or the mark on the callout) are assigned here.
 - **A-101** overall — the full model, with envelope height and width stamped only if the drawing had no dims of its own
-- **A-102…** one sheet per room or labeled station. That sheet’s spec table lists only the parts in that window. Mark bubbles sit on the view.
+- **A-102…** one sheet per room or labeled station, except that a room sheet whose printed window an earlier sheet at the same scale already shows in full folds into that sheet and lends it its name. That sheet’s spec table lists only the parts in that window. Mark bubbles sit on the view.
 
 **Marks.** An entity can carry `mark` plus `attributes` (`type`, `material`, `size`, `qty`, `label`). AI drafting writes them; `SHEETSET` writes them from callouts; JSON can carry them. Sheet → **Keynote legend** lists what this sheet actually shows. Sheet → **Mark schedule** tabulates `MARK` / `QTY` / `TYPE` / `MATERIAL` / `SIZE`.
 

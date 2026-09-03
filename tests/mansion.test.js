@@ -95,16 +95,44 @@ describe('a sheet that already shows a room in full is not printed again with a 
     box('POOL', 100, 0, 30, 28), box('TENNIS COURT', 130, 0, 30, 28),
     box('MOVIE THEATER', 100, 28, 30, 60), box('ARCHERY RANGE', 130, 28, 30, 60));
 
-  it('a room an earlier sheet already shows in full gets no sheet of its own', () => {
-    /* A pool and the corridor under it. The pool sheet at 1/2" prints a
-     * window 62 ft by 44 ft; the corridor sits inside it whole, so a
-     * second sheet of the same window titled CORRIDOR is waste. */
-    const ents = [].concat(box('POOL', 0, 28, 30, 28), box('CORRIDOR', 0, 20, 30, 8));
+  /* The sports block as it came back: pool and tennis court side by
+   * side, the two theaters below, the basketball court above. A-108 Pool
+   * and A-110 Tennis Court were the same 3/8" window with the title
+   * moved. */
+  const sports = () => [].concat(
+    box('POOL', 100, 0, 30, 28), box('TENNIS COURT', 130, 0, 30, 28),
+    box('MOVIE THEATER', 100, 28, 30, 60), box('ARCHERY RANGE', 130, 28, 30, 60),
+    box('BASKETBALL COURT', 100, -28, 60, 28));
+
+  it('pool and tennis court, one window at one scale, are one sheet', () => {
+    const sections = generateSheetSet(sports(), defaultLayers(), {}).filter(L => L.kind === 'section');
+    const pt = sections.filter(L => /POOL|TENNIS/i.test(L.name));
+    expect(pt.length, sections.map(L => L.name).join(' | ')).toBe(1);
+    expect(pt[0].name).toMatch(/POOL/);
+    expect(pt[0].name).toMatch(/TENNIS/);
+    expect(sections.length).toBe(3);
+    sections.forEach((L, i) => expect(L.sheetNumber).toBe('A-' + (102 + i)));
+  });
+
+  it('the fold runs both ways: the pool sorts first, the tennis window shows it whole', () => {
+    /* The pool section comes first and would have kept its narrower
+     * window; the later tennis sheet prints the pool in full, so the
+     * pool's slot takes the tennis viewport and both names. */
+    const sections = generateSheetSet(sports(), defaultLayers(), {}).filter(L => L.kind === 'section');
+    const pt = sections.find(L => /POOL/i.test(L.name));
+    const w = visibleWindow(pt);
+    expect(w[0]).toBeLessThanOrEqual(100.5);
+    expect(w[2]).toBeGreaterThanOrEqual(159.5);
+  });
+
+  it('a detail at a larger scale never folds into an overview', () => {
+    /* A closet at 1" = 1'-0" beside a hall at 1/4": the hall sheet shows
+     * the closet whole, and the closet still keeps its own sheet. */
+    const ents = [].concat(box('CLOSET', 0, 0, 4, 4), box('HALL', 4, 0, 90, 40));
     const sections = generateSheetSet(ents, defaultLayers(), {}).filter(L => L.kind === 'section');
-    expect(sections.length).toBe(1);
-    expect(sections[0].name).toMatch(/POOL/);
-    expect(sections[0].name).toMatch(/CORRIDOR/);
-    expect(sections[0].sheetNumber).toBe('A-102');
+    expect(sections.length).toBe(2);
+    const ppfs = sections.map(L => L.viewports[0].ppf);
+    expect(ppfs[0]).not.toBe(ppfs[1]);
   });
 
   it('the field set of fifteen rooms folds below the cap and every name survives', () => {
@@ -167,5 +195,21 @@ describe('a room the frame cuts through prints its walls and not half a label', 
      * reach the page, not one. */
     expect((pdf.match(/ h S\n/g) || []).length).toBeGreaterThanOrEqual(2);
     void fitViewport;
+  });
+});
+
+describe('a room label sits on a white card, over the hatch', () => {
+  it('paints the card after the hatch and right before the name', () => {
+    const room = { type: 'room', layer: 'ROOMS', name: 'POOL', area: 840,
+      pts: [[0, 0], [30, 0], [30, 28], [0, 28]], cx: 15, cy: 14 };
+    const hatch = { type: 'hatch', layer: 'HATCH', pts: [[0, 0], [30, 0], [30, 28], [0, 28]], pattern: 'ANSI31', scale: 1, angle: 0 };
+    const sheets = generateSheetSet([room, hatch], defaultLayers(), {});
+    const pdf = buildAllSheetsPDF([room, hatch], { sheets, layerVisible: () => true, projectName: 'T', dateStr: '2026-01-01' }).pdf;
+    const m = /1 g\n[\d.\-]+ [\d.\-]+ [\d.\-]+ [\d.\-]+ re f\nBT [^\n]*\(POOL  840 SF\)/.exec(pdf);
+    expect(m, 'no white card directly under the label').toBeTruthy();
+    /* Nothing hatch-like follows the label on that page: the label is
+     * the last thing drawn inside the viewport. */
+    const after = pdf.slice(m.index + m[0].length, pdf.indexOf('Q', m.index + m[0].length));
+    expect(/ l S/.test(after)).toBe(false);
   });
 });
