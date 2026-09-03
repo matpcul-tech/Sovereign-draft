@@ -46,7 +46,7 @@ export function guideHTML(){
       <li>Tap <kbd>DORMER</kbd>, then tap the roof slope where you want it — a 6-ft gabled dormer seats itself there.</li>
       <li>Tap <kbd>DWGS</kbd> — the documentation set regenerates: plans, four hidden-line elevations, a section, a roof plan, all on numbered sheets.</li>
     </ol>
-    <p>That loop — plan in, documented building out — is the reason this app exists.</p>
+    <p>That loop — plan in, documented building out — is the reason this app exists. Everything else here is detail.</p>
   </section>
 
   <section id="g-screen">
@@ -102,7 +102,7 @@ export function guideHTML(){
     <p class="guide-want">Walls of your own instead of the sample</p>
     <ol class="guide-steps">
       <li>Draw tab → <kbd>WALL</kbd>. Tap start, tap end. Keep tapping corners — walls heal as you draw: L-corners miter, T-junctions recut.</li>
-      <li>Mid-draw, type a length and Enter: <code>12'6"</code> runs exactly that far. <code>@8<45</code> is 8 feet at 45°.</li>
+      <li>Mid-draw, type a length and Enter: <code>12'6"</code> runs exactly that far. <code>@8&lt;45</code> is 8 feet at 45°.</li>
       <li>Turn on <kbd>ORTHO</kbd> (status bar or F8) to keep walls square while you learn.</li>
       <li>Close the loop. A closed wall loop is a room-in-waiting.</li>
     </ol>
@@ -117,8 +117,9 @@ export function guideHTML(){
     <p class="guide-want">A plan that reads like architecture</p>
     <ul class="guide-list">
       <li><b>Doors and windows</b> live under <kbd>SYMB</kbd>. Tap one, tap the wall — it cuts the host. Selected, drag the square to resize (type <code>2'6"</code> for exact), tap the diamond to flip swing.</li>
-      <li><b>Rooms</b> — type <kbd>ROOMS</kbd>. Every closed wall loop becomes a named room with live area. Place <kbd>TEXT</kbd> inside a loop to name it.</li>
+      <li><b>Rooms</b> — type <kbd>ROOMS</kbd>. Every closed wall loop becomes a named room with live area. Place <kbd>TEXT</kbd> inside a loop to name it; with auto-rooms on, labels follow as walls move.</li>
       <li><b>Fixtures</b> (stove, bed, tub) are in the same drawer, with rotate and flip grips.</li>
+      <li><b>Explode</b> (<kbd>XP</kbd>) turns any of them into ordinary lines and arcs.</li>
     </ul>
   </section>
 
@@ -148,7 +149,7 @@ export function guideHTML(){
       <li><kbd>ROT</kbd> (<kbd>R</kbd>) — drag turns the solid in 15° steps.</li>
       <li><kbd>MEAS</kbd> (<kbd>M</kbd>) — tap two points for the true 3D distance.</li>
     </ul>
-    <p>Everything snaps to real geometry. Mid-drag, type a number and Enter for an exact distance. Every change is one undo away.</p>
+    <p>Everything snaps to real geometry — corners to corners, edges to midpoints — and the readout names the lock: <code>vertex</code>, <code>edge</code>, <code>face</code>. Mid-drag, type a number and Enter for an exact distance; hold alt to move free. Every change is one undo away.</p>
   </section>
 
   <section id="g-light">
@@ -156,7 +157,7 @@ export function guideHTML(){
     <p class="guide-want">A building, and a picture to show for it</p>
     <span class="gcmd"><b>SUN</b> JUN 21 14 40.7 <span>— the real sun: month, day, hour, latitude. True shadows.</span></span>
     <span class="gcmd"><b>MAT</b> ROOF #7a3b2a <span>— paint a solid, layer, or kind with a colour.</span></span>
-    <span class="gcmd"><b>RENDER</b> 1600 <span>— a print-resolution still. Add PLACE to pin it on the drawing. Add LEVEL to keep verticals vertical.</span></span>
+    <span class="gcmd"><b>RENDER</b> 1600 <span>— a print-resolution still, downloaded. Add PLACE to pin it on the drawing. Add LEVEL to keep verticals vertical.</span></span>
     <span class="gcmd"><b>VIEW SAVE</b> HERO <span>— remember this camera. VIEW HERO returns to it exactly.</span></span>
     <span class="gcmd"><b>WALK</b> 12 <span>— a 12-second flythrough of saved views, as video.</span></span>
     <span class="gcmd"><b>TURNTABLE</b> 8 <span>— one full orbit of the model, as video.</span></span>
@@ -167,10 +168,10 @@ export function guideHTML(){
     <p class="guide-want">Paper, or the file a consultant asked for</p>
     <ul class="guide-list">
       <li>Top tabs are sheets. <kbd>G-001</kbd> is the cover. Wheel or pinch zooms inside a sheet; double-tap refits.</li>
-      <li>Menu → <b>Export PDF</b> issues 24×36 pages, title block, ISO lineweights.</li>
+      <li>Menu → <b>Export PDF</b> issues 24×36 pages, title block, ISO lineweights, one page per sheet.</li>
       <li>Menu → <b>Export DXF</b> is R2000 — the AutoCAD Open path. <b>DWG</b> is the same content in a wrapper this app reopens.</li>
       <li><b>STL / OBJ / GLB</b> in the 3D view export the mesh. Not STEP.</li>
-      <li>The drawing autosaves on this device. Menu → Save project writes the <code>.json</code>.</li>
+      <li>The drawing autosaves on this device and never leaves it until you export. Menu → Save project writes the <code>.json</code>, which always carries everything, placed renders included.</li>
     </ul>
   </section>
 
@@ -195,7 +196,8 @@ export function guideHTML(){
           <tr><td>SE</td><td>Section cut with a true hatched section</td></tr>
           <tr><td>KEYMAP ACAD</td><td>AutoCAD hands: E erase, M move, U undo, X explode</td></tr>
           <tr><td>2D / 3D</td><td>Plan and model</td></tr>
-          <tr><td>HELP</td><td>This guide</td></tr>
+          <tr><td>UNDO / REDO</td><td>What they say (Ctrl-Z / Ctrl-Y too)</td></tr>
+<tr><td>HELP</td><td>This guide</td></tr>
         </tbody>
       </table>
     </div>
