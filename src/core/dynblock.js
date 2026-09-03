@@ -15,11 +15,19 @@ export function snapWidth(w, kind){
   return Math.max(min, Math.min(8, s));
 }
 
+/* A door belongs on the door layer, not on FIXTURES because that was
+ * the first default anybody wrote. The block says what it is. */
+function defaultLayerFor(def){
+  if (def === 'door' || def === 'window') return 'DOORS';
+  if (def === 'sym:Door' || def === 'sym:Window') return 'DOORS';
+  return 'FIXTURES';
+}
+
 export function makeInsert(opts){
   opts = opts || {};
   return {
     type: 'insert',
-    layer: opts.layer || 'FIXTURES',
+    layer: opts.layer || defaultLayerFor(opts.def),
     name: opts.name || 'Block',
     def: opts.def || 'sym',
     x: opts.x || 0,
@@ -67,8 +75,15 @@ function xformFrags(frags, e){
     return [e.x + lx * c - ly * si, e.y + lx * si + ly * c];
   };
   const addAng = e.rot || 0;
+  /* Block geometry lands on the insert's layer, the way AutoCAD resolves
+   * block content drawn on layer 0. The fragment makers name a layer for
+   * the standalone case; an inserted block follows its insert, so moving
+   * a door to a layer of your own moves its lines and swing arc too
+   * instead of leaving them behind on DOORS. */
+  const onLayer = e.layer || null;
   return (frags || []).map(src => {
     const f = deep(src);
+    if (onLayer) f.layer = onLayer;
     if (f.type === 'line'){
       const a = pt(f.x1, f.y1), b = pt(f.x2, f.y2);
       f.x1 = a[0]; f.y1 = a[1]; f.x2 = b[0]; f.y2 = b[1];

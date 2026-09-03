@@ -3,7 +3,7 @@ import { makeLayout, fitViewport, paperToModel, modelToPaper, sheetOf, pickSheet
 import { cabin24x36 } from '../src/core/demo.js';
 import { membersBBox } from '../src/core/entities.js';
 import { buildPDF } from '../src/io/pdf.js';
-import { buildDXF, parseDXF } from '../src/io/dxf.js';
+import { buildDXF, parseDXF, openDXF } from '../src/io/dxf.js';
 import { defaultLayers } from '../src/core/state.js';
 
 describe('layouts', () => {
@@ -60,8 +60,12 @@ describe('sample cabin', () => {
     const dxf = buildDXF(ents, defaultLayers(), { ver: 'R12' });
     expect(dxf).toContain('LTYPE');
     expect(dxf).toContain('CENTER');
+    /* parseDXF is the raw reader, so it sees the exported AIA names;
+     * openDXF is the one that maps them back to ours. */
     const out = parseDXF(dxf, n => String(n).toUpperCase());
     expect(out.length).toBeGreaterThan(10);
-    expect(out.some(e => e.layer === 'WALLS')).toBe(true);
+    expect(out.some(e => e.layer === 'A-WALL')).toBe(true);
+    const back = openDXF(dxf, n => String(n).toUpperCase()).entities;
+    expect(back.some(e => e.layer === 'WALLS')).toBe(true);
   });
 });

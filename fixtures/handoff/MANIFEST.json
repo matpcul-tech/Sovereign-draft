@@ -1,0 +1,50 @@
+{
+  "acadver": "AC1015",
+  "insunits": 2,
+  "unitsMean": "decimal feet",
+  "entityCount": 181,
+  "types": {
+    "line": 95,
+    "arc": 3,
+    "hatch": 3,
+    "text": 60,
+    "dim": 4,
+    "poly": 5,
+    "circle": 11
+  },
+  "layersInUse": [
+    "A-ANNO-CNTR",
+    "A-ANNO-DIMS",
+    "A-ANNO-PATT",
+    "A-ANNO-SCHD",
+    "A-ANNO-TEXT",
+    "A-AREA-IDEN",
+    "A-DOOR",
+    "A-FLOR-FIXT",
+    "A-WALL",
+    "S-GRID"
+  ],
+  "layerTable": [
+    "A-ANNO-CNTR",
+    "A-ANNO-DIMS",
+    "A-ANNO-NOTE",
+    "A-ANNO-PATT",
+    "A-ANNO-REFR",
+    "A-ANNO-SCHD",
+    "A-ANNO-SYMB",
+    "A-ANNO-TEXT",
+    "A-AREA-IDEN",
+    "A-DOOR",
+    "A-FLOR-FIXT",
+    "A-SECT",
+    "A-WALL",
+    "DEFPOINTS",
+    "S-GRID"
+  ],
+  "extents": [
+    -0.25,
+    -1,
+    54.5,
+    25
+  ]
+}

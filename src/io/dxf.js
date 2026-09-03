@@ -4,6 +4,7 @@
  * header is missing, treats huge coordinates (max > 2000) as millimetres.
  */
 import { fmtN, dimGeom, arcPoints } from '../core/geometry.js';
+import { toAIA, fromAIA, mapEntityLayers, mapLayerTable } from './layermap.js';
 import { LTYPE_NAMES, LINETYPES } from '../core/style.js';
 import { hatchLines, HATCH_PATTERNS, REFERENCE_SCALE } from '../core/hatch.js';
 import { explodeForIO, isComposite, membersBBox, dedupeRoomLabels } from '../core/entities.js';
@@ -24,6 +25,12 @@ function lw370(e){
 export function buildDXF(entities, layers, opts){
   opts = opts || {};
   entities = dedupeRoomLabels(entities);
+  /* The file leaves with layer names a drafter recognizes. Pass
+   * aia: false to write the app's own names instead. */
+  if (opts.aia !== false){
+    entities = mapEntityLayers(entities, toAIA);
+    layers = mapLayerTable(layers, toAIA);
+  }
   const r2000 = opts.ver === 'R2000' || opts.ver === 'AC1015';
   const L = [];
   function w(...args){ for (const a of args) L.push(String(a)); }
@@ -817,7 +824,10 @@ function peekInsUnits(txt){
 
 export function openDXF(txt, ensureLayer){
   const sink = {};
-  const entities = parseDXF(txt, ensureLayer || (n => n || 'WALLS'), sink);
+  /* A-WALL comes back as WALLS, so a file this app wrote reopens on the
+   * layers it left, and a consultant's AIA-named DXF lands on ours. */
+  const ens = ensureLayer || (n => n || 'WALLS');
+  const entities = parseDXF(txt, n => ens(fromAIA(n) || 'WALLS'), sink);
   const insunits = peekInsUnits(txt);
   return {
     entities,

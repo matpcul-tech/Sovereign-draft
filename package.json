@@ -39,7 +39,8 @@
     "draft": "node bin/sovereign-draft.js",
     "examples": "node scripts/write-examples.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "accept": "node scripts/acceptance.mjs"
+    "accept": "node scripts/acceptance.mjs",
+    "handoff": "node scripts/handoff.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",

@@ -23,8 +23,8 @@ describe('24×36 cabin sample', () => {
     expect(dxf).toContain('AC1009');
     expect(dxf).toContain('LTYPE');
     expect(dxf).toContain('CENTER');
-    expect(dxf).toContain('WALLS');
-    expect(dxf).toContain('DOORS');
+    expect(dxf).toContain('A-WALL');
+    expect(dxf).toContain('A-DOOR');
     expect(dxf).toContain('$INSUNITS');
   });
 });

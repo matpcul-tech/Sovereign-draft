@@ -151,7 +151,7 @@ describe('sample cabin uses dynamic inserts', () => {
   it('exports the door swing as ARC in R12 DXF', () => {
     const dxf = buildDXF(ents, defaultLayers(), { ver: 'R12' });
     expect(dxf).toContain('ARC');
-    expect(dxf).toContain('DOORS');
+    expect(dxf).toContain('A-DOOR');
   });
 });
 

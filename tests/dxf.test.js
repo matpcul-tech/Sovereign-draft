@@ -16,7 +16,9 @@ describe('buildDXF', () => {
   it('emits an R12 header, layer table and EOF', () => {
     const dxf = buildDXF([], layers);
     expect(dxf).toContain('AC1009');
-    expect(dxf).toContain('WALLS');
+    /* The file leaves with the name a drafter reads, not ours. */
+    expect(dxf).toContain('A-WALL');
+    expect(dxf).not.toContain('\nWALLS\r');
     expect(dxf.trim().endsWith('EOF')).toBe(true);
   });
   it('stamps $INSUNITS feet', () => {
