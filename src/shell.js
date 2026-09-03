@@ -303,6 +303,11 @@ export function shellHTML(){
   <div id="proplist" class="proplist"></div>
   <div class="subtle" id="propHint">Select an object to edit layer, linetype, lineweight.</div>
 </div>
+<div class="sheet" id="sheetProjects">
+  <h3><i>Projects on this device</i></h3>
+  <div id="projlist"></div>
+  <button class="addlayer" id="btnNewProject">+ New drawing</button>
+</div>
 <div class="sheet" id="sheetHistory">
   <h3><i>Command history</i></h3>
   <pre id="cmdhist" class="cmdhist"></pre>
@@ -329,7 +334,7 @@ export function shellHTML(){
   <button class="mrow" id="mOBJ"><svg viewBox="0 0 24 24"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5"/></svg>Export OBJ<small>3D model exchange</small></button>
   <button class="mrow" id="mFont"><svg viewBox="0 0 24 24"><path d="M5 20V5h9a4 4 0 0 1 0 8H5"/><path d="M12 13l5 7"/></svg>Embed a font<small>TrueType · plots any script</small></button>
   <button class="mrow" id="mXref"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="9" height="9" rx="1"/><rect x="12" y="12" width="9" height="9" rx="1"/><path d="M8 12v4h4"/></svg>Attach xref<small>JSON · DXF as underlay</small></button>
-  <button class="mrow" id="mSaveJSON"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg>Save project<small>.json</small></button>
+  <button class="mrow" id="mSaveJSON"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg>Save a copy<small>.sdraft</small></button>
   <button class="mrow" id="mShare"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>Copy share link<small>no server · URL hash</small></button>
   <button class="mrow" id="mExportHTML"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Export HTML<small>email a drawing</small></button>
   <button class="mrow" id="mExportDXF"><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Export DXF<small>R12 / R2000 · feet</small></button>
@@ -349,6 +354,7 @@ export function shellHTML(){
   <button class="mrow" id="mTakeoff"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 4v16"/></svg>Quantity takeoff<small>walls · doors · rooms</small></button>
   <button class="mrow" id="mOverkill"><svg viewBox="0 0 24 24"><path d="M4 12h16M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg>Overkill<small>drop duplicates</small></button>
   <button class="mrow" id="mTrace"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1"/><circle cx="9" cy="11" r="2"/><path d="m21 16-5-5-4 4-2-2-5 5"/></svg>Trace image<small>place an underlay</small></button>
+  <button class="mrow" id="mProjects"><svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>Projects<small>every job on this device</small></button>
   <button class="mrow" id="mGuide"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Field Guide<small>how to use everything</small></button>
   <button class="mrow" id="mHistory"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h10M4 19h13"/></svg>Command history<small>this session</small></button>
   <button class="mrow" id="mSettings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>AI settings<small>API key, model</small></button>
@@ -363,9 +369,9 @@ export function shellHTML(){
   <button class="mrow" id="mNew"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg><span id="mNewLabel">New drawing</span></button>
   <div class="subtle" id="menuFooter">Issued 2D, free, DXF/DWG out. Open a DXF from AutoCAD, LibreCAD or DraftSight — units follow $INSUNITS. Drawing stays on this device until you export.</div>
 </div>
-<input type="file" id="fileOpen" accept=".dxf,.json,.dwg,.stl,application/json,application/dxf,model/stl" style="display:none">
+<input type="file" id="fileOpen" accept=".dxf,.json,.sdraft,.dwg,.stl,application/json,application/dxf,model/stl" style="display:none">
 <input type="file" id="fileDXF" accept=".dxf,application/dxf" style="display:none">
-<input type="file" id="fileXref" accept=".dxf,.json,.dwg,application/json,application/dxf" style="display:none">
+<input type="file" id="fileXref" accept=".dxf,.json,.sdraft,.dwg,application/json,application/dxf" style="display:none">
 <input type="file" id="fileFont" accept=".ttf,.otf,font/ttf,font/sfnt" style="display:none">
 <input type="file" id="fileImage" accept="image/*" style="display:none">
 <div class="sheet sheet-guide" id="sheetGuide"></div>

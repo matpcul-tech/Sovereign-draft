@@ -805,7 +805,7 @@ export function sniffDrawing(text, filename){
   const n = String(filename || '').toLowerCase();
   const t = String(text || '').replace(/^\uFEFF/, '');
   if (n.endsWith('.dwg') || /^AC10\d{2}/.test(t)) return 'dwg';
-  if (n.endsWith('.json') || t.trim().startsWith('{')) return 'json';
+  if (n.endsWith('.json') || n.endsWith('.sdraft') || t.trim().startsWith('{')) return 'json';
   if (n.endsWith('.dxf') || (/\bSECTION\b/.test(t) && /\bENTITIES\b/.test(t))) return 'dxf';
   return 'unknown';
 }

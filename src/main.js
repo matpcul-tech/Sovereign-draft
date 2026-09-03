@@ -18,11 +18,13 @@ import { isDwgBuffer, parseDwg } from './io/dwg.js';
 import { buildPDF, buildAllSheetsPDF, scaleLabel } from './io/pdf.js';
 import { renderPNG } from './io/png.js';
 import { serializeProject, validateProject, applyProject, autosave, loadAutosave } from './io/project.js';
+import { listProjects, saveProject, openProject, lastProjectId, renameProject,
+  deleteProject, duplicateProject, migrateLegacyAutosave, slugify, shouldOfferSample } from './io/projects.js';
 import { buildSVG } from './io/svg.js';
 import { generateDraft, realizeResponse, realizeDocument, serializeForAI } from './ai/draft.js';
 import { loadAISettings, saveAISettings } from './ai/settings.js';
 import { shellHTML } from './shell.js';
-import { makeLayout, makeViewport, fitViewport, SHEETS, TITLE_BLOCK_H } from './core/layout.js';
+import { makeLayout, makeViewport, fitViewport, SHEETS, TITLE_BLOCK_H , defaultLayouts} from './core/layout.js';
 import { membersBBox, entBBox } from './core/entities.js';
 import { addSheet, addViewToSheet, normalizeSheets, findSheet } from './core/document.js';
 import { buildKeynoteLegend, buildMarkSchedule, keynoteRows, collectMarks, scheduleColumns, markScheduleCSV, paperKeynoteColW, paperScheduleColW } from './core/keynote.js';
@@ -81,12 +83,23 @@ export function boot(root){
     draw();
     if (state.view3d) syncOpen3d();
     clearTimeout(autosaveTimer);
-    autosaveTimer = setTimeout(() => autosave(state), 800);
+    autosaveTimer = setTimeout(() => { saveProject(state); autosave(state); }, 800);
   });
 
-  const restored = (document.body && document.body.classList.contains('embed')) ? null : loadAutosave();
-  if (restored && (restored.entities.length || restored.userBlocks.length)){
+  const embedded = document.body && document.body.classList.contains('embed');
+  /* Earlier builds kept one unnamed slot. Carry it into a named job so
+   * nobody's last session vanishes the day projects arrive. */
+  if (!embedded) migrateLegacyAutosave();
+  /* The job people were last in, by name, beats a generic restore. */
+  const lastId = embedded ? null : lastProjectId();
+  const restored = embedded ? null : (lastId ? openProject(lastId) : loadAutosave());
+  /* A named job is restored even when it is empty: someone who started
+   * "Addition" and closed the tab comes back to Addition, not to the
+   * sample. Only the old unnamed slot still has to carry content to be
+   * worth restoring. */
+  if (restored && (restored.projectId || restored.entities.length || restored.userBlocks.length)){
     applyProject(state, restored);
+    state.projectId = restored.projectId || null;
     if ($('projName')) $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
     if (state.entities.some(e2 => e2 && e2.srcOmitted)){
       setTimeout(() => toast('A placed image was too big for the autosave. Its pixels live in the saved project file; re-render or reopen that file to bring them back.', 6000), 600);
@@ -104,8 +117,14 @@ export function boot(root){
   window.addEventListener('resize', onResize);
   unbindResize = () => window.removeEventListener('resize', onResize);
   resize();
-  if (restored && restored.entities.length){ zoomFit(); toast('Restored your last session'); }
-  else homeView();
+  if (restored && restored.entities.length){
+    zoomFit();
+    toast(restored.projectId ? 'Opened ' + state.projectName : 'Restored your last session');
+  }
+  else {
+    homeView();
+    if (restored && restored.projectId) toast('Opened ' + state.projectName);
+  }
   afterChange();
   wireUi();
   /* First run: an empty sheet sells nothing. With no session to restore,
@@ -113,7 +132,7 @@ export function boot(root){
    * first paint is a drawing, and say what one command can do with it. */
   const isEmbed = document.body && document.body.classList.contains('embed');
   const hasShare = typeof location !== 'undefined' && tokenFromHash(location.hash || '');
-  if (!isEmbed && !hasShare && !(restored && restored.entities.length)){
+  if (shouldOfferSample({ embedded: isEmbed, share: hasShare, restored })){
     const btn = $('mSample');
     if (btn){
       btn.click();
@@ -589,6 +608,9 @@ function wireUi(){
 
   $('projName') && $('projName').addEventListener('change', function(){
     state.projectName = this.value.trim() || 'Untitled';
+    /* Renaming here renames the job in the list, not just this session. */
+    if (state.projectId) renameProject(state.projectId, state.projectName);
+    saveProject(state);
     autosave(state);
   });
   function fillFirmFields(){
@@ -791,8 +813,11 @@ function wireUi(){
   });
   $('mSaveJSON') && $('mSaveJSON').addEventListener('click', () => {
     closeSheets();
-    download(fileSlug() + '-project.json', serializeProject(state, true), 'application/json');
-    toast('Project saved');
+    /* The drawing is a document, so it leaves as one file with the job's
+     * own name on it: cabin.sdraft, not sovereign-draft-project.json.
+     * The body is still JSON, so an old .json opens here unchanged. */
+    download(fileSlug() + '.sdraft', serializeProject(state, true), 'application/json');
+    toast('Saved ' + fileSlug() + '.sdraft');
   });
 
   function nameFromFile(filename){
@@ -849,6 +874,7 @@ function wireUi(){
         }
         pushUndo();
         applyProject(state, p);
+        state.projectId = null;
         closeSheets(); afterChange(); zoomFit(); draw();
         toast('Opened ' + (p.name || 'project'));
       } catch (err){ toast('Open failed: ' + err.message); }
@@ -1151,6 +1177,8 @@ function wireUi(){
     pushUndo();
     state.entities = []; state.selIds = []; ix.polyPts = [];
     state.projectName = 'Untitled';
+    /* A blank sheet is a new job, not this job emptied. */
+    state.projectId = null;
     if ($('projName')) $('projName').value = '';
     closeSheets(); afterChange(); homeView(); draw();
   });
@@ -1160,6 +1188,7 @@ function wireUi(){
     pushUndo();
     cabin24x36().forEach(e => addEntity(e));
     state.projectName = '24x36 Cabin';
+    state.projectId = null;
     state.autoRooms = true;
     if ($('projName')) $('projName').value = '24x36 Cabin';
     state.layouts = generateSheetSet(state.entities, state.layers, { projectName: state.projectName });
@@ -1378,6 +1407,109 @@ function wireUi(){
     };
     rd.readAsDataURL(f);
     ev.target.value = '';
+  });
+  /* ---------- projects ----------
+   * The list a designer opens in the morning: every job on this device,
+   * newest first, one tap to open. Switching jobs saves the current one
+   * first, so nothing is lost by looking. */
+  function fmtWhen(ms){
+    if (!ms) return '';
+    const d = Math.floor((Date.now() - ms) / 86400000);
+    if (d <= 0) return 'today';
+    if (d === 1) return 'yesterday';
+    if (d < 30) return d + ' days ago';
+    return new Date(ms).toLocaleDateString();
+  }
+  function renderProjects(){
+    const box = $('projlist');
+    if (!box) return;
+    box.innerHTML = '';
+    const list = listProjects();
+    if (!list.length){
+      const p = document.createElement('div');
+      p.className = 'pj-empty';
+      p.textContent = 'No saved jobs yet. Draw something and it lands here by name.';
+      box.appendChild(p);
+      return;
+    }
+    list.forEach(rec => {
+      const row = document.createElement('div');
+      row.className = 'projrow' + (rec.id === state.projectId ? ' on' : '');
+      const open = document.createElement('button');
+      open.className = 'pj-open';
+      open.innerHTML = '<div class="pj-name"></div><div class="pj-meta"></div>';
+      open.querySelector('.pj-name').textContent = rec.name;
+      open.querySelector('.pj-meta').textContent =
+        rec.entities + (rec.entities === 1 ? ' object' : ' objects') +
+        (fmtWhen(rec.updated) ? ' \u00b7 ' + fmtWhen(rec.updated) : '');
+      open.addEventListener('click', () => openNamed(rec.id));
+      row.appendChild(open);
+      const act = (label, cls, fn) => {
+        const b = document.createElement('button');
+        b.className = 'pj-act' + (cls ? ' ' + cls : '');
+        b.textContent = label;
+        b.addEventListener('click', fn);
+        row.appendChild(b);
+      };
+      act('Rename', '', () => {
+        const name = prompt('Name this job', rec.name);
+        if (name && name.trim()){
+          renameProject(rec.id, name.trim());
+          if (rec.id === state.projectId){
+            state.projectName = name.trim();
+            if ($('projName')) $('projName').value = state.projectName;
+          }
+          renderProjects(); afterChange();
+        }
+      });
+      act('Copy', '', () => {
+        const nid = duplicateProject(rec.id);
+        renderProjects();
+        toast(nid ? 'Duplicated' : 'Could not duplicate: storage is full');
+      });
+      act('Delete', 'warn', () => {
+        if (!confirm('Delete "' + rec.name + '"? This cannot be undone.')) return;
+        deleteProject(rec.id);
+        if (rec.id === state.projectId) state.projectId = null;
+        renderProjects();
+        toast(rec.name + ' deleted');
+      });
+      box.appendChild(row);
+    });
+  }
+  function openNamed(id){
+    if (id === state.projectId){ closeSheets(); return; }
+    /* Keep what is on screen before leaving it. */
+    if (state.entities.length || state.solids.length) saveProject(state);
+    const p = openProject(id);
+    if (!p){ toast('That job could not be opened'); renderProjects(); return; }
+    applyProject(state, p);
+    state.projectId = id;
+    if ($('projName')) $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
+    closeSheets(); afterChange(); zoomToPlan(); draw();
+    renderLayouts(); renderSpaceTabs();
+    toast('Opened ' + state.projectName);
+  }
+  $('mProjects') && $('mProjects').addEventListener('click', () => {
+    renderProjects();
+    openSheet('sheetProjects');
+  });
+  $('btnNewProject') && $('btnNewProject').addEventListener('click', () => {
+    if (state.entities.length || state.solids.length) saveProject(state);
+    const name = prompt('Name the new job', 'Untitled');
+    if (name === null) return;
+    pushUndo();
+    state.entities = []; state.solids = []; state.selIds = [];
+    state.layouts = defaultLayouts(); state.currentLayout = state.layouts[0].id;
+    state.space = 'model';
+    state.projectName = (name.trim() || 'Untitled');
+    state.projectId = null;
+    if ($('projName')) $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
+    closeSheets(); afterChange(); homeView(); draw();
+    renderLayouts(); renderSpaceTabs();
+    saveProject(state);
+    renderProjects();
+    toast(state.projectName + ' started');
   });
   $('mGuide') && $('mGuide').addEventListener('click', () => openGuide());
   $('guideClose') && $('guideClose').addEventListener('click', closeSheets);

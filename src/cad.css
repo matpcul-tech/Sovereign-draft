@@ -323,3 +323,17 @@ body.embed #btnGuide{display:none !important}
 @media (prefers-reduced-motion: reduce){
   .guide-toc a{transition:none}
 }
+
+/* ---------- projects ---------- */
+#projlist{display:flex;flex-direction:column;gap:0;max-height:46vh;overflow:auto}
+.projrow{display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid var(--line)}
+.projrow:last-child{border-bottom:0}
+.projrow .pj-open{flex:1;min-width:0;text-align:left;background:none;border:none;padding:0}
+.projrow .pj-name{font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.projrow.on .pj-name{color:var(--gold)}
+.projrow .pj-meta{font-size:11px;color:var(--ink-dim);font-family:ui-monospace,Menlo,Consolas,monospace}
+.projrow .pj-act{flex:0 0 auto;height:28px;padding:0 9px;border-radius:8px;border:1px solid var(--line);
+  background:var(--navy-2);color:var(--ink-dim);font-size:11px;font-weight:600}
+.projrow .pj-act:hover{border-color:var(--gold);color:var(--gold)}
+.projrow .pj-act.warn:hover{border-color:var(--terra);color:var(--terra)}
+#projlist .pj-empty{padding:14px 4px;color:var(--ink-dim);font-size:13px}

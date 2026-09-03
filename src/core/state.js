@@ -42,6 +42,8 @@ export function defaultLayers(){
 
 export const state = {
   projectName: 'Untitled',
+  /* Which named job on this device this drawing is. */
+  projectId: null,
   firm: { company: '', copyright: '', drawnBy: '' },
   layers: defaultLayers(),
   currentLayer: 'WALLS',
