@@ -233,11 +233,14 @@ export function buildLegend(entities, layers, opts){
     items.push({ kind: 'header', name: 'ROOMS' });
     rooms.forEach(r => {
       const sf = Math.round(r.area != null ? r.area : 0);
+      /* The name is the ITEM and the area the MEANING. These rows used
+       * to print a blank first column and "BEDROOM 1 168 SF" jammed
+       * into the second. */
       items.push({
         kind: 'callout',
-        mark: '',
-        name: r.name || 'ROOM',
-        desc: sf ? sf + ' SF' : '',
+        mark: r.name || 'ROOM',
+        name: sf ? sf + ' SF' : '',
+        desc: '',
         swatch: '#4ade80'
       });
     });

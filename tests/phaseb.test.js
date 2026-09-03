@@ -24,18 +24,17 @@ import {
  * reason. The guard's job, catching unintended pipeline changes against a
  * stable input, continues from the corrected cabin. */
 const PRE_REFACTOR_PDF = {
-  /* Regenerated 2026-09-03 (third pass): the room schedule's FINISH
-   * column printed the word LIVE on issued paper. LIVE was an internal
-   * marker meaning "this row came from a room entity rather than a
-   * hatch", and it reached the builder's sheet as a finish. Rooms now
-   * print their own finish, or a dash when none is set. That is the
-   * whole delta in these bytes: the revision block added in the same
-   * change is inert on a sheet carrying no revisions, which is why
-   * reverting only the FINISH fix put every one of these hashes back. */
+  /* Regenerated 2026-09-03 (fourth pass): room labels are a paper
+   * height on sheets. A 14x12 bedroom's name printed half an inch tall
+   * at 1/2" and vanished at 1/16" because the label was 1 ft of model
+   * text. It is now 1/8" on paper at every scale, and the label shrinks
+   * to the room before it would cross a wall. cabin:fit and cabin:9 did
+   * not move: at 1/8" scale a 1/8" label is exactly the 1 ft it was,
+   * which is the conversion being exact. */
   'cabin:fit': 'ab1c108c585c5eff',
-  'cabin:18': 'c120d4f53ba57c31',
+  'cabin:18': 'd4a8a5d68b53b59d',
   'cabin:9': 'ab1c108c585c5eff',
-  'cabin:4.5': 'b9f64c54d679ce60'
+  'cabin:4.5': 'ff722c9a60f2a4ac'
 };
 
 function pdfHash(ents, ppf, name){

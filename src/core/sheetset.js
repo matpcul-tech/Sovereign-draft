@@ -95,6 +95,20 @@ function unionBBox(a, b){
   ];
 }
 
+/* The model window a sheet's first viewport prints, in feet. */
+export function visibleWindow(layout){
+  const vp = layout && layout.viewports && layout.viewports[0];
+  if (!vp || !(vp.ppf > 0)) return [1e9, 1e9, -1e9, -1e9];
+  const w = vp.pw * 72 / vp.ppf, h = vp.ph * 72 / vp.ppf;
+  return [vp.mx - w / 2, vp.my - h / 2, vp.mx + w / 2, vp.my + h / 2];
+}
+
+function bboxInside(inner, outer, tol){
+  const t = tol || 0;
+  return inner[0] >= outer[0] - t && inner[1] >= outer[1] - t &&
+    inner[2] <= outer[2] + t && inner[3] <= outer[3] + t;
+}
+
 function mergeSectionName(a, b){
   const left = String(a.name || '').split(' / ')[0].split(' – ')[0];
   const right = String(b.name || '').split(' / ').pop().split(' – ').pop();
@@ -290,23 +304,45 @@ export function generateSheetSet(entities, layers, opts){
     section: { bbox: detected.overall, name: 'Overall', source: 'overall' }
   }, coverFit));
 
-  detected.sections.forEach((sec, i) => {
-    const num = 'A-' + String(102 + i);
-    const title = sheetTitle(sec.name);
-    /* Fit each sheet to its own part, not to a band the width of the body.
-     * A 132 ft tank forces its own scale down the ladder until it fits. */
+  /* Fit each sheet to its own part, not to a band the width of the body.
+   * A 132 ft tank forces its own scale down the ladder until it fits. */
+  const built = detected.sections.map(sec => {
     const scoped = sectionScopedParts(parts, sec, body);
     const sf = sectionFit(entities, scoped, sec, body);
-    layouts.push(buildSheet({
-      id: 'A' + (102 + i),
-      sheetNumber: num,
-      name: num + ' ' + title,
-      kind: 'section',
-      sheet,
-      ppf: 18,
-      viewName: 'PLAN',
+    const layout = buildSheet({
+      id: 'Atmp', sheetNumber: 'A-000', name: 'A-000 ' + sheetTitle(sec.name),
+      kind: 'section', sheet, ppf: 18, viewName: 'PLAN',
       section: { bbox: sec.bbox, geo: sf.geo, name: sec.name, source: sec.source }
-    }, sf.fit));
+    }, sf.fit);
+    return { sec, sf, layout };
+  });
+  /* Four rooms that an earlier sheet already shows in full are not four
+   * more sheets of that drawing with the title moved. A section whose
+   * whole box sits inside what an earlier sheet's viewport prints folds
+   * into that sheet and lends it its name. The test is the printed
+   * window, not the fit box: at 1/2" a sheet shows far more than the
+   * room it was fitted to. */
+  const kept = [];
+  built.forEach(b => {
+    const host = b.sec.source === 'room'
+      ? kept.find(k => k.sec.source === 'room' && bboxInside(b.sec.bbox, visibleWindow(k.layout), 0.5))
+      : null;
+    if (!host){ kept.push(b); return; }
+    host.sec = {
+      name: mergeSectionName(host.sec, b.sec),
+      bbox: unionBBox(host.sec.bbox, b.sec.bbox),
+      source: host.sec.source || b.sec.source
+    };
+    host.layout.section = Object.assign({}, host.layout.section, {
+      name: host.sec.name, bbox: host.sec.bbox, geo: unionBBox(host.layout.section.geo || host.sf.geo, b.sf.geo)
+    });
+  });
+  kept.forEach(({ sec, layout }, i) => {
+    const num = 'A-' + String(102 + i);
+    layout.id = 'A' + (102 + i);
+    layout.sheetNumber = num;
+    layout.name = num + ' ' + sheetTitle(sec.name);
+    layouts.push(layout);
   });
 
   const colW = legendColW(sheet);

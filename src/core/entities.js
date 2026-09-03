@@ -137,7 +137,38 @@ export function dedupeRoomLabels(list){
   });
 }
 
-export function explodeForIO(e){
+/* Room label heights on paper. A name reads at 1/8"; when the room is
+ * too narrow for name and area together the area goes, then the name
+ * drops to 3/32", and a room narrower than its own name at that size
+ * prints no label rather than one that runs through the wall. */
+export const ROOM_LABEL_IN = 0.125;
+export const ROOM_LABEL_MIN_IN = 0.09375;
+
+/* The label a room prints: text and model-space size. With an annoPpf the
+ * size is a paper height converted at that scale, so the same room reads
+ * 1/8" tall on a 1/16" cover and on a 1/2" detail. Without one the label is
+ * the 1 ft model text it always was, so DXF and screen do not move. */
+export function roomLabelSpec(e, annoPpf){
+  const sf = Math.round(e.area != null ? e.area : 0) + ' SF';
+  const name = e.name || 'ROOM';
+  const full = e.sfOnly ? sf : name + '  ' + sf;
+  if (!(annoPpf > 0)) return { content: full, size: 1.0 };
+  const toFt = inch => inch * 72 / annoPpf;
+  let x0 = 1e9, x1 = -1e9;
+  (e.pts || []).forEach(pt => { if (pt[0] < x0) x0 = pt[0]; if (pt[0] > x1) x1 = pt[0]; });
+  const roomW = x1 > x0 ? (x1 - x0) : 1e9;
+  const fits = (content, size) => boxWidth(content, size) <= roomW * 0.92;
+  const tries = e.sfOnly
+    ? [[sf, ROOM_LABEL_IN], [sf, ROOM_LABEL_MIN_IN]]
+    : [[full, ROOM_LABEL_IN], [name, ROOM_LABEL_IN], [name, ROOM_LABEL_MIN_IN]];
+  for (const [content, inch] of tries){
+    const size = toFt(inch);
+    if (fits(content, size)) return { content, size };
+  }
+  return null;
+}
+
+export function explodeForIO(e, opts){
   if (!e) return [];
   if (isComposite(e)) return expandComposite(e);
   if (e.type === 'mtext') return mtextToTexts(e);
@@ -169,14 +200,17 @@ export function explodeForIO(e){
      * name on the drawing; printing it again doubled every label on
      * the issued sheets. sfOnly (set by dedupeRoomLabels) keeps the
      * live area and lets the author's text be the name. */
-    const label = e.sfOnly
-      ? Math.round(e.area != null ? e.area : 0) + ' SF'
-      : (e.name || 'ROOM') + '  ' + Math.round(e.area != null ? e.area : 0) + ' SF';
-    const ly = e.sfOnly ? (e.cy || 0) - 2.1 : (e.cy || 0) - 0.3;
+    if (e.labelOff) return out;
+    const spec = roomLabelSpec(e, opts && opts.annoPpf);
+    if (!spec) return out;
+    const { content: label, size } = spec;
+    /* The offsets are in label heights, so a small label sits as close
+     * to its point as a large one did. */
+    const ly = e.sfOnly ? (e.cy || 0) - 2.1 * size : (e.cy || 0) - 0.3 * size;
     /* Centered on the label point: a long name used to hang nine feet
      * off to one side of it. */
     out.push({ type: 'text', layer: e.layer || 'ROOMS',
-      x: (e.cx || 0) - boxWidth(label, 1.0) / 2, y: ly, size: 1.0, content: label });
+      x: (e.cx || 0) - boxWidth(label, size) / 2, y: ly, size, content: label });
     return out;
   }
   if (e.type === 'dim' && e.kind === 'angular'){

@@ -240,7 +240,10 @@ function drawEntities(P, f2, TX, TY, visible, ppf, textAt, seg, path, circlePts,
   visible.forEach(e => {
     if (e.type === 'image' && e.src && imageName(e.src)){ list.push(e); return; }
     if (isComposite(e) || e.type === 'insert' || e.type === 'table' || e.type === 'ellipse' || e.type === 'cloud' || e.type === 'leader' || e.type === 'image' || e.type === 'grid' || e.type === 'xline' || e.type === 'room' || e.type === 'spline' || (e.type === 'dim' && (e.kind === 'angular' || e.kind === 'radius' || e.kind === 'diameter'))){
-      explodeForIO(e).forEach(f => list.push(f));
+      /* Room labels take the sheet's scale, so they print at a paper
+       * height instead of half an inch tall at 1/2" and invisible at
+       * 1/16". Everything else explodes as authored. */
+      explodeForIO(e, e.type === 'room' ? { annoPpf: ppf } : undefined).forEach(f => list.push(f));
     } else list.push(e);
   });
   list.forEach(e => {
@@ -503,7 +506,17 @@ function layoutPage(entities, opts){
       P(f2(co) + ' ' + f2(si) + ' ' + f2(-si) + ' ' + f2(co) + ' 0 0 cm');
       P('1 0 0 1 ' + f2(-ox) + ' ' + f2(-oy) + ' cm');
     }
-    drawEntities(P, f2, TX, TY, visible, vppf, textAt, seg, path, circlePts, true, opts.textStyles, table, !!opts.plotStyle);
+    /* A room the frame cuts through keeps its walls and loses its label:
+     * half a word at the edge of a detail reads as a mistake, and the
+     * room is whole on the sheet that is about it. */
+    const winW = VW / vppf, winH = VH / vppf;
+    const win = [vp0.mx - winW / 2, vp0.my - winH / 2, vp0.mx + winW / 2, vp0.my + winH / 2];
+    const framed = rot ? visible : visible.map(e => {
+      if (!e || e.type !== 'room' || !e.pts) return e;
+      const inside = e.pts.every(pt => pt[0] >= win[0] - 0.05 && pt[0] <= win[2] + 0.05 && pt[1] >= win[1] - 0.05 && pt[1] <= win[3] + 0.05);
+      return inside ? e : Object.assign({}, e, { labelOff: true });
+    });
+    drawEntities(P, f2, TX, TY, framed, vppf, textAt, seg, path, circlePts, true, opts.textStyles, table, !!opts.plotStyle);
     P('Q');
     drawScaleBar(P, f2, textAt, vp0, vppf);
   }
@@ -618,6 +631,11 @@ function drawScaleBar(P, f2, textAt, vp, ppf){
   if (w < 28 || w > (vp.pw || 10) * 72 * 0.4) return;
   const segs = 4;
   const sw = w / segs;
+  /* A white card under the bar and its numbers: on a room detail the
+   * viewport corner is usually hatched floor, and a bar drawn straight
+   * onto it was unreadable. */
+  P('1 g');
+  P(f2(x - 4) + ' ' + f2(y - 3) + ' ' + f2(w + 8) + ' 18 re f');
   for (let i = 0; i < segs; i++){
     P((i % 2 ? '0.12' : '0.92') + ' g');
     P(f2(x + i * sw) + ' ' + f2(y) + ' ' + f2(sw) + ' 5.5 re f');
