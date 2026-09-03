@@ -273,6 +273,12 @@ function solidOpts(){
       syncOpen3d();
     },
     onBool: (op) => boolean3d(op, ''),
+    onSolidDelete: async (name) => {
+      const { removeSolid } = await import('./core/model3d.js');
+      pushUndo();
+      if (removeSolid(name)){ afterChange(); toast(String(name).toUpperCase() + ' deleted'); }
+      syncOpen3d();
+    },
     onSample: () => loadSamplePart(),
     onStl: () => { try { document.dispatchEvent(new Event('sd-export-stl')); } catch (e){ /* node */ } },
     onObj: () => { try { document.dispatchEvent(new Event('sd-export-obj')); } catch (e){ /* node */ } },
@@ -474,7 +480,13 @@ function wireUi(){
   });
   $('chipDone') && $('chipDone').addEventListener('click', () => cancelPoly(true));
   $('chipClose') && $('chipClose').addEventListener('click', closePoly);
-  $('chipDelete') && $('chipDelete').addEventListener('click', deleteSelection);
+  $('chipDelete') && $('chipDelete').addEventListener('click', () => {
+    if (!state.selIds.length && document.body.classList.contains('view3d')){
+      try { document.dispatchEvent(new Event('sd-delete3d')); } catch (e){ /* node */ }
+      return;
+    }
+    deleteSelection();
+  });
   $('chipRotate') && $('chipRotate').addEventListener('click', rotateSelection90);
   $('chipDup') && $('chipDup').addEventListener('click', duplicateSelection);
   $('chipAssign') && $('chipAssign').addEventListener('click', () => {
@@ -1177,12 +1189,17 @@ function wireUi(){
     clearTimeout(newTimer); newArmed = false;
     lbl.textContent = 'New drawing'; lbl.style.color = '';
     pushUndo();
-    state.entities = []; state.selIds = []; ix.polyPts = [];
+    /* A new drawing is the whole document gone, solids included. The
+     * 3D model used to survive this and reappear the moment the view
+     * opened, and there was no way to get rid of it. */
+    state.entities = []; state.solids = []; state.selIds = []; ix.polyPts = [];
+    state.revisions = [];
     state.projectName = 'Untitled';
     /* A blank sheet is a new job, not this job emptied. */
     state.projectId = null;
     if ($('projName')) $('projName').value = '';
     closeSheets(); afterChange(); homeView(); draw();
+    syncOpen3d();
   });
 
   $('mSample') && $('mSample').addEventListener('click', () => {

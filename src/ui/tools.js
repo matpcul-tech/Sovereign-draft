@@ -44,6 +44,11 @@ export function setTool(t){
     toast('Tap the roof in plan · 6 ft dormer · DORMER x y w types it exactly');
     return;
   }
+  if (t === 'erase' && typeof document !== 'undefined' && document.body && document.body.classList.contains('view3d')){
+    /* In 3D the erase verb means the picked solid, not a 2D tap. */
+    try { document.dispatchEvent(new Event('sd-delete3d')); } catch (e){ /* node */ }
+    return;
+  }
   if (t === 'brevise'){
     /* Mark the change from the phone: select what moved, tap REVISE,
      * and the drawing gains a cloud, a numbered delta and a revision

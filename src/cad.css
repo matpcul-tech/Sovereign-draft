@@ -173,6 +173,7 @@ body.view3d .tool[data-tool="view3d"] span{color:var(--gold)}
   background:var(--navy-2);color:var(--ink-dim);font-size:9px;letter-spacing:.04em;font-weight:600;flex:0 0 auto}
 #v3dRail button.on{border-color:var(--gold);color:var(--gold);background:rgba(212,168,67,.12)}
 #v3dRail button[data-act]{color:var(--teal);border-color:rgba(0,212,184,.35)}
+#v3dRail button[data-act="delete"]{color:var(--terra);border-color:rgba(196,90,60,.45)}
 body.view3d #toolrow-draw, body.view3d #toolrow-mod, body.view3d #toolrow-issue{display:none !important}
 body.view3d #tooltabs{display:none !important}
 body.view3d #toolrow-3d{display:flex !important}

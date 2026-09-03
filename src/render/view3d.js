@@ -483,6 +483,7 @@ function ensureDom(){
       <button type="button" data-mode3d="rotate">ROT</button>
       <button type="button" data-mode3d="pushpull">PUSH</button>
       <button type="button" data-mode3d="measure">MEAS</button>
+      <button type="button" data-act="delete">DEL</button>
       <button type="button" data-act="union">UNI</button>
       <button type="button" data-act="subtract">SUB</button>
       <button type="button" data-act="sample">PART</button>
@@ -530,7 +531,8 @@ function wireHud(hooks){
       if (b.dataset.tool3d){ setTool3dView(b.dataset.tool3d); return; }
       if (b.dataset.mode3d){ toggleMode3d(b.dataset.mode3d); return; }
       const act = b.dataset.act;
-      if (act === 'union' && hooks.onBool) hooks.onBool('union');
+      if (act === 'delete') deleteSelected();
+      else if (act === 'union' && hooks.onBool) hooks.onBool('union');
       else if (act === 'subtract' && hooks.onBool) hooks.onBool('subtract');
       else if (act === 'sample' && hooks.onSample) hooks.onSample();
       else if (act === 'stl' && hooks.onStl) hooks.onStl();
@@ -688,6 +690,22 @@ function commitPlace(a, b){
   clearPlacePreview();
   if (!mesh || !mesh.faces.length) return;
   if (viewHooks.onPlaceMesh) viewHooks.onPlaceMesh(mesh, place.tool);
+}
+
+/* Delete the picked solid. The one verb the 3D view had no spelling
+ * for: solids could be placed, moved, cut and unioned, and never removed
+ * except by typing SOLIDDEL and its name. */
+function deleteSelected(){
+  if (pick.dragging) cancelDrag();
+  if (!pick.selected){
+    const hint = hud && hud.querySelector('.v3d-hint');
+    if (hint) hint.textContent = 'Tap a solid first, then DEL';
+    return;
+  }
+  const name = pick.selected;
+  setSelected(null);
+  syncModeButtons();
+  if (viewHooks.onSolidDelete) viewHooks.onSolidDelete(name);
 }
 
 /* The rail's mode buttons are the touch spelling of E, R, P and M:
@@ -1300,6 +1318,7 @@ function wirePicking(){
    * the command line, which then swallows ctrl-z for good. Keys the 3D
    * interaction owns stop here; everything else falls through, so Escape
    * with nothing selected still returns to the plan. */
+  document.addEventListener('sd-delete3d', () => { if (running) deleteSelected(); });
   window.addEventListener('keydown', ev => {
     if (!running) return;
     const t = ev.target;
@@ -1358,6 +1377,12 @@ function wirePicking(){
         }
         ev.preventDefault();
       }
+      return;
+    }
+    if ((ev.key === 'Delete' || ev.key === 'Backspace') && pick.selected && !meas.on){
+      deleteSelected();
+      ev.preventDefault();
+      ev.stopPropagation();
       return;
     }
     if ((ev.key === 'r' || ev.key === 'R') && pick.selected && !meas.on && !ev.ctrlKey && !ev.metaKey && !ev.altKey){
