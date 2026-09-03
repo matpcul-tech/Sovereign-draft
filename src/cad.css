@@ -51,7 +51,8 @@ body.embed #cmdline,
 body.embed #bottom,
 body.embed #hint,
 body.embed #btnMenu,
-body.embed #btnProps{display:none !important}
+body.embed #btnProps,
+body.embed #btnGuide{display:none !important}
 body.embed #topbar{background:transparent;border-bottom:none;padding:6px 8px}
 body.embed #spacetabs{margin-left:0}
 
@@ -212,3 +213,113 @@ body.view3d #view3d{bottom:calc(env(safe-area-inset-bottom) + 92px)}
   .tool{width:46px;height:46px}
 }
 
+#sheetGuide{
+  top:0;max-height:none;height:100%;border-radius:0;padding:0;background:var(--navy);
+  z-index:12;display:flex;flex-direction:column;overflow:hidden;
+}
+body.embed #btnGuide{display:none !important}
+.guide-sticky{
+  position:sticky;top:0;z-index:2;background:linear-gradient(180deg, rgba(7,16,31,.98), rgba(11,24,48,.96));
+  border-bottom:1px solid var(--line);flex:0 0 auto;
+}
+.guide-chrome{display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top) + 10px) 12px 8px}
+.guide-title{font-family:'Playfair Display',Georgia,serif;font-size:18px;font-weight:600;color:var(--ink);line-height:1.1}
+.guide-title b{color:var(--gold);font-weight:600}
+.guide-cmd{
+  display:none;align-items:center;gap:8px;height:28px;padding:0 10px;border-radius:8px;
+  border:1px solid var(--line);background:var(--navy-2);
+  font-family:ui-monospace,"IBM Plex Mono",Menlo,Consolas,monospace;font-size:11px;color:var(--ink);
+}
+.guide-cmd span{color:var(--gold)}
+@media (min-width:720px){ .guide-cmd{display:flex} }
+.guide-toc{
+  display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:0 12px 10px;flex-wrap:nowrap;
+  -webkit-overflow-scrolling:touch;
+}
+.guide-toc::-webkit-scrollbar{display:none}
+.guide-toc a{
+  flex:0 0 auto;height:28px;padding:0 12px;border-radius:14px;border:1px solid var(--line);
+  background:var(--navy-2);color:var(--ink-dim);font-size:11px;font-weight:500;
+  display:flex;align-items:center;text-decoration:none;white-space:nowrap;
+}
+.guide-toc a:hover,.guide-toc a:focus-visible{border-color:var(--gold);color:var(--gold);outline:none}
+.guide-body{padding:16px 16px calc(env(safe-area-inset-bottom) + 28px);overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch}
+.guide-lede{font-size:13px;line-height:1.55;color:var(--ink-dim);font-weight:300;max-width:40rem;margin:0 0 8px}
+.guide-body section{padding-top:22px}
+.guide-body h2{
+  font-family:'Playfair Display',Georgia,serif;font-weight:600;font-size:18px;color:var(--ink);
+  margin:0 0 4px;text-wrap:balance;
+}
+.guide-body h2 i{color:var(--gold);font-style:normal}
+.guide-body h3{font-size:13px;font-weight:600;color:var(--ink);margin:14px 0 6px}
+.guide-want{
+  color:var(--teal);font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+  margin:0 0 10px;
+}
+.guide-body p{font-size:13px;line-height:1.55;font-weight:300;color:var(--ink);margin:.5rem 0;max-width:40rem;text-wrap:pretty}
+.guide-note{color:var(--ink-dim) !important;font-size:12px !important}
+.guide-foot{
+  margin-top:18px;padding-top:14px;border-top:1px solid var(--line);
+  font-size:12px;color:var(--ink-dim);font-weight:300;letter-spacing:.01em;
+}
+.guide-steps{margin:.6rem 0 0;padding:0;padding-inline-start:0;list-style:none;list-style-type:none;counter-reset:st;max-width:40rem}
+.guide-steps li{
+  list-style:none;list-style-type:none;counter-increment:st;position:relative;padding:0 0 .85rem 2.2rem;
+  font-size:13px;line-height:1.55;font-weight:300;color:var(--ink);
+}
+.guide-steps li::marker{content:none;display:none}
+.guide-steps li::before{
+  content:counter(st);position:absolute;left:0;top:.05rem;
+  width:1.4rem;height:1.4rem;border-radius:50%;
+  border:1px solid var(--gold);color:var(--gold);
+  font-family:ui-monospace,"IBM Plex Mono",Menlo,Consolas,monospace;font-size:10px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;
+}
+.guide-list{margin:.4rem 0;padding-left:1.1rem;max-width:40rem}
+.guide-list li{margin:.35rem 0;font-size:13px;line-height:1.55;font-weight:300;color:var(--ink)}
+.guide-body kbd,.guide-body code{
+  font-family:ui-monospace,"IBM Plex Mono",Menlo,Consolas,monospace;font-size:.86em;
+}
+.guide-body kbd{
+  display:inline-block;background:var(--navy-2);border:1px solid var(--line);
+  color:var(--gold);border-radius:6px;padding:.05em .4em;white-space:nowrap;font-weight:500;
+}
+.guide-body code{color:var(--teal);font-weight:500}
+.gcmd{
+  display:block;background:var(--navy-2);border-left:3px solid var(--gold);
+  padding:8px 12px;margin:8px 0;border-radius:0 8px 8px 0;
+  font-family:ui-monospace,"IBM Plex Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--ink);
+  overflow-x:auto;white-space:nowrap;max-width:40rem;
+}
+.gcmd b{color:var(--gold);font-weight:600}
+.gcmd span{color:var(--ink-dim);font-weight:400}
+.gcmd{
+  display:block;background:var(--navy-2);border-left:3px solid var(--gold);
+  padding:8px 12px;margin:8px 0;border-radius:0 8px 8px 0;
+  font-family:ui-monospace,"IBM Plex Mono",Menlo,Consolas,monospace;font-size:12px;color:var(--ink);
+  overflow-x:auto;white-space:nowrap;max-width:40rem;
+}
+.gcmd b{color:var(--gold);font-weight:600}
+.gcmd span{color:var(--ink-dim);font-weight:400}
+.guide-fig{margin:12px 0 4px;max-width:40rem}
+.guide-fig svg{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:12px;background:var(--navy)}
+.guide-fig figcaption{font-size:12px;color:var(--ink-dim);margin-top:8px;font-weight:300;line-height:1.5}
+.guide-sheet{overflow-x:auto;margin-top:10px;border:1px solid var(--line);border-radius:12px;background:var(--navy-2)}
+.guide-sheet table{border-collapse:collapse;width:100%;min-width:28rem;font-size:13px}
+.guide-sheet caption{
+  text-align:left;font-family:'Playfair Display',Georgia,serif;font-weight:600;font-size:14px;
+  padding:12px 14px 4px;color:var(--ink);
+}
+.guide-sheet th{
+  text-align:left;font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-dim);font-weight:600;padding:8px 14px 8px;border-bottom:1px solid var(--line);
+}
+.guide-sheet td{padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top;font-weight:300}
+.guide-sheet tr:last-child td{border-bottom:0}
+.guide-sheet td:first-child{
+  font-family:ui-monospace,"IBM Plex Mono",Menlo,Consolas,monospace;font-size:12px;
+  white-space:nowrap;color:var(--teal);font-weight:500;
+}
+@media (prefers-reduced-motion: reduce){
+  .guide-toc a{transition:none}
+}
