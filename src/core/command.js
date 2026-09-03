@@ -64,6 +64,7 @@ export const COMMANDS = {
   UNDO:    { aliases: ['UNDO'],                          tool: null,     action: 'undo' },
   REDO:    { aliases: ['REDO'],                          tool: null,     action: 'redo' },
   KEYMAP:  { aliases: ['KEYMAP'],                        tool: null,     action: 'keymap' },
+  HELP:    { aliases: ['HELP', 'GUIDE', '?'],            tool: null,     action: 'guide' },
   FLIP:    { aliases: ['FLIP'],                          tool: null,     action: 'flip' },
   ZFIT:    { aliases: ['ZOOMFIT', 'ZFIT'],              tool: null,     action: 'zoomfit' },
   SHEETSET:{ aliases: ['SHEETSET', 'SS', 'SHEETS'],     tool: null,     action: 'sheetset' },

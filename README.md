@@ -28,7 +28,7 @@ writeFileSync('plan.dwg', Buffer.from(toDWG(set)))
 
 The editor is a PWA. The kernel is the product (`src/api.js`). No DOM.
 
-New here? The **[Field Guide](docs/field-guide.html)** walks the whole app in ten short sections, from first tap to issued sheet set.
+New here? The **[Field Guide](https://matpcul-tech.github.io/Sovereign-draft/guide.html)** walks the whole app in ten short sections, from first tap to issued sheet set. It ships with the app — type `HELP` in the editor, or open it from the menu.
 
 Starters in `examples/`:
 

@@ -345,6 +345,7 @@ export function shellHTML(){
   <button class="mrow" id="mTakeoff"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M9 4v16"/></svg>Quantity takeoff<small>walls · doors · rooms</small></button>
   <button class="mrow" id="mOverkill"><svg viewBox="0 0 24 24"><path d="M4 12h16M9 7l-5 5 5 5M15 7l5 5-5 5"/></svg>Overkill<small>drop duplicates</small></button>
   <button class="mrow" id="mTrace"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1"/><circle cx="9" cy="11" r="2"/><path d="m21 16-5-5-4 4-2-2-5 5"/></svg>Trace image<small>place an underlay</small></button>
+  <button class="mrow" id="mGuide"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>Field Guide<small>how to use everything</small></button>
   <button class="mrow" id="mHistory"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 12h10M4 19h13"/></svg>Command history<small>this session</small></button>
   <button class="mrow" id="mSettings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>AI settings<small>API key, model</small></button>
   <div class="row" style="margin-top:8px">

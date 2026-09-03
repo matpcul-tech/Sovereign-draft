@@ -1371,6 +1371,7 @@ function wireUi(){
     rd.readAsDataURL(f);
     ev.target.value = '';
   });
+  $('mGuide') && $('mGuide').addEventListener('click', () => { closeSheets(); window.open('guide.html', '_blank'); });
   $('mHistory') && $('mHistory').addEventListener('click', () => { renderHistory(); openSheet('sheetHistory'); });
 
   renderSpaceTabs();

@@ -564,6 +564,10 @@ export function handleCommand(text){
   if (res.action === 'elev'){ makeElevation(res.rest); return; }
   if (res.action === 'modelplan'){ modelPlan(); return; }
   if (res.action === 'zoomfit'){ zoomFit(); draw(); return; }
+  if (res.action === 'guide'){
+    try { window.open('guide.html', '_blank'); } catch (e){ toast('The guide lives at guide.html'); }
+    return;
+  }
   if (res.action === 'undo'){ doUndo(); return; }
   if (res.action === 'redo'){ doRedo(); return; }
   if (res.action === 'keymap'){

@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sovereign Draft Field Guide</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#f6f1e7; --surface:#fffdf6; --ink:#1d2433; --dim:#5d6472;
+    --gold:#8f6b14; --teal:#0d7a6d; --line:#d9d0ba; --chip:#efe7d5;
+    --kbd-bg:#fffdf6; --kbd-edge:#c9bfa6;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#07101f; --surface:#0b1830; --ink:#e8e4dd; --dim:#8fa0bd;
+      --gold:#d4a843; --teal:#00d4b8; --line:#1b2c4a; --chip:#0f2038;
+      --kbd-bg:#0f2038; --kbd-edge:#2a3d5e;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#07101f; --surface:#0b1830; --ink:#e8e4dd; --dim:#8fa0bd;
+    --gold:#d4a843; --teal:#00d4b8; --line:#1b2c4a; --chip:#0f2038;
+    --kbd-bg:#0f2038; --kbd-edge:#2a3d5e;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:Outfit,system-ui,sans-serif; font-size:16.5px; line-height:1.62;
+  }
+  .wrap{max-width:46rem; margin:0 auto; padding:0 1.15rem 5rem}
+
+  /* Masthead */
+  header{padding:2.6rem 0 1.9rem; border-bottom:2px solid var(--ink)}
+  .eyebrow{font-size:.72rem; font-weight:700; letter-spacing:.34em; color:var(--teal); text-transform:uppercase}
+  h1{
+    font-family:Fraunces,Georgia,serif; font-weight:700; font-size:clamp(2.1rem,7vw,3rem);
+    line-height:1.06; margin:.35rem 0 .6rem; text-wrap:balance;
+  }
+  h1 em{font-style:italic; color:var(--gold)}
+  .standfirst{color:var(--dim); max-width:38rem; margin:0}
+  .standfirst b{color:var(--ink); font-weight:600}
+
+  /* Contents chips */
+  nav{display:flex; flex-wrap:wrap; gap:.45rem; padding:1.1rem 0 0}
+  nav a{
+    font-size:.78rem; font-weight:600; letter-spacing:.02em; text-decoration:none;
+    color:var(--ink); background:var(--chip); border:1px solid var(--line);
+    border-radius:99px; padding:.28rem .75rem;
+  }
+  nav a:hover, nav a:focus-visible{border-color:var(--teal); color:var(--teal); outline:none}
+
+  /* Sections */
+  section{padding-top:2.6rem}
+  h2{
+    font-family:Fraunces,Georgia,serif; font-weight:600; font-size:1.55rem;
+    margin:0 0 .2rem; text-wrap:balance;
+  }
+  .want{color:var(--teal); font-weight:600; font-size:.92rem; margin:0 0 .9rem}
+  h3{font-size:1.02rem; font-weight:700; margin:1.5rem 0 .4rem}
+  p{margin:.55rem 0; max-width:40rem}
+  .note{color:var(--dim); font-size:.9rem; max-width:40rem}
+  hr{border:0; border-top:1px solid var(--line); margin:2.6rem 0 0}
+
+  /* Steps: numbered only where order is real */
+  ol.steps{margin:.7rem 0 0; padding:0; list-style:none; counter-reset:st; max-width:40rem}
+  ol.steps li{
+    counter-increment:st; position:relative; padding:0 0 .85rem 2.35rem;
+  }
+  ol.steps li::before{
+    content:counter(st); position:absolute; left:0; top:.08rem;
+    width:1.5rem; height:1.5rem; border-radius:50%;
+    border:1.5px solid var(--gold); color:var(--gold);
+    font-family:"IBM Plex Mono",monospace; font-size:.8rem; font-weight:600;
+    display:flex; align-items:center; justify-content:center;
+  }
+  ul.plain{margin:.55rem 0; padding-left:1.15rem; max-width:40rem}
+  ul.plain li{margin:.3rem 0}
+
+  /* Commands and keys */
+  kbd, code{
+    font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:.86em;
+  }
+  kbd{
+    background:var(--kbd-bg); border:1px solid var(--kbd-edge);
+    border-bottom-width:2px; border-radius:5px; padding:.06em .42em; white-space:nowrap;
+  }
+  code{color:var(--teal); font-weight:500}
+  .cmd{
+    display:block; background:var(--chip); border-left:3px solid var(--gold);
+    padding:.5rem .8rem; margin:.6rem 0; border-radius:0 6px 6px 0;
+    font-family:"IBM Plex Mono",monospace; font-size:.86rem; color:var(--ink);
+    overflow-x:auto; white-space:nowrap; max-width:40rem;
+  }
+  .cmd b{color:var(--gold); font-weight:600}
+  .cmd span{color:var(--dim)}
+
+  /* The screen map */
+  figure{margin:1.2rem 0 0; max-width:40rem}
+  figure svg{width:100%; height:auto; display:block; border:1px solid var(--line); border-radius:8px}
+  figcaption{font-size:.82rem; color:var(--dim); margin-top:.45rem}
+
+  /* Cheat sheet table */
+  .sheet-scroll{overflow-x:auto; margin-top:.9rem; border:1px solid var(--line); border-radius:8px}
+  table{border-collapse:collapse; width:100%; min-width:34rem; font-size:.88rem; background:var(--surface)}
+  caption{text-align:left; font-weight:700; padding:.6rem .85rem .2rem; font-size:.95rem; background:var(--surface)}
+  th{
+    text-align:left; font-size:.7rem; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--dim); font-weight:600; padding:.55rem .85rem .35rem; border-bottom:1.5px solid var(--line);
+  }
+  td{padding:.42rem .85rem; border-bottom:1px solid var(--line); vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  td:first-child{font-family:"IBM Plex Mono",monospace; font-size:.82rem; white-space:nowrap; color:var(--teal); font-weight:500}
+
+  .footer-note{margin-top:3rem; padding-top:1.2rem; border-top:2px solid var(--ink); color:var(--dim); font-size:.88rem}
+  .footer-note a{color:var(--teal)}
+  @media (prefers-reduced-motion: no-preference){
+    nav a{transition:color .15s, border-color .15s}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Sovereign Draft</div>
+  <h1>The Field <em>Guide</em></h1>
+  <p class="standfirst">One plan becomes a documented building. This guide walks every road in the app —
+  <b>draw, build, touch, light, print</b> — in the order you'll actually travel them.
+  Units are decimal feet; dimensions print to the nearest ½″.</p>
+  <nav aria-label="Contents">
+    <a href="#minute">The one-minute building</a>
+    <a href="#screen">The screen</a>
+    <a href="#draw">Draw a plan</a>
+    <a href="#openings">Doors, windows, rooms</a>
+    <a href="#build">Make it 3D</a>
+    <a href="#touch">Touch the model</a>
+    <a href="#light">Light &amp; renders</a>
+    <a href="#print">Sheets &amp; printing</a>
+    <a href="#cheats">Cheat sheet</a>
+    <a href="#stuck">When you're stuck</a>
+  </nav>
+</header>
+
+<section id="minute">
+  <h2>The one-minute building</h2>
+  <p class="want">You want to see what this thing does.</p>
+  <p>Open the app. A sample cabin loads with a finished plan and a five-sheet drawing set
+  (the tabs at the top: <kbd>Model</kbd> <kbd>G-001</kbd> <kbd>A-101</kbd>…). Then, on the
+  <b>Build</b> tab of the bottom tool rail:</p>
+  <ol class="steps">
+    <li>Tap <kbd>MODEL</kbd> — every wall becomes an exact solid; doors and windows cut real openings with headers and sills.</li>
+    <li>Tap <kbd>ROOF</kbd> — a hip roof lands on the massing, valleys included.</li>
+    <li>Tap <kbd>DORMER</kbd>, then tap the roof slope right where you want it — a 6-ft gabled dormer seats itself there.</li>
+    <li>Tap <kbd>DWGS</kbd> — the whole documentation set regenerates: plans, four hidden-line elevations, a section, a roof plan, all on numbered sheets.</li>
+  </ol>
+  <p>That loop — plan in, documented building out — is the reason this app exists.
+  Everything else in this guide is detail.</p>
+</section>
+
+<section id="screen">
+  <h2>The screen</h2>
+  <p class="want">You want to know what you're looking at.</p>
+  <figure>
+    <svg viewBox="0 0 640 400" role="img" aria-label="Map of the app screen: top bar with sheet tabs, canvas in the middle, command line, tool rail with tabs, and status bar">
+      <rect x="0" y="0" width="640" height="400" fill="var(--surface)"/>
+      <rect x="0" y="0" width="640" height="44" fill="var(--chip)" stroke="var(--line)"/>
+      <text x="14" y="27" font-size="13" font-weight="600" fill="var(--ink)" font-family="Outfit,sans-serif">Top bar — undo · redo · 3D · menu</text>
+      <rect x="378" y="10" width="248" height="24" rx="12" fill="none" stroke="var(--gold)"/>
+      <text x="392" y="26" font-size="12" fill="var(--gold)" font-family="IBM Plex Mono,monospace">Model · G-001 · A-101 …</text>
+      <rect x="0" y="44" width="640" height="30" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="14" y="64" font-size="12" fill="var(--teal)" font-family="IBM Plex Mono,monospace">Command line — press / to focus, type L, TRIM, DORMER 12 6 6 …</text>
+      <rect x="0" y="74" width="640" height="230" fill="var(--bg)"/>
+      <text x="320" y="180" font-size="15" fill="var(--dim)" text-anchor="middle" font-family="Outfit,sans-serif">Canvas — your drawing (or the sheet, or the 3D view)</text>
+      <text x="320" y="204" font-size="12" fill="var(--dim)" text-anchor="middle" font-family="Outfit,sans-serif">wheel / pinch zooms · drag pans · double-tap refits a sheet</text>
+      <rect x="0" y="304" width="640" height="64" fill="var(--chip)" stroke="var(--line)"/>
+      <text x="14" y="326" font-size="12" font-weight="700" fill="var(--ink)" font-family="Outfit,sans-serif">Tool rail — one row at a time behind four tabs:</text>
+      <text x="14" y="348" font-size="12" fill="var(--gold)" font-family="IBM Plex Mono,monospace">DRAW · MODIFY · ISSUE · BUILD</text>
+      <rect x="0" y="368" width="640" height="32" fill="var(--surface)" stroke="var(--line)"/>
+      <text x="14" y="389" font-size="12" fill="var(--dim)" font-family="IBM Plex Mono,monospace">Status bar — X/Y readout · SNAP · ORTHO · POLAR · FT/mm/m</text>
+    </svg>
+    <figcaption>The four bands of the screen. The tool rail remembers which tab you left it on,
+    and picking a tool by keyboard pulls its row forward automatically.</figcaption>
+  </figure>
+  <p>Two habits worth forming on day one: <b>press <kbd>/</kbd></b> to jump to the command line
+  from anywhere, and <b>press <kbd>Esc</kbd></b> to back out of whatever is happening.</p>
+</section>
+
+<section id="draw">
+  <h2>Draw a plan</h2>
+  <p class="want">You want walls of your own instead of the sample.</p>
+  <ol class="steps">
+    <li>On the <b>Draw</b> tab, tap <kbd>WALL</kbd>. Tap where the wall starts, then where it ends. Keep tapping corners — walls <b>heal as you draw</b>: corners miter and T-junctions recut themselves.</li>
+    <li>Type a length instead of hunting for it: mid-draw, type <code>12'6"</code> and press <kbd>Enter</kbd> — the wall runs exactly that far along your direction. <code>@8&lt;45</code> means 8 feet at 45°.</li>
+    <li>Turn on <kbd>ORTHO</kbd> (or <kbd>F8</kbd>) in the status bar to keep walls square while you learn.</li>
+    <li>Close the loop back to the start. A closed loop of walls is a room-in-waiting.</li>
+  </ol>
+  <p>Wall thickness lives in the <kbd>WALL 6"</kbd> chip above the rail — tap it to cycle 4″ / 6″ / 8″.
+  Plain lines, rectangles and circles are the neighbouring tools (<kbd>L</kbd>, <kbd>R</kbd>, <kbd>C</kbd> from the keyboard).</p>
+  <h3>Dimensions</h3>
+  <p>Tap <kbd>DIM</kbd>, then the two points you're measuring, then where the dimension line should sit.
+  Dimensions are <b>associative</b> — stretch or move the wall and the number follows.</p>
+  <p class="note">Coming from AutoCAD? Type <code>KEYMAP ACAD</code> once and E erases, M moves,
+  U undoes, X explodes, the way your hands expect. Full words (<code>TRIM</code>, <code>COPY</code>…) work in both maps.</p>
+</section>
+
+<section id="openings">
+  <h2>Doors, windows, rooms</h2>
+  <p class="want">You want the plan to read like architecture, not line art.</p>
+  <ul class="plain">
+    <li><b>Doors and windows</b> live under <kbd>SYMB</kbd> on the Draw tab. Tap one, then tap the wall — it cuts the host wall itself. Selected, it grows grips: drag the square to resize the width (type <code>2'6"</code> for exact), tap the diamond to flip the swing.</li>
+    <li><b>Rooms</b>: type <code>ROOMS</code> to turn on live rooms — every closed wall loop becomes a named room with live square footage. Place a text label (<kbd>TEXT</kbd>) inside a loop to name it; the plan shows the name once and the area goes to the room schedule.</li>
+    <li><b>Fixtures</b> (stove, bed, tub…) are in the same symbol drawer, with rotate and flip grips.</li>
+  </ul>
+</section>
+
+<section id="build">
+  <h2>Make it 3D</h2>
+  <p class="want">You want the building, not just the plan.</p>
+  <p>The <b>Build</b> tab runs the pipeline in order, one tap each:</p>
+  <ul class="plain">
+    <li><kbd>MODEL</kbd> — walls become exact solids, openings cut through with headers and sills.</li>
+    <li><kbd>STACK</kbd> — replicates the storey upward (type <code>STACK 3</code> for three).</li>
+    <li><kbd>ROOF</kbd> — hip roof at 6:12. Type <code>ROOF GABLE 8</code> for a gable at 8:12. L- and T-shaped plans get real valleys.</li>
+    <li><kbd>DORMER</kbd> — then tap the roof (in 3D or on the plan) where the dormer goes.</li>
+    <li><kbd>DWGS</kbd> — regenerates the entire sheet set from the model.</li>
+    <li><kbd>QTO</kbd> — drops a takeoff table: footprint, surface, volume per solid, measured straight from the meshes.</li>
+  </ul>
+  <p>Freeform solids exist too: <code>BOX 0 0 0 10 8 6</code> types a box by numbers; draw a closed shape and
+  <code>EXTRUDE 10</code> raises it; <kbd>UNI</kbd> and <kbd>SUB</kbd> on the 3D rail union and subtract
+  (subtract is how you drill holes).</p>
+</section>
+
+<section id="touch">
+  <h2>Touch the model</h2>
+  <p class="want">You want to grab the thing and change it.</p>
+  <p>Type <code>3D</code> (or tap the globe in the top bar). Drag orbits, pinch or scroll zooms.
+  <b>Tap a solid to select it</b> — then the left rail's mode buttons do the rest:</p>
+  <ul class="plain">
+    <li><kbd>EDIT</kbd> (<kbd>E</kbd> or <kbd>Tab</kbd>) — grab a <b>corner</b>, an <b>edge</b>, or the middle of a <b>face</b> and drag it. The mesh deforms live. This is how a gable becomes a saltbox: grab the ridge, pull it sideways.</li>
+    <li><kbd>PUSH</kbd> (<kbd>P</kbd>) — drag any face along its own direction to thicken, extend, or carve.</li>
+    <li><kbd>ROT</kbd> (<kbd>R</kbd>) — drag turns the solid in 15° steps.</li>
+    <li><kbd>MEAS</kbd> (<kbd>M</kbd>) — tap two points for the true 3D distance.</li>
+  </ul>
+  <p>Everything snaps to real geometry — corners lock to corners, edges to midpoints — and the readout
+  names the lock (<code>vertex</code>, <code>edge</code>, <code>face</code>). Mid-drag, <b>type a number and press
+  <kbd>Enter</kbd></b> for an exact distance. Every change is one undo away.</p>
+</section>
+
+<section id="light">
+  <h2>Light &amp; renders</h2>
+  <p class="want">You want it to look like a building, and a picture to show for it.</p>
+  <span class="cmd"><b>SUN</b> JUN 21 14 40.7 <span>— the real sun: month, day, hour, latitude. True shadows.</span></span>
+  <span class="cmd"><b>MAT</b> ROOF #7a3b2a <span>— paint a solid, layer, or kind with a colour.</span></span>
+  <span class="cmd"><b>RENDER</b> 1600 <span>— a print-resolution still, downloaded. Add PLACE to pin it on the drawing (it prints in the PDF). Add LEVEL to keep verticals vertical.</span></span>
+  <span class="cmd"><b>VIEW SAVE</b> HERO <span>— remember this camera. VIEW HERO returns to it exactly.</span></span>
+  <span class="cmd"><b>WALK</b> 12 <span>— a 12-second flythrough of your saved views, saved as video.</span></span>
+  <span class="cmd"><b>TURNTABLE</b> 8 <span>— one full orbit of the model, saved as video.</span></span>
+</section>
+
+<section id="print">
+  <h2>Sheets &amp; printing</h2>
+  <p class="want">You want paper — or the file a consultant asked for.</p>
+  <ul class="plain">
+    <li>The tabs along the top are your sheets. <kbd>G-001</kbd> is the cover; each room and view gets its own numbered page. Wheel or pinch <b>zooms inside a sheet</b> (the schedule cards open into full tables when you zoom in); double-tap refits.</li>
+    <li>Menu → <b>Export PDF</b> issues the set: 24×36 pages, title block, ISO lineweights, one page per sheet.</li>
+    <li>Menu → <b>Export DXF</b> is the file another CAD program opens — R2000, the AutoCAD Open path, with native hatches, dimensions and text. <b>DWG</b> is the same content in a DWG wrapper this app reopens.</li>
+    <li><b>STL / OBJ / GLB</b> buttons in the 3D view export the model for printing or other 3D tools.</li>
+    <li>Your drawing autosaves on this device and never leaves it until you export. Menu → <b>Save project</b> writes the full <code>.json</code> file — that file always carries everything, including placed renders.</li>
+  </ul>
+</section>
+
+<section id="cheats">
+  <h2>Cheat sheet</h2>
+  <p class="want">You want the commands on one screen.</p>
+  <div class="sheet-scroll">
+  <table>
+    <caption>The commands you'll actually type</caption>
+    <thead><tr><th>Type this</th><th>To get</th></tr></thead>
+    <tbody>
+      <tr><td>MODEL</td><td>Plan becomes named solids</td></tr>
+      <tr><td>ROOF HIP 6</td><td>Hip roof at 6:12 (GABLE works too)</td></tr>
+      <tr><td>DORMER 12 6 6</td><td>Dormer at plan point (12, 6), 6 ft wide</td></tr>
+      <tr><td>STACK 2</td><td>Two storeys, roof rides to the top</td></tr>
+      <tr><td>DRAWINGS HIP 6 SHEETS</td><td>The whole set on numbered sheets</td></tr>
+      <tr><td>QTO</td><td>Takeoff table from the meshes</td></tr>
+      <tr><td>SUN JUN 21 14 40.7</td><td>Real sun and shadows</td></tr>
+      <tr><td>RENDER 1600 PLACE</td><td>Render, pinned to the drawing</td></tr>
+      <tr><td>WALK 12</td><td>Flythrough video of saved views</td></tr>
+      <tr><td>ROOMS</td><td>Live rooms with square footage</td></tr>
+      <tr><td>SE</td><td>Section cut with a true hatched section</td></tr>
+      <tr><td>KEYMAP ACAD</td><td>AutoCAD hands: E erase, M move, U undo, X explode</td></tr>
+      <tr><td>2D&nbsp;&nbsp;/&nbsp;&nbsp;3D</td><td>Switch between plan and model</td></tr>
+      <tr><td>UNDO&nbsp;&nbsp;/&nbsp;&nbsp;REDO</td><td>What they say (Ctrl-Z / Ctrl-Y too)</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">Every command takes the full word; the single letters are shortcuts.
+  Anything with numbers accepts feet-and-inches (<code>12'6"</code>) or metric (<code>3.6m</code>) —
+  tap <kbd>FT</kbd> in the status bar to change what the screen shows.</p>
+</section>
+
+<section id="stuck">
+  <h2>When you're stuck</h2>
+  <p class="want">You want out.</p>
+  <ul class="plain">
+    <li><kbd>Esc</kbd> cancels the current tool, drag, or 3D view. <kbd>Ctrl-Z</kbd> undoes anything — including MODEL, ROOF, and whole sheet regenerations.</li>
+    <li>The little messages at the bottom are honest: if a button needs something first, the toast says exactly what (<i>“Nothing to roof: MODEL first”</i>). Do the thing it names.</li>
+    <li>The order matters in Build: <b>MODEL before ROOF before DORMER</b>. Walls first, always.</li>
+    <li>If the app ever says it updated behind you, it reloads itself — you lose nothing; the drawing autosaves.</li>
+    <li>A fresh visit (or a private window) replays the built-in tour where the cabin builds itself.</li>
+  </ul>
+  <div class="footer-note">
+    <a href="./">Back to the editor</a> — Sovereign Draft is free and account-less; drawings stay on your device until you export.
+  </div>
+</section>
+</div>
+
+</body>
+</html>
