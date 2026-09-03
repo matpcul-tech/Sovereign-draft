@@ -108,6 +108,7 @@ export function shellHTML(){
       ${tool('hatch','HATCH','Hatch (K)','<path d="M4 20 20 4M4 14l10-10M4 8l4-4M10 20l10-10M16 20l4-4"/>')}
       ${tool('ellipse','ELPS','Ellipse','<ellipse cx="12" cy="12" rx="8" ry="5"/>')}
       ${tool('cloud','CLOUD','Revision cloud','<path d="M5 16a3 3 0 0 1 1-5 4 4 0 0 1 7-2 4 4 0 0 1 6 4 3 3 0 0 1-1 6H6"/>')}
+      ${tool('brevise','REVISE','Cloud the selection and number the revision','<path d="M5 16a3 3 0 0 1 1-5 4 4 0 0 1 7-2 4 4 0 0 1 6 4 3 3 0 0 1-1 6H6"/><path d="m15 14 3 5h-6z"/>')}
       ${tool('leader','LEAD','Leader','<path d="M4 20 14 8M14 8h6M14 8v6"/>')}
       ${tool('image','IMG','Image underlay','<rect x="3" y="5" width="18" height="14" rx="1"/><circle cx="9" cy="11" r="2"/><path d="m21 16-5-5-4 4-2-2-5 5"/>')}
       ${tool('measure','MEAS','Measure (M)','<path d="m3 17 4 4L21 7l-4-4z"/>')}

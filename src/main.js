@@ -696,6 +696,7 @@ function wireUi(){
         layerVisible,
         projectName: state.projectName,
         firm: state.firm,
+      revisions: state.revisions,
         font: state.plotFont,
         layers: state.layers,
         textStyles: state.textStyles,
@@ -711,6 +712,7 @@ function wireUi(){
       layerVisible,
       projectName: state.projectName,
       firm: state.firm,
+      revisions: state.revisions,
       font: state.plotFont,
       layers: state.layers,
       textStyles: state.textStyles,
@@ -1361,7 +1363,8 @@ function wireUi(){
         return !L || (L.visible !== false && L.plot !== false);
       },
       projectName: state.projectName,
-      firm: state.firm
+      firm: state.firm,
+      revisions: state.revisions
     });
     download(fileSlug() + '-sheets.pdf', pdf, 'application/pdf');
     toast(pages + ' sheet' + (pages === 1 ? '' : 's') + ' exported');

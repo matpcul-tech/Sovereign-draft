@@ -1,7 +1,7 @@
 import { state } from '../core/state.js';
 import {
   cancelPoly, openSolidTool, extrudeSelection, revolveSelection, boolean3d,
-  modelPlan, makeStack, makeRoof, makeDrawings, makeTakeoff3d
+  modelPlan, makeStack, makeRoof, makeDrawings, makeTakeoff3d, reviseSelection
 } from '../actions.js';
 import { zoomFit } from '../core/viewport.js';
 import { draw } from '../render/draw.js';
@@ -42,6 +42,14 @@ export function setTool(t){
     setTool('dormer');
     zoomFit(); draw();
     toast('Tap the roof in plan · 6 ft dormer · DORMER x y w types it exactly');
+    return;
+  }
+  if (t === 'brevise'){
+    /* Mark the change from the phone: select what moved, tap REVISE,
+     * and the drawing gains a cloud, a numbered delta and a revision
+     * row that reprints into every sheet's revision block. */
+    const r = reviseSelection('');
+    if (r) draw();
     return;
   }
   if (t === 'bdwgs'){ makeDrawings('HIP 6 SHEETS'); zoomFit(); draw(); return; }

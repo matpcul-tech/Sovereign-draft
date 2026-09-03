@@ -21,6 +21,7 @@ import { styleByName } from './core/textstyle.js';
 import { polyBoolean, ringsArea } from './core/boolean.js';
 import { captureLayerState, applyLayerState, unmanagedLayers, upsertLayerState, removeLayerState, layerStateByName } from './core/layerstate.js';
 import { plotStyleByName } from './io/plotstyle.js';
+import { makeDelta, nextRevNumber, addRevision, cloudAround } from './core/revision.js';
 import { modelToPaper, viewportRot } from './core/layout.js';
 import { extrudeRings, revolveProfile, loftRings, meshVolume, isWatertight, sweepPath } from './core/mesh.js';
 import { addSolid, createSolid, describeSolid, booleanSolids, solidNames, removeSolid, sliceSolidToPlan, solidsSummary, elevationToPlan, planToSolids, roofOverModel, generateDrawings, stackStories, storyPlans, roofPlanToPlan, takeoffSolids, dormerOnRoof, sampleBracket } from './core/model3d.js';
@@ -806,6 +807,44 @@ export function hatchIslandsFromSelection(){
   const holes = hs.reduce((n, h) => n + (h.holes ? h.holes.length : 0), 0);
   const area = hs.reduce((a, h) => a + hatchArea(h), 0);
   toast(hs.length + ' region' + (hs.length === 1 ? '' : 's') + ', ' + holes + ' island' + (holes === 1 ? '' : 's') + ', ' + area.toFixed(1) + ' SF net');
+}
+
+/* REVISE: the one gesture that turns a change into issued paper.
+ *
+ * Select what moved, run it, and the drawing gains a cloud around that
+ * work, a numbered triangle beside it, and a row in the project's
+ * revision list. Reprint and the sheet carries a revision block saying
+ * what changed and when. Without this a builder has no way to tell the
+ * sheet in their hand from the one taped to the wall.
+ */
+export function reviseSelection(note){
+  const ms = selMembers();
+  if (!ms.length){ toast('Select what changed, then REVISE'); return null; }
+  const bb = membersBBox(ms);
+  if (!isFinite(bb[0]) || bb[0] > 1e8){ toast('Nothing with extents to cloud'); return null; }
+  const num = nextRevNumber(state.revisions);
+  const span = Math.max(bb[2] - bb[0], bb[3] - bb[1]);
+  /* The cloud stands off the work so it reads as a mark on the drawing,
+   * and its scallops scale with what is inside: a 2 ft scallop around a
+   * door is a scribble, around a whole wing it is invisible. */
+  const pad = Math.max(0.4, span * 0.05);
+  const amp = Math.max(0.35, Math.min(2.2, span * 0.045));
+  pushUndo();
+  const cloud = addEntity({
+    type: 'cloud', layer: 'NOTES', amp,
+    pts: cloudAround(bb, pad),
+    rev: num
+  });
+  /* The delta rides the cloud's top right corner, where a drafter looks
+   * for it, clear of the geometry inside. */
+  const h = Math.max(0.5, Math.min(2.4, span * 0.06));
+  const delta = addEntity(makeDelta({
+    x: bb[2] + pad + h * 0.9, y: bb[3] + pad, num, h, layer: 'NOTES'
+  }));
+  state.revisions = addRevision(state.revisions, { num, note: note || '' });
+  afterChange();
+  toast('Revision ' + num + ' clouded' + (note ? ': ' + note : ''));
+  return { num, cloud, delta };
 }
 
 export function deleteSelection(){

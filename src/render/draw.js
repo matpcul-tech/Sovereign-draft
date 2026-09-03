@@ -242,32 +242,70 @@ function drawPaper(){
       const r = annotationRect(a);
       const rowPx = (paper ? (t.rowH || 0.22) : 0.85 * ts) * scl;
       if (r && rowPx < 9){
-        /* Rows this small on screen are mush: an 8px font floor above a
-         * 6px row was text piled on text. The screen shows a clean
-         * titled panel; the readable rows live in the issued PDF, which
-         * is the artifact. */
+        /* Rows this small cannot carry text: an 8px font floor above a
+         * 6px row was text piled on text. So draw the schedule itself,
+         * ruled, with a titled header band and one line per row. It
+         * reads as the table it is instead of a card claiming the real
+         * one prints elsewhere, and zooming in fills the rows with
+         * their words. */
         const tl = p2s(r[0], r[3]), br = p2s(r[2], r[1]);
+        const panelW = br[0] - tl[0], panelH = br[1] - tl[1];
         ctx.fillStyle = '#f4efe4';
-        ctx.fillRect(tl[0], tl[1], br[0] - tl[0], br[1] - tl[1]);
-        ctx.strokeStyle = '#8b7f66';
-        ctx.strokeRect(tl[0], tl[1], br[0] - tl[0], br[1] - tl[1]);
-        const panelW = br[0] - tl[0];
-        const title = String(t.title || 'TABLE');
-        /* Sized and clipped to the panel: a fixed 11px title overran a
-         * phone-width card and bled past the sheet edge. */
-        const tf = Math.max(7, Math.min(11, panelW / (title.length * 0.68)));
+        ctx.fillRect(tl[0], tl[1], panelW, panelH);
         ctx.save();
-        ctx.beginPath(); ctx.rect(tl[0], tl[1], panelW, br[1] - tl[1]); ctx.clip();
-        ctx.fillStyle = '#07101f';
-        ctx.font = '600 ' + tf.toFixed(1) + 'px Outfit, system-ui';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        const rows = (t.cells || []).length - 1;
-        ctx.fillText(title, (tl[0] + br[0]) / 2, (tl[1] + br[1]) / 2 - tf * 0.65);
-        if (panelW > 58){
-          ctx.font = Math.max(6, tf - 1.5).toFixed(1) + 'px Outfit, system-ui';
-          ctx.fillStyle = '#5a5344';
-          ctx.fillText(rows > 0 ? rows + ' rows - prints in full' : 'prints in full', (tl[0] + br[0]) / 2, (tl[1] + br[1]) / 2 + tf * 0.75);
+        ctx.beginPath(); ctx.rect(tl[0], tl[1], panelW, panelH); ctx.clip();
+        const cells = t.cells || [];
+        const nRows = cells.length;
+        const headH = Math.min(panelH, Math.max(rowPx, Math.min(13, panelH * 0.34)));
+        /* The header band, dark like a printed schedule head. */
+        ctx.fillStyle = '#dcd3bd';
+        ctx.fillRect(tl[0], tl[1], panelW, headH);
+        ctx.strokeStyle = '#8b7f66'; ctx.lineWidth = 1;
+        /* One rule per row, only while the rules stay apart enough to
+         * read as rules rather than a solid block. */
+        if (nRows > 1 && rowPx >= 2){
+          ctx.beginPath();
+          for (let i = 1; i < nRows; i++){
+            const yy = Math.round(tl[1] + headH + (panelH - headH) * (i / nRows)) + 0.5;
+            if (yy >= br[1] - 1) break;
+            ctx.moveTo(tl[0], yy); ctx.lineTo(br[0], yy);
+          }
+          ctx.strokeStyle = '#c3b696';
+          ctx.stroke();
         }
+        /* Column rules from the table's own widths, so the shape on
+         * screen is the shape that prints. */
+        const colW = t.colW || [];
+        const total = colW.reduce((a2, b2) => a2 + b2, 0);
+        if (total > 0 && panelW > 40){
+          ctx.beginPath();
+          let acc = 0;
+          for (let i = 0; i < colW.length - 1; i++){
+            acc += colW[i];
+            const xx = Math.round(tl[0] + panelW * (acc / total)) + 0.5;
+            ctx.moveTo(xx, tl[1]); ctx.lineTo(xx, br[1]);
+          }
+          ctx.strokeStyle = '#c3b696';
+          ctx.stroke();
+        }
+        ctx.strokeStyle = '#8b7f66';
+        ctx.strokeRect(tl[0] + 0.5, tl[1] + 0.5, panelW - 1, panelH - 1);
+        let title = String(t.title || 'TABLE');
+        /* Measured, not guessed, and shrunk before it is cut. A 6px
+         * floor over a narrow panel clipped GENERAL LEGEND to
+         * "ENERAL LEGEN"; sizing it down first keeps the whole name,
+         * which is what tells a builder which table they are reading. */
+        const room = panelW - 4;
+        ctx.fillStyle = '#07101f';
+        let tf = Math.min(headH * 0.72, panelW / (title.length * 0.62));
+        const fit = () => { ctx.font = '600 ' + tf.toFixed(1) + 'px Outfit, system-ui'; return ctx.measureText(title).width; };
+        while (tf > 5 && fit() > room) tf -= 0.5;
+        if (fit() > room){
+          while (title.length > 1 && ctx.measureText(title + '.').width > room) title = title.slice(0, -1);
+          title = title + '.';
+        }
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(title, tl[0] + panelW / 2, tl[1] + headH / 2);
         ctx.restore();
         ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
         return;

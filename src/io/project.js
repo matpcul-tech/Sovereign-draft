@@ -1,5 +1,6 @@
 /* Project (de)serialization plus localStorage autosave. */
 import { PROJECT_VERSION, defaultLayers } from '../core/state.js';
+import { makeRevision } from '../core/revision.js';
 import { normalizeSheets, DOC_VERSION } from '../core/document.js';
 import { defaultDimStyles } from '../core/dimStyle.js';
 import { defaultLayouts } from '../core/layout.js';
@@ -55,6 +56,7 @@ export function serializeProject(state, pretty){
     v: PROJECT_VERSION,
     name: state.projectName || 'Untitled',
     firm: state.firm || { company: '', copyright: '', drawnBy: '' },
+    revisions: state.revisions || [],
     idSeq: state.idSeq,
     gSeq: state.gSeq,
     layers: state.layers,
@@ -127,7 +129,14 @@ export function validateProject(o){
        * dropped rather than carried blindly into every save. */
       logo: /^data:image\/jpe?g;base64,/.test(String(o.firm && o.firm.logo || '')) && String(o.firm.logo).length < 400000
         ? String(o.firm.logo) : undefined
-    }
+    },
+    /* Revisions arrive from a file somebody else may have edited, so
+     * each field is bounded here rather than trusted onto the sheet. */
+    revisions: (Array.isArray(o.revisions) ? o.revisions : [])
+      .filter(r => r && Number(r.num) >= 1)
+      .map(r => makeRevision(r))
+      .sort((a2, b2) => a2.num - b2.num)
+      .slice(0, 64)
   };
 }
 
@@ -161,6 +170,7 @@ export function applyProject(state, p){
   state.heightAssumed = p.heightAssumed !== false;
   setDisplayUnits(state.units || 'ft');
   if (p.firm) state.firm = p.firm;
+  state.revisions = p.revisions || [];
   ['SCHEDULES', 'UNDERLAY'].forEach(n => {
     if (!state.layers.find(l => l.name === n)){
       const d = defaultLayers().find(l => l.name === n);

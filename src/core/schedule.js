@@ -79,7 +79,11 @@ export function roomRows(entities){
   if (live.length){
     return live.map(h => {
       const area = h.area != null ? h.area : Math.abs(polyArea(h.pts || []));
-      return [h.name || 'ROOM', planDims(h.pts), area.toFixed(1) + ' SF', 'LIVE'];
+      /* The FINISH column is a finish. It used to print the word LIVE,
+       * an internal marker meaning "this row came from a room entity
+       * rather than a hatch", straight onto issued paper. */
+      const finish = String(h.finish || '').trim().toUpperCase();
+      return [h.name || 'ROOM', planDims(h.pts), area.toFixed(1) + ' SF', finish || '-'];
     });
   }
   const rooms = [];

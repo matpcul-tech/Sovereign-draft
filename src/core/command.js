@@ -33,6 +33,7 @@ export const COMMANDS = {
   TEXT:    { aliases: ['TEXT', 'T'],                    tool: 'text',    prompt: 'Specify start point of text' },
   ELLIPSE: { aliases: ['ELLIPSE', 'EL'],                tool: 'ellipse', prompt: 'Specify center of ellipse' },
   REVCLOUD:{ aliases: ['REVCLOUD', 'RC', 'CLOUD'],      tool: 'cloud',   prompt: 'Specify start of revision cloud' },
+  REVISE:  { aliases: ['REVISE', 'REV'],                tool: null,     action: 'revise' },
   LEADER:  { aliases: ['LEADER', 'LE', 'MLD'],          tool: 'leader',  prompt: 'Specify first leader point' },
   DIMRAD:  { aliases: ['DIMRADIUS', 'DIMRAD', 'DRA'],   tool: 'dimrad',  prompt: 'Select circle or arc' },
   DIMDIA:  { aliases: ['DIMDIAMETER', 'DIMDIA', 'DDI'], tool: 'dimdia',  prompt: 'Select circle' },

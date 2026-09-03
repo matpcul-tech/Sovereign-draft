@@ -19,7 +19,9 @@ import { resolveStamp } from '../core/titleblock.js';
 import { fontObjects, hexString, collectGlyphs, bytesToLatin1 } from './pdffont.js';
 import { jpegInfo, dataUrlToBytes } from './jpeg.js';
 import { missingGlyphs } from './ttf.js';
-import { titleBlockModel, drawingTitleOf, fitPaperText, viewportClearOfTitle } from '../core/titleblock.js';
+import { titleBlockModel, drawingTitleOf, fitPaperText, viewportClearOfTitle,
+  revisionBlockModel } from '../core/titleblock.js';
+import { revisionRows, revisionsOnSheet } from '../core/revision.js';
 import { entsInBBox } from '../core/legend.js';
 import { refreshDerivedTables } from '../core/keynote.js';
 import { plotLwPt, styledLwPt, styledGray, stylePlots, plotStyleByName, defaultPlotStyles, SOLID_GRAY, DIM_GRAY } from './plotstyle.js';
@@ -598,6 +600,11 @@ function layoutPage(entities, opts){
       year: opts.year
     });
     paintTitleBlock(P, f2, textAt, model);
+    /* Only the revisions this sheet actually carries. A sheet with
+     * nothing clouded on it makes no revision claim. */
+    const revs = revisionRows(revisionsOnSheet(entities, opts.revisions));
+    const rb = revisionBlockModel(layout.sheet, revs);
+    if (rb) paintRevBlock(P, f2, textAt, rb);
   }
   return { stream: C.join('\n'), pageW, pageH, ppf };
 }
@@ -620,6 +627,21 @@ function drawScaleBar(P, f2, textAt, vp, ppf){
   textAt(x, y + 7.5, 6.2, '0', 0, false, 0.3);
   const lab = ft + ' FT';
   textAt(x + w - helveticaWidth(lab, 6.2, false), y + 7.5, 6.2, lab, 0, false, 0.3);
+}
+
+function paintRevBlock(P, f2, textAt, model){
+  const IX = v => v * 72, IY = v => v * 72;
+  P('1 g');
+  P(f2(IX(model.x)) + ' ' + f2(IY(model.y)) + ' ' + f2(IX(model.w)) + ' ' + f2(IY(model.h)) + ' re f');
+  P('0.08 G 0.9 w');
+  P(f2(IX(model.x)) + ' ' + f2(IY(model.y)) + ' ' + f2(IX(model.w)) + ' ' + f2(IY(model.h)) + ' re S');
+  P('0.5 w');
+  (model.lines || []).forEach(l => {
+    P(f2(IX(l.x1)) + ' ' + f2(IY(l.y1)) + ' m ' + f2(IX(l.x2)) + ' ' + f2(IY(l.y2)) + ' l S');
+  });
+  (model.labels || []).forEach(l => {
+    textAt(IX(l.x), IY(l.y), l.size * 72, l.text, 0, l.bold, l.gray);
+  });
 }
 
 function paintTitleBlock(P, f2, textAt, model){

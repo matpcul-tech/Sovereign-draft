@@ -223,6 +223,62 @@ export function titleBlockModel(sheetKey, info){
   };
 }
 
+/* The revision block: the strip a builder reads to know whether the sheet
+ * in their hand is newer than the one taped to the wall. It sits directly
+ * above the title block, right-aligned, newest row on top, and is drawn
+ * only when the sheet actually carries a revision. A sheet with nothing
+ * clouded on it makes no revision claim.
+ *
+ * Paper inches, same origin as titleBlockModel. Returns null when there
+ * is nothing to say. */
+export const REV_ROW_H = 0.26;
+
+export function revisionBlockModel(sheetKey, rows, opts){
+  const list = (rows || []).slice(0, 8);
+  if (!list.length) return null;
+  const o = opts || {};
+  const s = sheetOf(sheetKey);
+  const m = SHEET_MARGIN;
+  const wide = s.w - m * 2 >= 14;
+  const w = Math.min(s.w - m * 2, wide ? 6.4 : 4.2);
+  const rh = o.rowH || REV_ROW_H;
+  const head = rh;
+  const h = head + rh * list.length;
+  /* Right-aligned above the title block, the corner every drafter looks
+   * at first for a revision. */
+  const x = s.w - m - w;
+  const y = m + TITLE_BLOCK_H;
+  const numW = wide ? 0.5 : 0.42;
+  const dateW = wide ? 1.15 : 0.95;
+  const noteW = w - numW - dateW;
+  const cols = [
+    { id: 'num', x, w: numW },
+    { id: 'date', x: x + numW, w: dateW },
+    { id: 'note', x: x + numW + dateW, w: noteW },
+  ];
+  const labels = [];
+  const size = Math.min(0.105, rh * 0.42);
+  const headY = y + h - rh + rh * 0.32;
+  labels.push({ x: cols[0].x + 0.07, y: headY, size: size * 0.9, text: 'REV', bold: true, gray: 0.35, align: 'left', maxW: numW - 0.1 });
+  labels.push({ x: cols[1].x + 0.07, y: headY, size: size * 0.9, text: 'DATE', bold: true, gray: 0.35, align: 'left', maxW: dateW - 0.1 });
+  labels.push({ x: cols[2].x + 0.07, y: headY, size: size * 0.9, text: 'DESCRIPTION', bold: true, gray: 0.35, align: 'left', maxW: noteW - 0.1 });
+  list.forEach((r, i) => {
+    /* Newest on top: the caller hands rows already sorted that way, so
+     * row 0 is drawn in the topmost body slot. */
+    const ry = y + h - head - rh * (i + 1) + rh * 0.32;
+    labels.push({ x: cols[0].x + 0.07, y: ry, size, text: String(r[0] == null ? '' : r[0]), bold: true, gray: 0.08, align: 'left', maxW: numW - 0.1 });
+    labels.push({ x: cols[1].x + 0.07, y: ry, size, text: String(r[1] == null ? '' : r[1]), gray: 0.12, align: 'left', maxW: dateW - 0.1 });
+    labels.push({ x: cols[2].x + 0.07, y: ry, size,
+      text: fitPaperText(String(r[2] == null ? '' : r[2]), size * 72, noteW - 0.14, false),
+      gray: 0.12, align: 'left', maxW: noteW - 0.1 });
+  });
+  const lines = [];
+  for (let i = 0; i <= list.length + 1; i++) lines.push({ x1: x, y1: y + rh * i, x2: x + w, y2: y + rh * i });
+  for (const c of cols) lines.push({ x1: c.x, y1: y, x2: c.x, y2: y + h });
+  lines.push({ x1: x + w, y1: y, x2: x + w, y2: y + h });
+  return { x, y, w, h, rowH: rh, cols, labels, lines, rows: list };
+}
+
 export function viewportClearOfTitle(vp){
   if (!vp) return vp;
   const minY = SHEET_MARGIN + TITLE_BLOCK_H;

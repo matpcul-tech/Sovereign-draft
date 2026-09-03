@@ -24,15 +24,18 @@ import {
  * reason. The guard's job, catching unintended pipeline changes against a
  * stable input, continues from the corrected cabin. */
 const PRE_REFACTOR_PDF = {
-  /* Regenerated 2026-09-02 (second pass): schedule tables now read
-   * header-on-top everywhere, part-mark bubbles lift clear of their
-   * labels, and a room named by a text inside its loop prints one name
-   * (its live SF stays in the room schedule). Verified by rendering:
-   * every room named once, tables top-down, nothing colliding. */
-  'cabin:fit': 'd6f999eada939f59',
-  'cabin:18': 'e24a33bdf33ff4f8',
-  'cabin:9': 'd6f999eada939f59',
-  'cabin:4.5': '011f4e00abf877a4'
+  /* Regenerated 2026-09-03 (third pass): the room schedule's FINISH
+   * column printed the word LIVE on issued paper. LIVE was an internal
+   * marker meaning "this row came from a room entity rather than a
+   * hatch", and it reached the builder's sheet as a finish. Rooms now
+   * print their own finish, or a dash when none is set. That is the
+   * whole delta in these bytes: the revision block added in the same
+   * change is inert on a sheet carrying no revisions, which is why
+   * reverting only the FINISH fix put every one of these hashes back. */
+  'cabin:fit': 'ab1c108c585c5eff',
+  'cabin:18': 'c120d4f53ba57c31',
+  'cabin:9': 'ab1c108c585c5eff',
+  'cabin:4.5': 'b9f64c54d679ce60'
 };
 
 function pdfHash(ents, ppf, name){

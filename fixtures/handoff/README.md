@@ -55,4 +55,18 @@ Attach the screenshot of the layer manager next to this file and record
 the AutoCAD version and date. Until that list is ticked by a person, this
 fixture proves the file is consistent, not that it is accepted.
 
+## Refreeze log
+
+Every entry is a deliberate change to the file a consultant receives, with
+what actually moved. A refreeze that cannot name its diff should not happen.
+
+- **2026-09-03, first freeze.** The cabin exported with AIA layer names,
+  decimal feet, native DIMENSION and HATCH objects. Structurally checked,
+  not yet opened in AutoCAD.
+- **2026-09-03, FINISH column.** The room schedule's FINISH cells read
+  `LIVE`, an internal marker that reached issued paper as a finish. The
+  entire diff against the previous freeze is three cells changing from
+  `LIVE` to `-`; every manifest field (layers, units, entity counts and
+  types, extents) is byte-for-byte unchanged.
+
 Do not chase ODA-grade DWG write until this path is boring.

@@ -18,7 +18,7 @@ import {
   applySheetSet, layerIsolate, layerUnisolate, bindSelection,
   placeDatumAt, placeFinishAt, applyStoryHeight, beginHeightPrompt,
   addConstraint, solveConstraintsNow, deleteConstraintsOnSelection, solveAfterEdit,
-  hatchIslandsFromSelection, arcSegTap, booleanOnSelection,
+  hatchIslandsFromSelection, arcSegTap, booleanOnSelection, reviseSelection,
   saveLayerState, restoreLayerState, deleteLayerState, setPlotStyle,
   twistViewport, clipViewport,
   extrudeSelection, revolveSelection, loftSelection, clearSolids,
@@ -524,6 +524,7 @@ export function handleCommand(text){
   if (res.action === 'csolve'){ solveConstraintsNow(); return; }
   if (res.action === 'cdel'){ deleteConstraintsOnSelection(); return; }
   if (res.action === 'bhatch'){ hatchIslandsFromSelection(); return; }
+  if (res.action === 'revise'){ reviseSelection(res.rest); return; }
   if (res.action && res.action.indexOf('bool:') === 0){ booleanOnSelection(res.action.slice(5)); return; }
   if (res.action === 'laysave'){ saveLayerState(res.rest); return; }
   if (res.action === 'layrest'){ restoreLayerState(res.rest); return; }

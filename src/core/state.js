@@ -45,6 +45,9 @@ export const state = {
   /* Which named job on this device this drawing is. */
   projectId: null,
   firm: { company: '', copyright: '', drawnBy: '' },
+  /* Issued revisions, oldest first. A sheet that goes out stamped 2
+   * keeps that number forever, so these are never renumbered. */
+  revisions: [],
   layers: defaultLayers(),
   currentLayer: 'WALLS',
   entities: [],
@@ -170,6 +173,7 @@ function snapshot(){
     materials: deep(state.materials || {}),
     sun: state.sun ? { ...state.sun } : null,
     views3d: deep(state.views3d || []),
+    revisions: deep(state.revisions || []),
     layouts: deep(state.layouts),
     currentDimStyle: state.currentDimStyle,
     currentLayout: state.currentLayout,
@@ -190,6 +194,10 @@ function restore(s){
   if (s.materials) state.materials = s.materials;
   if ('sun' in s) state.sun = s.sun;
   if (s.views3d) state.views3d = s.views3d;
+  /* Undoing a REVISE takes back the revision row too, not just its cloud
+   * and delta: a phantom revision that nothing on any sheet points at is
+   * not a record, it is a wrong count in the block. */
+  if (s.revisions) state.revisions = s.revisions;
   if (s.layouts) state.layouts = s.layouts;
   if (s.currentDimStyle) state.currentDimStyle = s.currentDimStyle;
   if (s.currentLayout) state.currentLayout = s.currentLayout;
