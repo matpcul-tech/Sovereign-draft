@@ -99,13 +99,21 @@ export function hitTest(sx, sy){
     ? queryPoint(pickIndex.get(ents, state.geomStamp), w[0], w[1], tol)
     : null;
   const n = order ? order.length : ents.length;
+  /* A room is an area that follows the walls around it, regenerated
+   * last, so it sat on top of everything and took every tap: the wall
+   * under a finger was unselectable the moment the loop closed, and no
+   * door could be placed by tapping it. Anything drawn wins over a room;
+   * a room is what you get by tapping empty floor. */
+  let room = null;
   for (let k = n - 1; k >= 0; k--){
     const e = ents[order ? order[k] : k], L = layerByName(e.layer);
     if (L && !L.visible) continue;
     if (L && L.locked) continue;
-    if (entHit(e, w, tol)) return e;
+    if (!entHit(e, w, tol)) continue;
+    if (e.type === 'room'){ if (!room) room = e; continue; }
+    return e;
   }
-  return null;
+  return room;
 }
 
 export function cancelPoly(commit){

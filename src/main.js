@@ -147,7 +147,9 @@ export function boot(root){
     }
   }
   booted = true;
-  window.__sovereign = { state, setTool, zoomFit, draw };
+  /* ix is the pointer interaction record; exposed so a driven run can
+   * see why a tap went nowhere. */
+  window.__sovereign = { state, setTool, zoomFit, draw, ix };
   loadShareFromLocation().catch(() => {});
   return function cleanup(){
     if (unbindResize) unbindResize();
@@ -213,7 +215,11 @@ async function loadView3d(){
 function startTour(){
   const card = document.createElement('div');
   card.id = 'tourcard';
-  card.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 150px);z-index:60;' +
+  /* The card floats over the drawing area, so its body must let taps
+   * through to the canvas; only its two buttons take them. A card that
+   * swallowed the drag under it made the first wall of a new job land
+   * nowhere, silently. */
+  card.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 150px);z-index:60;pointer-events:none;' +
     'max-width:340px;background:var(--navy-2,#0b1830);border:1px solid var(--gold,#d4a843);border-radius:12px;' +
     'padding:14px 16px;color:var(--ink,#e8e4dd);font-family:Outfit,system-ui,sans-serif;font-size:13px;line-height:1.45;box-shadow:0 8px 30px rgba(0,0,0,.45)';
   const msg = document.createElement('div');
@@ -222,8 +228,8 @@ function startTour(){
   const skip = document.createElement('button');
   const next = document.createElement('button');
   skip.textContent = 'Skip';
-  skip.style.cssText = 'background:none;border:none;color:var(--ink-dim,#8fa0bd);font-size:12px;padding:6px 10px';
-  next.style.cssText = 'background:var(--gold,#d4a843);border:none;color:#0b1830;font-weight:600;font-size:12px;border-radius:8px;padding:7px 14px';
+  skip.style.cssText = 'pointer-events:auto;background:none;border:none;color:var(--ink-dim,#8fa0bd);font-size:12px;padding:6px 10px';
+  next.style.cssText = 'pointer-events:auto;background:var(--gold,#d4a843);border:none;color:#0b1830;font-weight:600;font-size:12px;border-radius:8px;padding:7px 14px';
   row.appendChild(skip); row.appendChild(next);
   card.appendChild(msg); card.appendChild(row);
   document.body.appendChild(card);
@@ -232,6 +238,9 @@ function startTour(){
     card.remove();
   };
   skip.addEventListener('click', done);
+  /* The tour is about the sample. New drawing, a new or opened job, or
+   * the person's own first stroke on the canvas ends it. */
+  document.addEventListener('sd-tour-end', done, { once: true });
   let step = 0;
   const steps = [
     { text: 'This sample cabin is a finished 2D plan: walls, doors, dims, sheets. Watch it become a building.', btn: 'Build it' },
@@ -889,6 +898,7 @@ function wireUi(){
         pushUndo();
         applyProject(state, p);
         state.projectId = null;
+    try { document.dispatchEvent(new Event('sd-tour-end')); } catch (e){ /* node */ }
         closeSheets(); afterChange(); zoomFit(); draw();
         toast('Opened ' + (p.name || 'project'));
       } catch (err){ toast('Open failed: ' + err.message); }
@@ -1194,9 +1204,14 @@ function wireUi(){
      * opened, and there was no way to get rid of it. */
     state.entities = []; state.solids = []; state.selIds = []; ix.polyPts = [];
     state.revisions = [];
+    /* The sample's sheets went with it too: five empty pages used to
+     * print at the end of every new job's set. */
+    state.layouts = defaultLayouts(); state.currentLayout = state.layouts[0].id;
+    state.space = 'model';
     state.projectName = 'Untitled';
     /* A blank sheet is a new job, not this job emptied. */
     state.projectId = null;
+    try { document.dispatchEvent(new Event('sd-tour-end')); } catch (e){ /* node */ }
     if ($('projName')) $('projName').value = '';
     closeSheets(); afterChange(); homeView(); draw();
     syncOpen3d();
@@ -1208,6 +1223,7 @@ function wireUi(){
     cabin24x36().forEach(e => addEntity(e));
     state.projectName = '24x36 Cabin';
     state.projectId = null;
+    try { document.dispatchEvent(new Event('sd-tour-end')); } catch (e){ /* node */ }
     state.autoRooms = true;
     if ($('projName')) $('projName').value = '24x36 Cabin';
     state.layouts = generateSheetSet(state.entities, state.layers, { projectName: state.projectName });
@@ -1505,6 +1521,7 @@ function wireUi(){
     if (!p){ toast('That job could not be opened'); renderProjects(); return; }
     applyProject(state, p);
     state.projectId = id;
+    try { document.dispatchEvent(new Event('sd-tour-end')); } catch (e){ /* node */ }
     if ($('projName')) $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
     closeSheets(); afterChange(); zoomToPlan(); draw();
     renderLayouts(); renderSpaceTabs();
@@ -1524,6 +1541,7 @@ function wireUi(){
     state.space = 'model';
     state.projectName = (name.trim() || 'Untitled');
     state.projectId = null;
+    try { document.dispatchEvent(new Event('sd-tour-end')); } catch (e){ /* node */ }
     if ($('projName')) $('projName').value = state.projectName === 'Untitled' ? '' : state.projectName;
     closeSheets(); afterChange(); homeView(); draw();
     renderLayouts(); renderSpaceTabs();

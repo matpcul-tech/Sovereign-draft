@@ -26,14 +26,40 @@ export function wallFrags(x1, y1, x2, y2, th, layer){
   ];
 }
 
+/* The centerline of a wall group from its faces: the full run, whatever
+ * has been cut out of it. A door splits each face into two segments, and
+ * reading only the first pair told the whole wall its centerline ended
+ * at the jamb; the room loop then broke at every door, silently. */
 export function wallCenterline(members){
-  const a = members.find(e => e.role === 'a');
-  const b = members.find(e => e.role === 'b');
-  if (!a || !b) return null;
+  const as = members.filter(e => e.role === 'a');
+  const bs = members.filter(e => e.role === 'b');
+  if (!as.length || !bs.length) return null;
+  const lead = as.reduce((m, e) => dist(e.x1, e.y1, e.x2, e.y2) > dist(m.x1, m.y1, m.x2, m.y2) ? e : m, as[0]);
+  const L = dist(lead.x1, lead.y1, lead.x2, lead.y2);
+  if (L < 1e-9) return null;
+  const ux = (lead.x2 - lead.x1) / L, uy = (lead.y2 - lead.y1) / L;
+  const nx = -uy, ny = ux;
+  const ox = lead.x1, oy = lead.y1;
+  let tMin = Infinity, tMax = -Infinity, offA = 0, offB = 0;
+  const walk = (list, sink) => {
+    let acc = 0, n = 0;
+    list.forEach(e => {
+      [[e.x1, e.y1], [e.x2, e.y2]].forEach(p => {
+        const t = (p[0] - ox) * ux + (p[1] - oy) * uy;
+        if (t < tMin) tMin = t;
+        if (t > tMax) tMax = t;
+        acc += (p[0] - ox) * nx + (p[1] - oy) * ny; n++;
+      });
+    });
+    sink(n ? acc / n : 0);
+  };
+  walk(as, v => { offA = v; });
+  walk(bs, v => { offB = v; });
+  const mid = (offA + offB) / 2;
   return {
-    x1: (a.x1 + b.x1) / 2, y1: (a.y1 + b.y1) / 2,
-    x2: (a.x2 + b.x2) / 2, y2: (a.y2 + b.y2) / 2,
-    th: a.th || dist(a.x1, a.y1, b.x1, b.y1)
+    x1: ox + ux * tMin + nx * mid, y1: oy + uy * tMin + ny * mid,
+    x2: ox + ux * tMax + nx * mid, y2: oy + uy * tMax + ny * mid,
+    th: lead.th || Math.abs(offA - offB)
   };
 }
 

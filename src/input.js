@@ -88,6 +88,11 @@ function onPointerDown(ev){
 
   const sx = ev.clientX, sy = ev.clientY;
   const tool = state.tool;
+  /* A drawing tool touching the canvas is the person's own work starting;
+   * whatever was introducing the sample steps out of the way. */
+  if (tool !== 'select' && tool !== 'pan'){
+    try { document.dispatchEvent(new Event('sd-tour-end')); } catch (e){ /* node */ }
+  }
   if (tool === 'pan'){ ix.drag = { kind: 'pan', last: [sx, sy] }; return; }
   if (tool === 'select'){
     if (state.boxMode){ ix.drag = { kind: 'box', s0: [sx, sy], cur: null }; return; }
@@ -232,6 +237,12 @@ function onPointerMove(ev){
 }
 
 function endPointer(ev){
+  /* A short trace of what each pointer-up did, for a driven run to read
+   * when a tap went nowhere. Fifty entries, no cost worth measuring. */
+  try {
+    ix.trace = (ix.trace || []).slice(-49);
+    ix.trace.push({ kind: ix.drag ? ix.drag.kind : null, tool: state.tool, n: ix.pointers.size, x: ev.clientX, y: ev.clientY });
+  } catch (e){ /* node */ }
   const was = ix.pointers.has(ev.pointerId);
   ix.pointers.delete(ev.pointerId);
   if (ix.gesture){ if (ix.pointers.size === 0) ix.gesture = null; ix.drag = null; return; }
