@@ -163,9 +163,9 @@ describe('a room the frame cuts through prints its walls and not half a label', 
     const pdf = buildLayoutPDF(ents, { layout, layerVisible: () => true, dateStr: '2026-01-01' }).pdf;
     expect(pdf).toContain('INSIDE');
     expect(pdf).not.toContain('STRADDLE');
-    /* The straddling room's walls still print: its polygon reaches the
-     * frame. Count path segments as a proxy: more than the one room. */
-    expect((pdf.match(/ l S\n/g) || []).length).toBeGreaterThan(4);
+    /* The straddling room walls still print: two closed polygons
+     * reach the page, not one. */
+    expect((pdf.match(/ h S\n/g) || []).length).toBeGreaterThanOrEqual(2);
     void fitViewport;
   });
 });
