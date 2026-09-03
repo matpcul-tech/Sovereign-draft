@@ -1,4 +1,5 @@
 import { openSheet } from './sheets.js';
+import { resize } from '../render/draw.js';
 
 export function guideHTML(){
   return `
