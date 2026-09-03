@@ -33,6 +33,7 @@ import { setTool } from './ui/tools.js';
 import { openSheet, closeSheets, anySheetOpen } from './ui/sheets.js';
 import { toast } from './ui/toast.js';
 import { lookupCommand, defaultPrompt, setKeymap, getKeymap } from './core/command.js';
+import { openGuide } from './ui/guide.js';
 import { continueDim, baselineDim } from './core/dimStyle.js';
 import { addEntity } from './core/state.js';
 import { paramOnCl, locateInsert, syncHostWall } from './core/dynblock.js';
@@ -565,7 +566,7 @@ export function handleCommand(text){
   if (res.action === 'modelplan'){ modelPlan(); return; }
   if (res.action === 'zoomfit'){ zoomFit(); draw(); return; }
   if (res.action === 'guide'){
-    try { window.open('guide.html', '_blank'); } catch (e){ toast('The guide lives at guide.html'); }
+    openGuide();
     return;
   }
   if (res.action === 'undo'){ doUndo(); return; }

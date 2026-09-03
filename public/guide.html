@@ -4,26 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sovereign Draft Field Guide</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Outfit:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
   :root{
-    --bg:#f6f1e7; --surface:#fffdf6; --ink:#1d2433; --dim:#5d6472;
-    --gold:#8f6b14; --teal:#0d7a6d; --line:#d9d0ba; --chip:#efe7d5;
-    --kbd-bg:#fffdf6; --kbd-edge:#c9bfa6;
-  }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg:#07101f; --surface:#0b1830; --ink:#e8e4dd; --dim:#8fa0bd;
-      --gold:#d4a843; --teal:#00d4b8; --line:#1b2c4a; --chip:#0f2038;
-      --kbd-bg:#0f2038; --kbd-edge:#2a3d5e;
-    }
-  }
-  :root[data-theme="dark"]{
-    --bg:#07101f; --surface:#0b1830; --ink:#e8e4dd; --dim:#8fa0bd;
+    --bg:#07101f; --surface:#0b1830; --ink:#e8e4dd; --dim:#8fa3c0;
     --gold:#d4a843; --teal:#00d4b8; --line:#1b2c4a; --chip:#0f2038;
-    --kbd-bg:#0f2038; --kbd-edge:#2a3d5e;
+    --kbd-bg:#0b1830; --kbd-edge:#1b2c4a;
   }
-  *{box-sizing:border-box}
+*{box-sizing:border-box}
   body{
     margin:0; background:var(--bg); color:var(--ink);
     font-family:Outfit,system-ui,sans-serif; font-size:16.5px; line-height:1.62;
@@ -34,7 +23,7 @@
   header{padding:2.6rem 0 1.9rem; border-bottom:2px solid var(--ink)}
   .eyebrow{font-size:.72rem; font-weight:700; letter-spacing:.34em; color:var(--teal); text-transform:uppercase}
   h1{
-    font-family:Fraunces,Georgia,serif; font-weight:700; font-size:clamp(2.1rem,7vw,3rem);
+    font-family:'Playfair Display',Georgia,serif; font-weight:700; font-size:clamp(2.1rem,7vw,3rem);
     line-height:1.06; margin:.35rem 0 .6rem; text-wrap:balance;
   }
   h1 em{font-style:italic; color:var(--gold)}
@@ -53,7 +42,7 @@
   /* Sections */
   section{padding-top:2.6rem}
   h2{
-    font-family:Fraunces,Georgia,serif; font-weight:600; font-size:1.55rem;
+    font-family:'Playfair Display',Georgia,serif; font-weight:600; font-size:1.55rem;
     margin:0 0 .2rem; text-wrap:balance;
   }
   .want{color:var(--teal); font-weight:600; font-size:.92rem; margin:0 0 .9rem}
@@ -119,7 +108,18 @@
   }
 </style>
 </head>
+
 <body>
+<div style="position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:10px;padding:10px 16px;background:linear-gradient(180deg, rgba(7,16,31,.98), rgba(11,24,48,.94));border-bottom:1px solid #1b2c4a">
+  <div style="width:8px;height:8px;border-radius:50%;background:#00d4b8"></div>
+  <div>
+    <div style="font-size:9px;letter-spacing:.22em;color:#00d4b8;font-weight:600">SOVEREIGN</div>
+    <div style="font-family:'Playfair Display',Georgia,serif;font-size:18px;font-weight:600;color:#e8e4dd">The Field <span style="color:#d4a843">Guide</span></div>
+  </div>
+  <div style="flex:1"></div>
+  <a href="./" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid #d4a843;background:#d4a843;color:#07101f;font:600 12px Outfit,sans-serif;text-decoration:none;display:flex;align-items:center">Back to editor</a>
+</div>
+
 
 <div class="wrap">
 <header>

@@ -5,7 +5,8 @@ const SVG = {
   redo: '<svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>',
   fit: '<svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>',
   menu: '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>',
-  props: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 12h8M8 15h5"/></svg>'
+  props: '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 12h8M8 15h5"/></svg>',
+  guide: '<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8 7h8M8 11h5"/></svg>'
 };
 
 function tool(id, label, title, path){
@@ -18,10 +19,12 @@ export function shellHTML(){
 <div id="hint" class="empty">
   <h2>CAD editor</h2>
   <p>Open a DXF or DWG, drop a file, or tap <span class="k">AI</span> to describe a plan.<br>
-  Type <span class="k">3D</span> to model, <span class="k">SHEETSET</span> to issue pages.</p>
+  Type <span class="k">3D</span> to model, <span class="k">SHEETSET</span> to issue pages.<br>
+  Type <span class="k">HELP</span> for the Field Guide.</p>
   <div class="hint-actions">
     <button type="button" id="hintOpen">Open drawing</button>
     <button type="button" id="hintSample">Sample cabin</button>
+    <button type="button" id="hintGuide">Field Guide</button>
   </div>
 </div>
 <div id="topbar">
@@ -43,6 +46,7 @@ export function shellHTML(){
     <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M3 12c2 6 6 9 9 9s7-3 9-9"/><path d="M3 12c2-6 6-9 9-9s7 3 9 9"/></svg>
   </button>
   <button class="tb-btn" id="btnFit" aria-label="Zoom to fit">${SVG.fit}</button>
+  <button class="tb-btn" id="btnGuide" aria-label="Field Guide">${SVG.guide}</button>
   <button class="tb-btn" id="btnProps" aria-label="Properties">${SVG.props}</button>
   <button class="tb-btn" id="btnMenu" aria-label="Menu">${SVG.menu}</button>
 </div>
@@ -364,6 +368,7 @@ export function shellHTML(){
 <input type="file" id="fileXref" accept=".dxf,.json,.dwg,application/json,application/dxf" style="display:none">
 <input type="file" id="fileFont" accept=".ttf,.otf,font/ttf,font/sfnt" style="display:none">
 <input type="file" id="fileImage" accept="image/*" style="display:none">
+<div class="sheet sheet-guide" id="sheetGuide"></div>
 <div id="dropmask"><span>Drop a DXF, DWG or JSON to open it as the drawing</span></div>
 <div id="toast"></div>`;
 }

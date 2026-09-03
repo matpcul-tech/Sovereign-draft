@@ -9,6 +9,7 @@ import { bindInput } from './input.js';
 import { setTool } from './ui/tools.js';
 import { syncCtx, renderHistory, renderProps, cycleCurrentLt, cycleCurrentLw, cycleDimStyle, cycleHatchPattern } from './ui/chips.js';
 import { openSheet, closeSheets } from './ui/sheets.js';
+import { openGuide, guideHTML, bindGuide } from './ui/guide.js';
 import { renderLayers } from './ui/layersPanel.js';
 import { toast } from './ui/toast.js';
 import { cancelPoly, closePoly, deleteSelection, duplicateSelection, saveBlockFromSelection, cycleWallTh, explodeSelection, flipSelection, rotateSelection90, placeAllSchedules, exportScheduleCSV, applyCleanup, applyOverkill, applyRooms, applyTakeoff, applySheetSet, applyAttachXref , restoreLayerState, deleteLayerState, setAnnoScale, setPlotStyle, saveLayerState, solveConstraintsNow, deleteConstraintsOnSelection, loadSamplePart, boolean3d } from './actions.js';
@@ -48,6 +49,12 @@ let unbindInput = null;
 export function boot(root){
   if (!root) return () => {};
   root.innerHTML = shellHTML();
+  const guideEl = $('sheetGuide');
+  if (guideEl){
+    guideEl.innerHTML = guideHTML();
+    bindGuide(guideEl);
+    guideEl.dataset.bound = '1';
+  }
   if (typeof document !== 'undefined' && typeof location !== 'undefined'){
     try {
       const q = new URLSearchParams(location.search);
@@ -374,6 +381,7 @@ function wireUi(){
   $('btnUndo') && $('btnUndo').addEventListener('click', doUndo);
   $('btnRedo') && $('btnRedo').addEventListener('click', doRedo);
   $('btnFit') && $('btnFit').addEventListener('click', () => { zoomFit(); draw(); });
+  $('btnGuide') && $('btnGuide').addEventListener('click', () => openGuide());
   $('btn3d') && $('btn3d').addEventListener('click', () => toggleView3d());
   $('stHeight') && $('stHeight').addEventListener('click', () => {
     try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* ignore */ }
@@ -1371,7 +1379,9 @@ function wireUi(){
     rd.readAsDataURL(f);
     ev.target.value = '';
   });
-  $('mGuide') && $('mGuide').addEventListener('click', () => { closeSheets(); window.open('guide.html', '_blank'); });
+  $('mGuide') && $('mGuide').addEventListener('click', () => openGuide());
+  $('guideClose') && $('guideClose').addEventListener('click', closeSheets);
+  $('hintGuide') && $('hintGuide').addEventListener('click', () => openGuide());
   $('mHistory') && $('mHistory').addEventListener('click', () => { renderHistory(); openSheet('sheetHistory'); });
 
   renderSpaceTabs();
