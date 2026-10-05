@@ -41,7 +41,8 @@
     "smoke": "node scripts/smoke.mjs",
     "accept": "node scripts/acceptance.mjs",
     "handoff": "node scripts/handoff.mjs",
-    "job": "node scripts/job.mjs"
+    "job": "node scripts/job.mjs",
+    "share:browser": "node scripts/share-browser.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",
