@@ -6,7 +6,7 @@ import { scaleLabel } from '../io/pdf.js';
 import { detailBubbleText, viewportClearOfAnnotations, annotationRect } from '../core/sheetspace.js';
 import { state, layerByName, selMembers, activeLayout } from '../core/state.js';
 import { vp, W2S, S2W } from '../core/viewport.js';
-import { membersBBox, gripPts } from '../core/entities.js';
+import { membersBBox, gripPts, roomsLabelledByText } from '../core/entities.js';
 import { dist, polarSnap, ellipsePoints, cloudPoints } from '../core/geometry.js';
 import { fmtFtIn } from '../core/format.js';
 import { drawEnt, strokePathOn } from './ent.js';
@@ -78,10 +78,14 @@ function drawModel(clipToS, clipScl, only){
   const ms = selMembers(), selSet = {};
   ms.forEach(e => { selSet[e.id] = 1; });
   const list = visibleList(clipToS, only, selSet);
+  /* A room named by a label inside it shows only its area on screen, the
+   * way the issued sheets print it, so the name is not doubled. */
+  const labelled = state.entities.some(e => e.type === 'room') ? roomsLabelledByText(state.entities) : null;
   for (const e of list){
     const L = layerByName(e.layer);
     if (L && !L.visible) continue;
-    drawEnt(ctx, e, L ? L.color : '#e8e4dd', !clipToS && !!selSet[e.id], toS, scl, undefined, state.textStyles, state.annoPpf);
+    const de = labelled && labelled.has(e) ? Object.assign({}, e, { sfOnly: true }) : e;
+    drawEnt(ctx, de, L ? L.color : '#e8e4dd', !clipToS && !!selSet[e.id], toS, scl, undefined, state.textStyles, state.annoPpf);
   }
   if (clipToS) return;
   drawConstraintGlyphs();

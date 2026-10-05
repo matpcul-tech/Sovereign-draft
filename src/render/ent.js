@@ -236,10 +236,15 @@ export function drawEnt(c, e, color, sel, toS, scl, bg, styles, annoPpf){
     c.setLineDash([]);
     c.fillStyle = sel ? '#d4a843' : color;
     c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.font = '600 ' + Math.max(11, 0.95 * scl) + 'px Outfit, system-ui';
-    c.fillText(e.name || 'ROOM', q[0], q[1] - Math.max(8, 0.45 * scl));
-    c.font = Math.max(10, 0.65 * scl) + 'px Outfit, system-ui';
-    c.fillText(roomAreaLabel(e), q[0], q[1] + Math.max(8, 0.4 * scl));
+    if (e.sfOnly){
+      c.font = Math.max(10, 0.65 * scl) + 'px Outfit, system-ui';
+      c.fillText(roomAreaLabel(e), q[0], q[1]);
+    } else {
+      c.font = '600 ' + Math.max(11, 0.95 * scl) + 'px Outfit, system-ui';
+      c.fillText(e.name || 'ROOM', q[0], q[1] - Math.max(8, 0.45 * scl));
+      c.font = Math.max(10, 0.65 * scl) + 'px Outfit, system-ui';
+      c.fillText(roomAreaLabel(e), q[0], q[1] + Math.max(8, 0.4 * scl));
+    }
   }
   c.setLineDash([]);
 }
