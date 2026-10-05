@@ -195,7 +195,11 @@ body.view3d #view3d{bottom:calc(env(safe-area-inset-bottom) + 92px)}
 .toolrow > *:last-child{margin-right:6px}
 .toolrow::-webkit-scrollbar{display:none}
 #toolrow{display:none}
-#spacetabs{display:flex;gap:4px;margin-right:8px}
+#spacetabs{display:flex;gap:4px;margin-right:8px;max-width:40vw;overflow-x:auto;scrollbar-width:none}
+#spacetabs::-webkit-scrollbar{display:none}
+.stab{flex:none}
+#spacepick{display:none;height:34px;max-width:96px;padding:0 6px;border-radius:8px;border:1px solid var(--gold);
+  background:var(--navy-2);color:var(--gold);font:500 12px 'Outfit',system-ui,sans-serif}
 .stab{height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--line);font-size:11px;color:var(--ink-dim);background:var(--navy-2)}
 .stab.on{border-color:var(--gold);color:var(--gold)}
 .chiprow{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
@@ -210,6 +214,10 @@ body.view3d #view3d{bottom:calc(env(safe-area-inset-bottom) + 92px)}
 @media (max-width: 480px){
   #title{font-size:15px}
   #spacetabs{display:none}
+  #spacepick{display:block}
+  #topbar{gap:6px;padding-left:10px;padding-right:10px}
+  .tb-btn{width:36px;height:36px}
+  .sovlabel,#title{display:none}
   #cmdprompt{max-width:42%;font-size:11px}
   .tool{width:46px;height:46px}
 }

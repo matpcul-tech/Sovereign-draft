@@ -48,8 +48,8 @@ const check = (ok, msg) => { console.log((ok ? 'ok   ' : 'FAIL ') + msg); if (!o
 
 const browser = await chromium.launch(EXE ? { executablePath: EXE, args: ['--no-sandbox'] } : { args: ['--no-sandbox'] });
 
-async function openPage(url){
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+async function openPage(url, viewport){
+  const ctx = await browser.newContext({ viewport: viewport || { width: 1280, height: 800 } });
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new globalThis.URL(URL).origin });
   const page = await ctx.newPage();
   const errors = [];
@@ -162,6 +162,31 @@ if (url){
   const sb = await summary(b.page);
   check(sb.lines === 5 && sb.text === 'ROUND TRIP', 'the copied link carries the edit (' + JSON.stringify(sb) + ')');
   check(b.errors.length === 0, 'no errors on the second page' + (b.errors.length ? ': ' + b.errors.join('; ') : ''));
+}
+
+/* 3. On a phone: the starter fits between the bars, and the sheet picker
+ * stands in for the tabs a phone has no room for. */
+{
+  const withSheet = Object.assign({}, starter, {
+    layouts: [{ id: 'A1', name: 'A-1 Floor Plan', sheetNumber: 'A-1', sheet: 'archd', ppf: 18, viewports: [] }]
+  });
+  const p = await openPage(URL + '#sd=' + (await encodeShare(JSON.stringify(withSheet))), { width: 390, height: 844 });
+  check(await waitForDrawing(p.page, starter.name), 'the starter link opens on a phone');
+  const fit = await p.page.evaluate(() => {
+    const s = window.__sovereign.state, cv = document.getElementById('cv'), r = cv.getBoundingClientRect();
+    const sy = y => r.top + cv.clientHeight / 2 - (y - s.view.y) * s.view.scale;
+    const top = Math.max(document.getElementById('topbar').getBoundingClientRect().bottom, document.getElementById('cmdline').getBoundingClientRect().bottom);
+    const bottom = document.getElementById('bottom').getBoundingClientRect().top;
+    /* the note's top edge (baseline y -3 plus its 0.6 size) and the block's top (y 16) */
+    return { noteBottom: sy(-3), blockTop: sy(16), top, bottom };
+  });
+  check(fit.blockTop > fit.top && fit.noteBottom < fit.bottom, 'zoom to fit keeps the drawing between the top bar and the toolbars (' + JSON.stringify(fit) + ')');
+  check(await p.page.isVisible('#spacepick'), 'a phone shows the sheet picker');
+  await p.page.selectOption('#spacepick', 'A1');
+  check(await p.page.evaluate(() => window.__sovereign.state.space) === 'A1', 'picking A-1 on a phone opens the sheet');
+  await p.page.selectOption('#spacepick', 'model');
+  check(await p.page.evaluate(() => window.__sovereign.state.space) === 'model', 'picking Model goes back to the model');
+  check(p.errors.length === 0, 'no errors on the phone' + (p.errors.length ? ': ' + p.errors.join('; ') : ''));
 }
 
 await browser.close();

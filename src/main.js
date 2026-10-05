@@ -1737,6 +1737,24 @@ function renderSpaceTabs(){
   };
   mk('Model', 'model', state.space === 'model');
   state.layouts.forEach(L => mk(L.sheetNumber || L.name, L.id, state.space === L.id));
+  /* A phone has no room for a row of tabs, so it gets one picker with the
+   * same choices: the model and every sheet. */
+  const pick = $('spacepick');
+  if (pick){
+    pick.innerHTML = '';
+    const opt = (label, space) => {
+      const o = document.createElement('option');
+      o.value = space; o.textContent = label;
+      if (state.space === space) o.selected = true;
+      pick.appendChild(o);
+    };
+    opt('Model', 'model');
+    state.layouts.forEach(L => opt(L.sheetNumber || L.name, L.id));
+    if (!pick.dataset.wired){
+      pick.dataset.wired = '1';
+      pick.addEventListener('change', () => goToSpace(pick.value));
+    }
+  }
 }
 
 function goToSpace(space){

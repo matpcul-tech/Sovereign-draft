@@ -40,6 +40,7 @@ export function shellHTML(){
     <button class="stab on" data-space="model">Model</button>
     <button class="stab" data-space="layout" id="tabLayout">A-1</button>
   </div>
+  <select id="spacepick" aria-label="Show the model or a sheet"></select>
   <button class="tb-btn" id="btnUndo" aria-label="Undo">${SVG.undo}</button>
   <button class="tb-btn" id="btnRedo" aria-label="Redo">${SVG.redo}</button>
   <button class="tb-btn" id="btn3d" aria-label="3D model">
