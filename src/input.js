@@ -349,6 +349,7 @@ function endPointer(ev){
     } else {
       const t = (tool === 'line' && state.wallMode) ? 'wall' : tool;
       finishDraw(drag.p1, drag.p2, t);
+      ix.typedChain = (t === 'line' || t === 'wall');
       /* A paragraph column is picked before its words exist, so the text
        * prompt comes up as soon as the drag lands. */
       if (t === 'mtext' && ix.pendingMText){
@@ -510,6 +511,7 @@ function isLiveCommand(){
 }
 
 function cancelLive(){
+  ix.typedChain = false;
   cancelPoly(false); ix.arcPts = []; ix.modA = null; state.selIds = []; state.boxMode = false;
   ix.drag = null; ix.stretchBox = null; ix.matchSrc = null; ix.calibratePts = [];
   syncCtx(); setPrompt('Command:'); draw();
@@ -527,6 +529,7 @@ export function handleCommand(text){
       setTool('schedule');
       return;
     }
+    ix.typedChain = false;  /* a new command, even the same one, starts fresh */
     setTool(res.command);
     if (res.rest) handleCommand(res.rest);
     return;
@@ -656,9 +659,12 @@ export function handleCommand(text){
     }
     if (ix.drag && ix.drag.kind === 'draw' && ix.drag.p1){
       finishDraw(ix.drag.p1, p, state.tool === 'line' && state.wallMode ? 'wall' : state.tool);
-      ix.drag = null; draw(); return;
+      ix.drag = null; ix.typedChain = true; draw(); return;
     }
-    if (state.lastPt && DRAW_TOOLS.includes(state.tool)){
+    /* Lines and walls chain: the next typed point continues from the last
+     * one until Escape or a new command. Every other two-point tool (RECT,
+     * CIRCLE, DIM...) starts fresh, so a typed first point is a first point. */
+    if (state.lastPt && ix.typedChain && (state.tool === 'line' || state.tool === 'wall')){
       finishDraw(state.lastPt, p, state.tool === 'line' && state.wallMode ? 'wall' : state.tool);
       draw(); return;
     }

@@ -65,6 +65,7 @@ export function setTool(t){
   if (t === 'sub3d'){ boolean3d('subtract', ''); try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ } return; }
   if ((state.tool === 'poly' || state.tool === 'hatch' || state.tool === 'cloud' || state.tool === 'leader' || state.tool === 'spline') && t !== state.tool) cancelPoly(true);
   if (t && t !== 'select' && t !== 'pan') state.lastTool = t;
+  if (state.tool !== t) ix.typedChain = false;
   state.tool = t;
   if (t !== 'select') state.boxMode = false;
   if (t === 'wall') state.wallMode = true;

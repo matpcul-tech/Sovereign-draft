@@ -13,6 +13,8 @@ export const ix = {
   pendingMText: null,
   editTextId: null,
   assignMode: false,
+  /* true while typed points continue a LINE or WALL chain */
+  typedChain: false,
   cmdBuf: '',
   lastPrompt: 'Command:',
   hatchPts: [],

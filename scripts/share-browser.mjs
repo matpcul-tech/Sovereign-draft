@@ -1,4 +1,5 @@
-/* Share links in a real browser, both directions.
+/* Share links in a real browser, both directions, plus the first edits a
+ * lesson asks of a shared starter (Layer chip, typed points).
  *
  * The unit test for the share codec runs in Node, where web streams behave
  * differently enough that a gzip deadlock shipped: in Chromium, opening a
@@ -119,6 +120,28 @@ if (picked === 1){
     s.selIds = [];
   });
 }
+
+/* 1c. Typed points. A typed LINE chains from its last point until Escape
+ * or a new command; a typed RECT after it starts at its own first corner.
+ * (Typed points used to chain from the last point forever, so a lesson's
+ * "RECT 0,6 then 6,10" after any line drew from the wrong corner.) */
+const typed = async t => {
+  await a.page.click('#cmdinput');
+  await a.page.fill('#cmdinput', t);
+  await a.page.press('#cmdinput', 'Enter');
+  await a.page.waitForTimeout(120);
+};
+const before = await a.page.evaluate(() => window.__sovereign.state.entities.length);
+await typed('L'); await typed('30,0'); await typed('34,0'); await typed('34,2');
+await a.page.press('#cmdinput', 'Escape');
+await typed('RECT'); await typed('40,0'); await typed('44,3');
+const made = await a.page.evaluate(n => window.__sovereign.state.entities.slice(n).map(e =>
+  e.type === 'line' ? ['line', e.x1, e.y1, e.x2, e.y2] : [e.type].concat((e.pts || []).flat())), before);
+check(made.length === 3 && JSON.stringify(made[0]) === '["line",30,0,34,0]' && JSON.stringify(made[1]) === '["line",34,0,34,2]',
+  'a typed LINE chains point to point (' + JSON.stringify(made.slice(0, 2)) + ')');
+check(made.length === 3 && made[2][0] === 'poly' && JSON.stringify(made[2].slice(1)) === '[40,0,44,0,44,3,40,3]',
+  'a typed RECT after it starts at its own first corner (' + JSON.stringify(made[2]) + ')');
+await a.page.evaluate(n => { const s = window.__sovereign.state; s.entities.splice(n); s.lastPt = null; }, before);
 
 /* 2. Copy share link from the menu, then open that URL somewhere new. */
 await a.page.evaluate(() => {
