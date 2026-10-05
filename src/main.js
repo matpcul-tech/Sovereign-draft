@@ -500,7 +500,9 @@ function wireUi(){
   $('chipDup') && $('chipDup').addEventListener('click', duplicateSelection);
   $('chipAssign') && $('chipAssign').addEventListener('click', () => {
     if (!state.selIds.length) return;
-    ix.assignMode = true; renderLayers(); openSheet('sheetLayers');
+    /* openSheet closes every other sheet first, and closing clears assign
+     * mode, so the mode is set after the sheet is open. */
+    openSheet('sheetLayers'); ix.assignMode = true; renderLayers();
   });
   $('chipBlock') && $('chipBlock').addEventListener('click', () => {
     if (!state.selIds.length) return;

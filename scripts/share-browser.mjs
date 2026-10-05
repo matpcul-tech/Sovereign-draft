@@ -32,12 +32,13 @@ const starter = {
     { name: 'PREXIS-L00', color: '#6b7c93', aci: 8, visible: true, plot: false }
   ],
   entities: [
-    { type: 'line', layer: 'WALLS', x1: 0, y1: 0, x2: 24, y2: 0 },
-    { type: 'line', layer: 'WALLS', x1: 24, y1: 0, x2: 24, y2: 16 },
-    { type: 'line', layer: 'WALLS', x1: 24, y1: 16, x2: 0, y2: 16 },
-    { type: 'line', layer: 'WALLS', x1: 0, y1: 16, x2: 0, y2: 0 },
-    { type: 'text', layer: 'NOTES', x: 0, y: -3, size: 0.6, content: 'ROUND TRIP' }
+    { id: 1, type: 'line', layer: 'WALLS', x1: 0, y1: 0, x2: 24, y2: 0 },
+    { id: 2, type: 'line', layer: 'WALLS', x1: 24, y1: 0, x2: 24, y2: 16 },
+    { id: 3, type: 'line', layer: 'WALLS', x1: 24, y1: 16, x2: 0, y2: 16 },
+    { id: 4, type: 'line', layer: 'WALLS', x1: 0, y1: 16, x2: 0, y2: 0 },
+    { id: 5, type: 'text', layer: 'NOTES', x: 0, y: -3, size: 0.6, content: 'ROUND TRIP' }
   ],
+  idSeq: 6,
   layouts: [], space: 'model'
 };
 
@@ -90,10 +91,39 @@ check(sa.layers.includes('PREXIS-L00'), 'a non-plotting stamp layer survives the
 const toast = await a.page.evaluate(() => document.body.innerText.includes('Opened shared drawing'));
 check(toast, 'the app says it opened the shared drawing');
 
+/* 1b. The opened drawing is editable like any other: tap a line, tap the
+ * Layer chip, tap a layer, and the line moves there. (The Layer chip used
+ * to open the panel without assign mode, so the tap only changed the
+ * current layer.) */
+await a.page.evaluate(() => window.__sovereign.setTool('select'));
+const pt = await a.page.evaluate(() => {
+  const s = window.__sovereign.state, cv = document.getElementById('cv'), r = cv.getBoundingClientRect();
+  const w2s = (x, y) => [r.left + (x - s.view.x) * s.view.scale + cv.clientWidth / 2, r.top + cv.clientHeight / 2 - (y - s.view.y) * s.view.scale];
+  return w2s(24, 8);
+});
+await a.page.mouse.click(pt[0], pt[1]);
+await a.page.waitForTimeout(150);
+const picked = await a.page.evaluate(() => window.__sovereign.state.selIds.length);
+check(picked === 1, 'tapping a line of the shared drawing selects it');
+if (picked === 1){
+  await a.page.click('#chipAssign');
+  await a.page.click('#layerlist .row:has(.nm:text-is("NOTES"))');
+  const moved = await a.page.evaluate(() => {
+    const s = window.__sovereign.state;
+    return s.entities.filter(e => e.type === 'line' && e.layer === 'NOTES').length;
+  });
+  check(moved === 1, 'Layer chip then NOTES moves the selected line to NOTES');
+  await a.page.evaluate(() => {
+    const s = window.__sovereign.state;
+    s.entities.forEach(e => { if (e.type === 'line') e.layer = 'WALLS'; });
+    s.selIds = [];
+  });
+}
+
 /* 2. Copy share link from the menu, then open that URL somewhere new. */
 await a.page.evaluate(() => {
   const s = window.__sovereign.state;
-  s.entities.push({ type: 'line', layer: 'WALLS', x1: 12, y1: 0, x2: 12, y2: 16 });
+  s.entities.push({ id: s.idSeq++, type: 'line', layer: 'WALLS', x1: 12, y1: 0, x2: 12, y2: 16 });
 });
 await a.page.click('#btnMenu');
 await a.page.click('#mShare');
