@@ -46,7 +46,7 @@ import { attachXref, expandXref } from './core/xref.js';
 import { overkill } from './core/overkill.js';
 import { buildTakeoffTable, takeoffSummary } from './core/takeoff.js';
 import { syncAutoRooms } from './core/rooms.js';
-import { generateSheetSet, viewSheets } from './core/sheetset.js';
+import { generateSheetSet, viewSheets, mergeViewSheets } from './core/sheetset.js';
 import { envelopeDims, sectionDims } from './core/spec.js';
 import { makeConstraint, solveConstraints, constraintsOn, describeConstraint } from './core/constrain.js';
 import { buildSection, buildDetail } from './core/section.js';
@@ -253,7 +253,7 @@ export function makeDrawings(rest){
     if (wantSheets){
       const views = (planBB ? [{ name: 'FLOOR PLAN', bbox: planBB }] : []).concat(r.views);
       const made = viewSheets(views);
-      state.layouts = (state.layouts || []).concat(made);
+      state.layouts = mergeViewSheets(state.layouts || [], made);
       sheets = made.length;
       try { document.dispatchEvent(new Event('sd-sheets-changed')); } catch (e2){ /* node */ }
     }
@@ -1247,7 +1247,9 @@ export function hatchTap(sx, sy){
     toast('Hatch ' + hit.pattern);
     return;
   }
-  if (hit && hit.type === 'poly' && hit.closed){
+  /* Tapping empty floor picks the room, so the room is the boundary:
+   * hatch its floor area, the way you would hatch a bath. */
+  if (hit && ((hit.type === 'poly' && hit.closed) || hit.type === 'room') && (hit.pts || []).length >= 3){
     const h = makeHatch(deep(hit.pts), { layer: 'HATCH', pattern: state.hatchPattern || 'ANSI31' });
     if (h){ pushUndo(); addEntity(h); afterChange(); toast('Hatch ' + h.pattern); }
     return;

@@ -274,6 +274,28 @@ export function viewSheets(views){
   return out;
 }
 
+/* Running DRAWINGS SHEETS again replaces the sheets it made last time
+ * instead of piling up a second A-101. A sheet made another way (the
+ * sheet set's A-101 Overall, a sheet added by hand) keeps its number, and
+ * the new sheet takes the next free number in its series. */
+export function mergeViewSheets(existing, made){
+  const ids = new Set((made || []).map(L => L.id));
+  const kept = (existing || []).filter(L => !ids.has(L.id));
+  const taken = new Set(kept.map(L => L.sheetNumber));
+  (made || []).forEach(L => {
+    const m = /^([A-Z]+)-(\d+)$/.exec(L.sheetNumber || '');
+    if (m && taken.has(L.sheetNumber)){
+      let n = Number(m[2]);
+      while (taken.has(m[1] + '-' + n)) n++;
+      const num = m[1] + '-' + n;
+      L.name = String(L.name || '').replace(L.sheetNumber, num);
+      L.sheetNumber = num;
+    }
+    taken.add(L.sheetNumber);
+  });
+  return kept.concat(made || []);
+}
+
 export function generateSheetSet(entities, layers, opts){
   opts = opts || {};
   const detected = detectSections(entities);
