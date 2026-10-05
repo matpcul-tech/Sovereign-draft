@@ -58,3 +58,14 @@ describe('fit band', () => {
     expect(freeBand()).toEqual({ top: 80, bottom: 660 });
   });
 });
+
+describe('cover index after DRAWINGS SHEETS', () => {
+  it('lists every sheet, the new ones too', () => {
+    const set = generateSheetSet(boxWalls(36, 24), [], {});
+    const L = mergeViewSheets(set, viewSheets([{ name: 'SOUTH ELEVATION', bbox: [0, 0, 36, 14] }]));
+    const cover = L.find(x => x.kind === 'cover');
+    const idx = cover.annotations.find(a => a.kind === 'table' && a.table.title === 'DRAWING INDEX').table;
+    expect(idx.cells.slice(1).map(r => r[0])).toEqual(L.map(x => x.sheetNumber));
+    expect(idx.cells[idx.cells.length - 1][1]).toBe('SOUTH ELEVATION');
+  });
+});

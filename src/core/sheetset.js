@@ -10,7 +10,7 @@ import { membersBBox } from './entities.js';
 import { makeLayout, makeViewport, fitViewport, sheetOf, PLOT_SCALES, pickSheetForBBox, modelToPaper, inViewport } from './layout.js';
 import { normalizeSheet } from './document.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation, makeMarkBubble } from './sheetspace.js';
-import { entsInBBox, collectCallouts, padBBox, buildLegend, legendToTable, indexToTable } from './legend.js';
+import { entsInBBox, collectCallouts, padBBox, buildLegend, legendToTable, indexToTable, indexTitle } from './legend.js';
 import { bodyBBox, collectParts, partsInBBox, sectionScopedParts, partsToTable, buildingSchedule, specNotes, specColW, padForLabels, sectionFit } from './spec.js';
 
 const MAX_SECTIONS = 10;
@@ -293,7 +293,20 @@ export function mergeViewSheets(existing, made){
     }
     taken.add(L.sheetNumber);
   });
-  return kept.concat(made || []);
+  const all = kept.concat(made || []);
+  /* A cover made before these sheets indexes only what existed then.
+   * Rewrite its DRAWING INDEX rows so the set lists every sheet. */
+  all.forEach(L => (L.annotations || []).forEach(a => {
+    const t = a && a.kind === 'table' && a.table;
+    if (!t || t.title !== 'DRAWING INDEX' || !Array.isArray(t.cells) || !t.cells.length) return;
+    const grow = (all.length + 1 - t.cells.length) * (Number(t.rowH) || 0.22);
+    t.cells = [t.cells[0]].concat(all.map(x => [x.sheetNumber || '', indexTitle(x)]));
+    /* the tables stacked under the index move down by what it grew */
+    if (grow > 0) (L.annotations || []).forEach(b => {
+      if (b !== a && b.kind === 'table' && b.y < a.y && Math.abs(b.x - a.x) < 4) b.y -= grow;
+    });
+  }));
+  return all;
 }
 
 export function generateSheetSet(entities, layers, opts){
