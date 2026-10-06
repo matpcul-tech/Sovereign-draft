@@ -14,6 +14,7 @@ import { pushPullPrism } from '../core/model3d.js';
 import { snapPoints, makeSnapIndex, inferMove, grabTarget, moveMeshPoints, facePoints } from '../core/snap3d.js';
 import { sunVector } from '../core/sun.js';
 import { samplePath, easeInOut } from '../core/campath.js';
+import fixWebmDuration from 'fix-webm-duration';
 
 let renderer = null;
 let scene = null;
@@ -245,6 +246,17 @@ export function renderStill(width, level){
   return { url, w, h };
 }
 
+/* MediaRecorder writes a WebM with no Duration in its header, so players
+ * show no length and cannot seek. Patch the measured length in; if the
+ * patch fails the original recording still goes out. */
+function finishRecording(chunks, ms){
+  if (!chunks.length) return Promise.resolve(null);
+  const blob = new Blob(chunks, { type: 'video/webm' });
+  return Promise.resolve()
+    .then(() => fixWebmDuration(blob, Math.max(1, Math.round(ms)), { logger: false }))
+    .then(b => b || blob, () => blob);
+}
+
 /* A turntable: the camera orbits the target once while the live canvas is
  * captured to WebM. Falls back to null where MediaRecorder cannot record
  * a canvas stream. */
@@ -283,8 +295,10 @@ export function renderTurntable(seconds){
       render();
       requestAnimationFrame(spin);
     };
-    rec.onstop = () => resolve(chunks.length ? new Blob(chunks, { type: 'video/webm' }) : null);
+    let recT0 = 0;
+    rec.onstop = () => finishRecording(chunks, performance.now() - recT0).then(resolve);
     rec.start(200);
+    recT0 = performance.now();
     requestAnimationFrame(spin);
   });
 }
@@ -334,8 +348,10 @@ export function renderWalkthrough(views, seconds){
       render();
       requestAnimationFrame(step);
     };
-    rec.onstop = () => resolve(chunks.length ? new Blob(chunks, { type: 'video/webm' }) : null);
+    let recT0 = 0;
+    rec.onstop = () => finishRecording(chunks, performance.now() - recT0).then(resolve);
     rec.start(200);
+    recT0 = performance.now();
     requestAnimationFrame(step);
   });
 }
