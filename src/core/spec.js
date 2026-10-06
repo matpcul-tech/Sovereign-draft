@@ -243,7 +243,7 @@ export function partsToTable(parts, opts){
     ? ['MARK', 'QTY', 'DESCRIPTION', 'SIZE', 'MATL']
     : ['MARK', 'QTY', 'DESCRIPTION', 'SIZE'];
   const rows = list.map(p => hasMat
-    ? [p.mark, String(p.qty), p.desc, p.size, p.material || '—']
+    ? [p.mark, String(p.qty), p.desc, p.size, p.material || '-']
     : [p.mark, String(p.qty), p.desc, p.size]);
   return makeTable({
     title: o.title || 'PARTS SCHEDULE',

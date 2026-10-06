@@ -40,6 +40,7 @@ export function shellHTML(){
     <button class="stab on" data-space="model">Model</button>
     <button class="stab" data-space="layout" id="tabLayout">A-1</button>
   </div>
+  <select id="spacepick" aria-label="Show the model or a sheet"></select>
   <button class="tb-btn" id="btnUndo" aria-label="Undo">${SVG.undo}</button>
   <button class="tb-btn" id="btnRedo" aria-label="Redo">${SVG.redo}</button>
   <button class="tb-btn" id="btn3d" aria-label="3D model">
@@ -161,8 +162,8 @@ export function shellHTML(){
 </div>
 <div id="statusbar">
   <span id="stXY">X 0'-0"&nbsp;&nbsp;Y 0'-0"</span>
-  <span id="stLen">L —</span>
-  <span id="stAng">A —</span>
+  <span id="stLen">L -</span>
+  <span id="stAng">A -</span>
   <button type="button" id="stSnap" class="on">SNAP</button>
   <button type="button" id="stOrtho">ORTHO</button>
   <button type="button" id="stPolar">POLAR</button>
@@ -193,7 +194,7 @@ export function shellHTML(){
   <button class="chip on" id="chipCtx" style="margin-top:10px">Sheet context: ON</button>
   <button class="primary" id="btnGenerate">Generate blueprint</button>
   <div id="aistatus"></div>
-  <div class="subtle">Grok drafts for free in this app — plans, elevations, sections and parts. A rocket comes back as an outline with callouts, not as a floor plan. AI only adds; undo drops a pass. Optional Anthropic key if you want your own model.</div>
+  <div class="subtle">Grok drafts for free in this app: plans, elevations, sections and parts. A rocket comes back as an outline with callouts, not as a floor plan. AI only adds; undo drops a pass. Optional Anthropic key if you want your own model.</div>
   <button class="linkish" id="btnAISettings">AI settings…</button>
 </div>
 <div class="sheet" id="sheetSettings">
@@ -277,7 +278,7 @@ export function shellHTML(){
 </div>
 <div class="sheet" id="sheetLayouts">
   <h3><i>Sheet set</i></h3>
-  <div class="subtle" style="margin-top:0">Break the model into pages — cover, overall, and one sheet per room or labeled section, each with its own legend.</div>
+  <div class="subtle" style="margin-top:0">Break the model into pages: cover, overall, and one sheet per room or labeled section, each with its own legend.</div>
   <button class="primary" id="btnSheetSet">Generate sheet set</button>
   <div id="layoutlist"></div>
   <button class="addlayer" id="btnAddSheet">+ New sheet</button>
@@ -326,7 +327,7 @@ export function shellHTML(){
     <button id="firmLogoClear" class="field" style="height:40px">Remove</button>
   </div>
   <input type="file" id="fileLogo" accept="image/*" style="display:none">
-  <div class="subtle" style="margin-top:0;margin-bottom:10px">Stamped on every printed sheet — company, copyright, drawing title, sheet number.</div>
+  <div class="subtle" style="margin-top:0;margin-bottom:10px">Stamped on every printed sheet: company, copyright, drawing title, sheet number.</div>
   <button class="mrow" id="mOpenDrawing"><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Open drawing<small>DXF · DWG · JSON · drop a file</small></button>
   <button class="mrow" id="mImportDXF"><svg viewBox="0 0 24 24"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M4 3v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3"/></svg>Insert DXF<small>merge into this sheet</small></button>
   <button class="mrow" id="mScript"><svg viewBox="0 0 24 24"><path d="M8 6l-5 6 5 6M16 6l5 6-5 6"/></svg>Scripts<small>automate this drawing · JS</small></button>
@@ -366,9 +367,9 @@ export function shellHTML(){
   <button class="mrow" id="mSample"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M9 6v12"/></svg>Sample 24×36 cabin<small>walls, doors, hatch, dims</small></button>
   <button class="mrow" id="mSamplePart"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="8" rx="1"/><circle cx="8" cy="12" r="1"/><circle cx="16" cy="12" r="1"/></svg>Sample plate<small>12" × 8" · GD&T</small></button>
   <button class="mrow" id="mSamplePart3d"><svg viewBox="0 0 24 24"><path d="M4 18V8h12v10zM16 10h4v8h-4"/><circle cx="10" cy="13" r="1.5"/></svg>Sample 3D bracket<small>mesh solid · hole · STL</small></button>
-  <button class="mrow" id="mSampleGA"><svg viewBox="0 0 24 24"><path d="M12 3 6 9v12h12V9z"/></svg>Sample GA<small>arrangement — not a spec</small></button>
+  <button class="mrow" id="mSampleGA"><svg viewBox="0 0 24 24"><path d="M12 3 6 9v12h12V9z"/></svg>Sample GA<small>arrangement, not a spec</small></button>
   <button class="mrow" id="mNew"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg><span id="mNewLabel">New drawing</span></button>
-  <div class="subtle" id="menuFooter">Issued 2D, free, DXF/DWG out. Open a DXF from AutoCAD, LibreCAD or DraftSight — units follow $INSUNITS. Drawing stays on this device until you export.</div>
+  <div class="subtle" id="menuFooter">Issued 2D, free, DXF/DWG out. Open a DXF from AutoCAD, LibreCAD or DraftSight. Units follow $INSUNITS. Drawing stays on this device until you export.</div>
 </div>
 <input type="file" id="fileOpen" accept=".dxf,.json,.sdraft,.dwg,.stl,application/json,application/dxf,model/stl" style="display:none">
 <input type="file" id="fileDXF" accept=".dxf,application/dxf" style="display:none">

@@ -127,14 +127,21 @@ export function flattenEnt(e){
  * named them) print only their live SF, or every issued sheet carries
  * the name twice. Returns shallow copies; nothing else is touched. */
 export function dedupeRoomLabels(list){
+  const dup = roomsLabelledByText(list);
+  return (list || []).map(en => dup.has(en) ? Object.assign({}, en, { sfOnly: true }) : en);
+}
+
+/* Rooms whose name is already on the drawing as a text inside the room. */
+export function roomsLabelledByText(list){
   const texts = (list || []).filter(t => t.type === 'text' && t.content);
-  return (list || []).map(en => {
-    if (en.type !== 'room' || !en.name || !en.pts || en.pts.length < 3) return en;
-    const dup = texts.some(t =>
+  const out = new Set();
+  (list || []).forEach(en => {
+    if (en.type !== 'room' || !en.name || !en.pts || en.pts.length < 3) return;
+    if (texts.some(t =>
       String(t.content).trim().toUpperCase() === String(en.name).trim().toUpperCase() &&
-      pointInPoly(t.x, t.y, en.pts));
-    return dup ? Object.assign({}, en, { sfOnly: true }) : en;
+      pointInPoly(t.x, t.y, en.pts))) out.add(en);
   });
+  return out;
 }
 
 /* Room label heights on paper. A name reads at 1/8"; when the room is

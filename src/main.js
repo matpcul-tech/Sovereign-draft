@@ -200,7 +200,7 @@ async function loadView3d(){
        * reload picks up the new build; without it 3D is dead until the
        * user thinks of refreshing, which the field showed they do not. */
       if (/import|fetch/i.test(String(e && e.message))){
-        toast('App updated behind this page — reloading for the new version');
+        toast('App updated behind this page. Reloading for the new version');
         setTimeout(() => location.reload(), 900);
       }
       throw e;
@@ -500,7 +500,9 @@ function wireUi(){
   $('chipDup') && $('chipDup').addEventListener('click', duplicateSelection);
   $('chipAssign') && $('chipAssign').addEventListener('click', () => {
     if (!state.selIds.length) return;
-    ix.assignMode = true; renderLayers(); openSheet('sheetLayers');
+    /* openSheet closes every other sheet first, and closing clears assign
+     * mode, so the mode is set after the sheet is open. */
+    openSheet('sheetLayers'); ix.assignMode = true; renderLayers();
   });
   $('chipBlock') && $('chipBlock').addEventListener('click', () => {
     if (!state.selIds.length) return;
@@ -617,8 +619,8 @@ function wireUi(){
       closeSheets(); zoomFit(); draw();
       toast('Drafted ' + fresh.length + ' entities' + sheetNote + '. Undo removes them.');
     } catch (err){
-      const msg = err && err.status === 401 ? 'API key rejected — check it in AI settings'
-        : err && err.status === 429 ? 'Rate limited — wait a moment and retry'
+      const msg = err && err.status === 401 ? 'API key rejected. Check it in AI settings'
+        : err && err.status === 429 ? 'Rate limited. Wait a moment and retry'
         : (err && err.message) || 'unknown error';
       st.className = 'err'; st.textContent = 'Draft failed: ' + msg;
       toast(msg, 4000);
@@ -766,9 +768,9 @@ function wireUi(){
       download(fileSlug() + '.dwg', r.bytes, 'application/acad');
     toast(r.source === 'libredwg'
       ? 'DWG R2000 exported'
-      : 'DWG R2000 — this app reopens it. AutoCAD Open: Export DXF R2000');
+      : 'DWG R2000: this app reopens it. AutoCAD Open: Export DXF R2000');
     } catch (err){
-      toast((err && err.message) || 'DWG export failed — try DXF');
+      toast((err && err.message) || 'DWG export failed. Try DXF');
     }
   }
   $('mExportDWG') && $('mExportDWG').addEventListener('click', exportDwg);
@@ -809,7 +811,7 @@ function wireUi(){
         toast('Share: ' + url.slice(0, 48) + '…');
       }
     } catch (err){
-      toast((err && err.message) || 'Share failed — export HTML instead');
+      toast((err && err.message) || 'Share failed. Export HTML instead');
     }
   });
   $('stUnits') && $('stUnits').addEventListener('click', () => {
@@ -884,7 +886,7 @@ function wireUi(){
     opts = opts || {};
     const kind = sniffDrawing(text, filename);
     if (kind === 'dwg'){
-      toast('DWG is binary — Save As DXF in the other CAD, then Open here');
+      toast('DWG is binary. Save As DXF in the other CAD, then Open here');
       return;
     }
     if (kind === 'json'){
@@ -974,7 +976,7 @@ function wireUi(){
             toast('Opened ' + r.entities.length + ' objects from DWG' + (r.layouts && r.layouts.length ? ' · paperspace kept' : ''));
           }
         } catch (err){
-          toast((err && err.message) || 'DWG open failed — Save As DXF in the other CAD');
+          toast((err && err.message) || 'DWG open failed. Save As DXF in the other CAD');
         }
       };
       rd.readAsArrayBuffer(file);
@@ -1066,7 +1068,7 @@ function wireUi(){
   function renderScriptSheet(){
     const list = $('scList');
     if (!list) return;
-    list.innerHTML = '<option value=\"\">— saved scripts —</option>';
+    list.innerHTML = '<option value=\"\">Saved scripts</option>';
     (state.scripts || []).forEach(sc => {
       const o = document.createElement('option');
       o.value = sc.name; o.textContent = sc.name;
@@ -1234,7 +1236,7 @@ function wireUi(){
     state.space = 'model';
     afterChange(); zoomToPlan(); draw();
     renderLayouts(); renderSpaceTabs();
-    toast(state.layouts.length + ' sheets — cover, overall, one page per room');
+    toast(state.layouts.length + ' sheets: cover, overall, one page per room');
   });
   $('hintSample') && $('hintSample').addEventListener('click', () => $('mSample') && $('mSample').click());
 
@@ -1264,7 +1266,7 @@ function wireUi(){
   });
   $('mSampleGA') && $('mSampleGA').addEventListener('click', () => {
     loadSample('GA Diagram', gaDiagram(), { id: 'G1', name: 'G-1 General Arrangement', sheet: 'archdp', ppf: 18 });
-    toast('General arrangement — not a build spec');
+    toast('General arrangement, not a build spec');
   });
 
   $('mLayouts') && $('mLayouts').addEventListener('click', () => { renderLayouts(); openSheet('sheetLayouts'); });
@@ -1735,6 +1737,24 @@ function renderSpaceTabs(){
   };
   mk('Model', 'model', state.space === 'model');
   state.layouts.forEach(L => mk(L.sheetNumber || L.name, L.id, state.space === L.id));
+  /* A phone has no room for a row of tabs, so it gets one picker with the
+   * same choices: the model and every sheet. */
+  const pick = $('spacepick');
+  if (pick){
+    pick.innerHTML = '';
+    const opt = (label, space) => {
+      const o = document.createElement('option');
+      o.value = space; o.textContent = label;
+      if (state.space === space) o.selected = true;
+      pick.appendChild(o);
+    };
+    opt('Model', 'model');
+    state.layouts.forEach(L => opt(L.sheetNumber || L.name, L.id));
+    if (!pick.dataset.wired){
+      pick.dataset.wired = '1';
+      pick.addEventListener('change', () => goToSpace(pick.value));
+    }
+  }
 }
 
 function goToSpace(space){

@@ -61,7 +61,7 @@ export function toHTML(doc, opts){
   );
   const schedule = parts.length
     ? tableHtml(['Mark', 'Qty', 'Description', 'Size', 'Material'],
-        parts.map(p => [p.mark, p.qty, p.desc, p.size, p.material || '—']))
+        parts.map(p => [p.mark, p.qty, p.desc, p.size, p.material || '-']))
     : (built && built.cells
       ? ((built.title ? '<p>' + esc(built.title) + '</p>' : '') + tableHtml(built.cells[0], built.cells.slice(1)))
       : '');
@@ -77,7 +77,7 @@ export function toHTML(doc, opts){
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(name)} — Sovereign Draft</title>
+<title>${esc(name)} | Sovereign Draft</title>
 <style>
 :root{--navy:#07101f;--gold:#d4a843;--ink:#e8e4dd;--dim:#8fa3c0;--line:#1b2c4a;--card:#0d1b33}
 *{box-sizing:border-box}body{margin:0;background:var(--navy);color:var(--ink);font:15px/1.45 Outfit,system-ui,sans-serif}
@@ -129,7 +129,7 @@ footer{padding:16px 32px 32px;color:var(--dim);font-size:12px}
     </section>
   </aside>
 </main>
-<footer>Opened without a CAD license. JSON is the source of truth — drop it back on sovereign-draft to edit.</footer>
+<footer>Opened without a CAD license. JSON is the source of truth. Drop it back on sovereign-draft to edit.</footer>
 <script type="application/json" id="drawing">${json.replace(/</g, '\\u003c')}</script>
 <script>
 document.getElementById('dl-json').onclick = function(){

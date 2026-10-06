@@ -10,7 +10,7 @@ import { membersBBox } from './entities.js';
 import { makeLayout, makeViewport, fitViewport, sheetOf, PLOT_SCALES, pickSheetForBBox, modelToPaper, inViewport } from './layout.js';
 import { normalizeSheet } from './document.js';
 import { placeInMargin, makeTableAnnotation, addAnnotation, makeMarkBubble } from './sheetspace.js';
-import { entsInBBox, collectCallouts, padBBox, buildLegend, legendToTable, indexToTable } from './legend.js';
+import { entsInBBox, collectCallouts, padBBox, buildLegend, legendToTable, indexToTable, indexTitle } from './legend.js';
 import { bodyBBox, collectParts, partsInBBox, sectionScopedParts, partsToTable, buildingSchedule, specNotes, specColW, padForLabels, sectionFit } from './spec.js';
 
 const MAX_SECTIONS = 10;
@@ -272,6 +272,41 @@ export function viewSheets(views){
     }, v.bbox));
   }
   return out;
+}
+
+/* Running DRAWINGS SHEETS again replaces the sheets it made last time
+ * instead of piling up a second A-101. A sheet made another way (the
+ * sheet set's A-101 Overall, a sheet added by hand) keeps its number, and
+ * the new sheet takes the next free number in its series. */
+export function mergeViewSheets(existing, made){
+  const ids = new Set((made || []).map(L => L.id));
+  const kept = (existing || []).filter(L => !ids.has(L.id));
+  const taken = new Set(kept.map(L => L.sheetNumber));
+  (made || []).forEach(L => {
+    const m = /^([A-Z]+)-(\d+)$/.exec(L.sheetNumber || '');
+    if (m && taken.has(L.sheetNumber)){
+      let n = Number(m[2]);
+      while (taken.has(m[1] + '-' + n)) n++;
+      const num = m[1] + '-' + n;
+      L.name = String(L.name || '').replace(L.sheetNumber, num);
+      L.sheetNumber = num;
+    }
+    taken.add(L.sheetNumber);
+  });
+  const all = kept.concat(made || []);
+  /* A cover made before these sheets indexes only what existed then.
+   * Rewrite its DRAWING INDEX rows so the set lists every sheet. */
+  all.forEach(L => (L.annotations || []).forEach(a => {
+    const t = a && a.kind === 'table' && a.table;
+    if (!t || t.title !== 'DRAWING INDEX' || !Array.isArray(t.cells) || !t.cells.length) return;
+    const grow = (all.length + 1 - t.cells.length) * (Number(t.rowH) || 0.22);
+    t.cells = [t.cells[0]].concat(all.map(x => [x.sheetNumber || '', indexTitle(x)]));
+    /* the tables stacked under the index move down by what it grew */
+    if (grow > 0) (L.annotations || []).forEach(b => {
+      if (b !== a && b.kind === 'table' && b.y < a.y && Math.abs(b.x - a.x) < 4) b.y -= grow;
+    });
+  }));
+  return all;
 }
 
 export function generateSheetSet(entities, layers, opts){

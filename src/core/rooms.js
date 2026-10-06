@@ -200,7 +200,10 @@ export function syncAutoRooms(state){
   const next = nameRoomsFromText(detectRooms(kept), kept);
   next.forEach(r => {
     const hit = prev.find(p => dist(p.cx || 0, p.cy || 0, r.cx, r.cy) < 3);
-    if (hit && hit.name) r.name = hit.name;
+    /* A label typed inside the room names it, even after the walls
+     * closed; otherwise the room keeps the name it had. */
+    const labelled = kept.some(e => e.type === 'text' && e.content && pointInPoly(e.x, e.y, r.pts));
+    if (hit && hit.name && !labelled) r.name = hit.name;
     r.id = state.idSeq++;
   });
   state.entities = kept.concat(next);

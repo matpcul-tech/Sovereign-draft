@@ -31,26 +31,28 @@ function b64urlDecode(token){
   return u8;
 }
 
+/* Feed a whole buffer through a (De)CompressionStream.
+ * The writes must not be awaited before the readable side is drained:
+ * write() and close() wait on backpressure, and nothing reads until they
+ * resolve, so `await w.write(); await w.close()` deadlocks in Chromium and
+ * in Node's web streams. Start reading first, then settle the writer. */
+async function through(stream, u8){
+  const w = stream.writable.getWriter();
+  const fed = Promise.all([w.write(u8), w.close()]);
+  fed.catch(() => {}); /* a read error below reports the same failure */
+  const out = await new Response(stream.readable).arrayBuffer();
+  await fed;
+  return new Uint8Array(out);
+}
+
 async function gzipU8(u8){
-  if (typeof CompressionStream !== 'undefined'){
-    const cs = new CompressionStream('gzip');
-    const w = cs.writable.getWriter();
-    await w.write(u8);
-    await w.close();
-    return new Uint8Array(await new Response(cs.readable).arrayBuffer());
-  }
+  if (typeof CompressionStream !== 'undefined') return through(new CompressionStream('gzip'), u8);
   const { gzipSync } = await import('zlib');
   return gzipSync(u8);
 }
 
 async function gunzipU8(u8){
-  if (typeof DecompressionStream !== 'undefined'){
-    const ds = new DecompressionStream('gzip');
-    const w = ds.writable.getWriter();
-    await w.write(u8);
-    await w.close();
-    return new Uint8Array(await new Response(ds.readable).arrayBuffer());
-  }
+  if (typeof DecompressionStream !== 'undefined') return through(new DecompressionStream('gzip'), u8);
   const { gunzipSync } = await import('zlib');
   return gunzipSync(u8);
 }
@@ -59,7 +61,7 @@ export async function encodeShare(text){
   const gz = await gzipU8(toU8(text));
   const token = b64urlEncode(gz);
   if (token.length > MAX_TOKEN){
-    const err = new Error('Drawing is too large to share as a URL — download HTML instead');
+    const err = new Error('Drawing is too large to share as a URL. Download HTML instead');
     err.code = 'SHARE_TOO_BIG';
     err.bytes = token.length;
     throw err;

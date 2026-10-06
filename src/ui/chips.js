@@ -30,8 +30,8 @@ export function updateStatus(pt, from){
     ln.textContent = 'L ' + fmtFtIn(L);
     an.textContent = 'A ' + Math.round(a) + '°';
   } else {
-    if (ln) ln.textContent = 'L ' + (state.lastLen ? fmtFtIn(state.lastLen) : '—');
-    if (an) an.textContent = 'A ' + (state.lastAng ? Math.round(state.lastAng) + '°' : '—');
+    if (ln) ln.textContent = 'L ' + (state.lastLen ? fmtFtIn(state.lastLen) : '-');
+    if (an) an.textContent = 'A ' + (state.lastAng ? Math.round(state.lastAng) + '°' : '-');
   }
 }
 

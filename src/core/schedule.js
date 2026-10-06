@@ -31,7 +31,7 @@ export function tagInserts(entities){
 }
 
 function wallName(entities, host){
-  if (!host) return '—';
+  if (!host) return '-';
   const members = (entities || []).filter(e => e.g === host);
   const cl = clFromMembers(members);
   if (!cl) return host;

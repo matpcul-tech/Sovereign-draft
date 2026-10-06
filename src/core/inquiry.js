@@ -35,7 +35,7 @@ export function listEntity(e){
 }
 
 export function idPoint(p){
-  if (!p) return 'ID —';
+  if (!p) return 'ID -';
   return 'X ' + fmtFtIn(p[0]) + '   Y ' + fmtFtIn(p[1]);
 }
 

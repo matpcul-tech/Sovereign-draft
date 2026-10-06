@@ -17,6 +17,12 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Share links round-trip in a real browser
+        run: |
+          npx playwright-core install --with-deps chromium
+          npx vite preview --port 4173 --strictPort &
+          for i in $(seq 1 30); do curl -sf http://localhost:4173/ >/dev/null && break; sleep 1; done
+          npm run share:browser
       - run: node bin/sovereign-draft.js --sample --pdf cabin.pdf --svg cabin.svg --json examples/cabin.json
       - uses: actions/upload-artifact@v4
         with:
