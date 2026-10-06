@@ -66,3 +66,31 @@ describe('3D / DWG commands', () => {
     expect(lookupCommand('PLAN').action).toBe('view2d');
   });
 });
+
+describe('door leaf in 3D', () => {
+  function bbox(m){
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < m.positions.length; i += 3){
+      for (let k = 0; k < 3; k++){ mn[k] = Math.min(mn[k], m.positions[i + k]); mx[k] = Math.max(mx[k], m.positions[i + k]); }
+    }
+    return { mn, mx };
+  }
+  it('sits closed in the opening so a facade shows a door, not a hole', () => {
+    const door = { type: 'insert', layer: 'DOORS', def: 'door', x: 22.5, y: 0.25, rot: 0, width: 3, swing: 'L', th: 0.5 };
+    const solid = extrudeDrawing([door], { layers: defaultLayers(), height: 9 });
+    const m = solid.meshes.find(x => x.kind === 'door');
+    const { mn, mx } = bbox(m);
+    expect(mn[0]).toBeCloseTo(22.5);
+    expect(mx[0]).toBeCloseTo(25.5);
+    expect(mx[1] - mn[1]).toBeLessThan(0.2);
+    expect((mn[1] + mx[1]) / 2).toBeCloseTo(0.25);
+  });
+  it('follows a rotated wall', () => {
+    const door = { type: 'insert', layer: 'DOORS', def: 'door', x: 13.25, y: 30.5, rot: 90, width: 3, swing: 'R', th: 0.33 };
+    const solid = extrudeDrawing([door], { layers: defaultLayers(), height: 9 });
+    const { mn, mx } = bbox(solid.meshes.find(x => x.kind === 'door'));
+    expect(mn[1]).toBeCloseTo(30.5);
+    expect(mx[1]).toBeCloseTo(33.5);
+    expect(mx[0] - mn[0]).toBeLessThan(0.2);
+  });
+});

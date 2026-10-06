@@ -346,10 +346,14 @@ export function extrudeDrawing(entities, opts){
       const th = e.th || 0.5;
       const positions = [], indices = [];
       if (e.def === 'door'){
-        const swing = e.swing === 'R' ? -1 : 1;
+        /* The leaf sits closed in the opening, hinge to strike along the
+         * wall. Modelled swung open at 90 degrees it was a thin slab edge
+         * on to the facade, so from outside the door read as an empty
+         * hole; closed, every view and render shows a door. The plan keeps
+         * its open leaf and swing arc, which is the drawing convention. */
         const x1 = e.x, y1 = e.y;
-        const x2 = e.x + c * 0 + -s * (swing * w);
-        const y2 = e.y + s * 0 + c * (swing * w);
+        const x2 = e.x + c * w;
+        const y2 = e.y + s * w;
         pushBox(positions, indices, x1, y1, x2, y2, DOOR_THICK, 0, Math.min(doorH, height));
         const m = meshOf('door', e.layer || 'DOORS', layerColor(layers, e.layer || 'DOORS'), positions, indices, { assumed: openingsAssumed });
         if (m) meshes.push(m);
