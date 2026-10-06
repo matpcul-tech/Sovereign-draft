@@ -29,6 +29,7 @@ import {
   makeElevation, modelPlan
 } from './actions.js';
 import { syncCtx, updateStatus, setPrompt } from './ui/chips.js';
+import { ROOM_SEP_LAYER } from './core/rooms.js';
 import { setTool } from './ui/tools.js';
 import { openSheet, closeSheets, anySheetOpen } from './ui/sheets.js';
 import { toast } from './ui/toast.js';
@@ -599,6 +600,19 @@ export function handleCommand(text){
   if (res.action === 'cleanup'){ applyCleanup(); return; }
   if (res.action === 'overkill'){ applyOverkill(); return; }
   if (res.action === 'rooms'){ applyRooms(); return; }
+  if (res.action === 'roomsep'){
+    /* Room separator: lines on ROOM-SEP split an open plan into rooms
+     * without a wall. On screen as a dashed line, never plotted or built. */
+    if (!state.layers.some(L => L.name === ROOM_SEP_LAYER)){
+      state.layers.push({ name: ROOM_SEP_LAYER, color: '#4ade80', aci: 3, visible: true, plot: false, lt: 'DASHED' });
+    }
+    state.currentLayer = ROOM_SEP_LAYER;
+    state.autoRooms = true;
+    setTool('line');
+    syncCtx();
+    toast('Room separator: draw a line across the opening, wall to wall. Rooms split there; switch layer when done');
+    return;
+  }
   if (res.action === 'takeoff'){ applyTakeoff(); return; }
   if (res.action === 'sheetset'){ applySheetSet(); return; }
   if (res.action === 'xref'){

@@ -67,3 +67,43 @@ describe('wallCenterline reads the whole wall, not its first face pair', () => {
     expect([cl.x1, cl.y1, cl.x2, cl.y2].map(v => +v.toFixed(9))).toEqual([2, 5, 20, 5]);
   });
 });
+
+describe('room separator', () => {
+  /* Two 20x12 bays side by side with no wall between them: one open room
+   * until a ROOM-SEP line splits it. */
+  function openPlan(){
+    const st = { entities: [], idSeq: 1, gSeq: 1 };
+    const wall = (x1, y1, x2, y2) => {
+      const g = 'g' + (st.gSeq++);
+      wallFrags(x1, y1, x2, y2, 0.5, 'WALLS').forEach(f => { f.g = g; f.id = st.idSeq++; st.entities.push(f); });
+      const res = healWalls(st.entities);
+      if (res.ok) st.entities = res.entities;
+    };
+    wall(0, 0, 40, 0); wall(40, 0, 40, 12); wall(40, 12, 0, 12); wall(0, 12, 0, 0);
+    return st.entities;
+  }
+  it('an open plan is one room without it', async () => {
+    const { detectRooms } = await import('../src/core/rooms.js');
+    expect(detectRooms(openPlan()).length).toBe(1);
+  });
+  it('a ROOM-SEP line splits it into two, even drawn to the wall faces', async () => {
+    const { detectRooms, isRoomSeparator } = await import('../src/core/rooms.js');
+    const sep = { type: 'line', layer: 'ROOM-SEP', x1: 20, y1: 0.25, x2: 20, y2: 11.75 };
+    expect(isRoomSeparator(sep)).toBe(true);
+    const rooms = detectRooms(openPlan().concat([sep]));
+    expect(rooms.length).toBe(2);
+    expect(Math.abs(rooms[0].area - rooms[1].area)).toBeLessThan(1);
+  });
+  it('the separator never builds into the 3D model', async () => {
+    const { extrudeDrawing } = await import('../src/core/solid.js');
+    const sep = { type: 'line', layer: 'ROOM-SEP', x1: 20, y1: 0, x2: 20, y2: 12 };
+    const a = extrudeDrawing(openPlan(), {});
+    const b = extrudeDrawing(openPlan().concat([sep]), {});
+    expect(b.meshes.length).toBe(a.meshes.length);
+  });
+  it('ROOMSEP is a command', async () => {
+    const { lookupCommand } = await import('../src/core/command.js');
+    const r = lookupCommand('ROOMSEP');
+    expect(r && r.action).toBe('roomsep');
+  });
+});

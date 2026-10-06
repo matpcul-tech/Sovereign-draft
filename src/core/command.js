@@ -53,6 +53,7 @@ export const COMMANDS = {
   ARRPOL:  { aliases: ['ARRAYPOLAR', 'ARP', 'POLAR'],   tool: 'arraypolar', prompt: 'Specify center of polar array' },
   OVERKILL:{ aliases: ['OVERKILL', 'OV'],               tool: null,     action: 'overkill' },
   ROOMS:   { aliases: ['ROOMS', 'ROOMDETECT'],          tool: null,     action: 'rooms' },
+  ROOMSEP: { aliases: ['ROOMSEP', 'RSEP', 'ROOMSEPARATOR'], tool: null,   action: 'roomsep' },
   TAKEOFF: { aliases: ['TAKEOFF', 'TO', 'QTO'],         tool: null,     action: 'takeoff' },
   LAYISO:  { aliases: ['LAYISO', 'ISO'],                tool: null,     action: 'layiso' },
   LAYUNISO:{ aliases: ['LAYUNISO', 'UNISO'],            tool: null,     action: 'layuniso' },
