@@ -200,7 +200,7 @@ async function loadView3d(){
        * reload picks up the new build; without it 3D is dead until the
        * user thinks of refreshing, which the field showed they do not. */
       if (/import|fetch/i.test(String(e && e.message))){
-        toast('App updated behind this page — reloading for the new version');
+        toast('App updated behind this page. Reloading for the new version');
         setTimeout(() => location.reload(), 900);
       }
       throw e;
@@ -619,8 +619,8 @@ function wireUi(){
       closeSheets(); zoomFit(); draw();
       toast('Drafted ' + fresh.length + ' entities' + sheetNote + '. Undo removes them.');
     } catch (err){
-      const msg = err && err.status === 401 ? 'API key rejected — check it in AI settings'
-        : err && err.status === 429 ? 'Rate limited — wait a moment and retry'
+      const msg = err && err.status === 401 ? 'API key rejected. Check it in AI settings'
+        : err && err.status === 429 ? 'Rate limited. Wait a moment and retry'
         : (err && err.message) || 'unknown error';
       st.className = 'err'; st.textContent = 'Draft failed: ' + msg;
       toast(msg, 4000);
@@ -768,9 +768,9 @@ function wireUi(){
       download(fileSlug() + '.dwg', r.bytes, 'application/acad');
     toast(r.source === 'libredwg'
       ? 'DWG R2000 exported'
-      : 'DWG R2000 — this app reopens it. AutoCAD Open: Export DXF R2000');
+      : 'DWG R2000: this app reopens it. AutoCAD Open: Export DXF R2000');
     } catch (err){
-      toast((err && err.message) || 'DWG export failed — try DXF');
+      toast((err && err.message) || 'DWG export failed. Try DXF');
     }
   }
   $('mExportDWG') && $('mExportDWG').addEventListener('click', exportDwg);
@@ -811,7 +811,7 @@ function wireUi(){
         toast('Share: ' + url.slice(0, 48) + '…');
       }
     } catch (err){
-      toast((err && err.message) || 'Share failed — export HTML instead');
+      toast((err && err.message) || 'Share failed. Export HTML instead');
     }
   });
   $('stUnits') && $('stUnits').addEventListener('click', () => {
@@ -886,7 +886,7 @@ function wireUi(){
     opts = opts || {};
     const kind = sniffDrawing(text, filename);
     if (kind === 'dwg'){
-      toast('DWG is binary — Save As DXF in the other CAD, then Open here');
+      toast('DWG is binary. Save As DXF in the other CAD, then Open here');
       return;
     }
     if (kind === 'json'){
@@ -976,7 +976,7 @@ function wireUi(){
             toast('Opened ' + r.entities.length + ' objects from DWG' + (r.layouts && r.layouts.length ? ' · paperspace kept' : ''));
           }
         } catch (err){
-          toast((err && err.message) || 'DWG open failed — Save As DXF in the other CAD');
+          toast((err && err.message) || 'DWG open failed. Save As DXF in the other CAD');
         }
       };
       rd.readAsArrayBuffer(file);
@@ -1068,7 +1068,7 @@ function wireUi(){
   function renderScriptSheet(){
     const list = $('scList');
     if (!list) return;
-    list.innerHTML = '<option value=\"\">— saved scripts —</option>';
+    list.innerHTML = '<option value=\"\">Saved scripts</option>';
     (state.scripts || []).forEach(sc => {
       const o = document.createElement('option');
       o.value = sc.name; o.textContent = sc.name;
@@ -1236,7 +1236,7 @@ function wireUi(){
     state.space = 'model';
     afterChange(); zoomToPlan(); draw();
     renderLayouts(); renderSpaceTabs();
-    toast(state.layouts.length + ' sheets — cover, overall, one page per room');
+    toast(state.layouts.length + ' sheets: cover, overall, one page per room');
   });
   $('hintSample') && $('hintSample').addEventListener('click', () => $('mSample') && $('mSample').click());
 
@@ -1266,7 +1266,7 @@ function wireUi(){
   });
   $('mSampleGA') && $('mSampleGA').addEventListener('click', () => {
     loadSample('GA Diagram', gaDiagram(), { id: 'G1', name: 'G-1 General Arrangement', sheet: 'archdp', ppf: 18 });
-    toast('General arrangement — not a build spec');
+    toast('General arrangement, not a build spec');
   });
 
   $('mLayouts') && $('mLayouts').addEventListener('click', () => { renderLayouts(); openSheet('sheetLayouts'); });

@@ -485,7 +485,7 @@ export function boolean3d(op, rest){
   if (!a || !b){
     const names = solidNames();
     if (names.length === 2){ a = names[0]; b = names[1]; }
-    else { toast((op.toUpperCase()) + ' A B — have: ' + (names.join(', ') || 'no solids')); return; }
+    else { toast((op.toUpperCase()) + ' A B. Have: ' + (names.join(', ') || 'no solids')); return; }
   }
   pushUndo(undoScope([]));
   try {
@@ -504,7 +504,7 @@ export function sliceSolid(rest){
   else if (parts.length === 1 && Number.isFinite(Number(parts[0])) && solidNames().length === 1){
     name = solidNames()[0]; at = Number(parts[0]);
   }
-  if (!name || !Number.isFinite(at)){ toast('SLICE name [x|y|z] value — have: ' + (solidNames().join(', ') || 'no solids')); return; }
+  if (!name || !Number.isFinite(at)){ toast('SLICE name [x|y|z] value. Have: ' + (solidNames().join(', ') || 'no solids')); return; }
   pushUndo(undoScope([]));
   try {
     const r = sliceSolidToPlan(name, at, undefined, axis);
@@ -540,7 +540,7 @@ export function modelPlan(){
     const made = planToSolids();
     if (!made.length){ toast('Nothing extrudable in the plan'); return; }
     afterChange();
-    toast('Modelled: ' + made.map(r => r.name).join(', ') + ' — U3D and SUB3D can cut them now', 5000);
+    toast('Modelled: ' + made.map(r => r.name).join(', ') + '. U3D and SUB3D can cut them now', 5000);
   } catch (e){ toast(e.message, 4000); }
 }
 
@@ -550,7 +550,7 @@ export function listSolids(){
 
 export function deleteSolid(rest){
   const name = String(rest || '').trim();
-  if (!name){ toast('SOLIDDEL name — have: ' + (solidNames().join(', ') || 'none')); return; }
+  if (!name){ toast('SOLIDDEL name. Have: ' + (solidNames().join(', ') || 'none')); return; }
   pushUndo(undoScope([]));
   if (removeSolid(name)){ afterChange(); toast(name.toUpperCase() + ' deleted'); }
   else toast('No solid ' + name.toUpperCase());
@@ -1479,7 +1479,7 @@ export function finishArc(){
 export function applyStoryHeight(raw){
   const n = typeof raw === 'number' ? raw : parseLength(raw);
   if (!isFinite(n) || n <= 0){
-    toast('Height must be a length — try 9 or 9\'');
+    toast('Height must be a length. Try 9 or 9\'');
     return false;
   }
   const h = Math.max(6, Math.min(40, n));
@@ -1776,7 +1776,7 @@ export function applyRooms(){
   syncAutoRooms(state);
   afterChange();
   const n = state.entities.filter(e => e.type === 'room').length;
-  toast(n ? (n + ' live room' + (n === 1 ? '' : 's') + ' — areas follow walls') : 'No closed wall loops yet');
+  toast(n ? (n + ' live room' + (n === 1 ? '' : 's') + ', areas follow walls') : 'No closed wall loops yet');
 }
 
 export function applyTakeoff(){
@@ -1801,7 +1801,7 @@ export function applySheetSet(){
   state.space = layouts[0].id;
   afterChange();
   try { document.dispatchEvent(new Event('sd-sheets-changed')); } catch (e){ /* node */ }
-  toast(layouts.length + ' sheets — cover, overall, specs per section');
+  toast(layouts.length + ' sheets: cover, overall, specs per section');
   return layouts.length;
 }
 

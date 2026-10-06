@@ -51,7 +51,7 @@ export function takeoffRows(entities){
 }
 
 function doorsWidth(list){
-  if (!list.length) return '—';
+  if (!list.length) return '-';
   const sum = list.reduce((s, e) => s + (e.width || 3), 0);
   return fmtFtIn(sum) + ' total';
 }

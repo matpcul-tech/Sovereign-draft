@@ -303,7 +303,7 @@ function endPointer(ev){
   else if (drag.kind === 'extendtap'){ extendTap(sx, sy); }
   else if (drag.kind === 'jointap'){
     const h = hitTest(sx, sy);
-    if (h){ state.selIds = state.selIds.concat([h.id]); syncCtx(); toast('Added to join set — Enter to join'); }
+    if (h){ state.selIds = state.selIds.concat([h.id]); syncCtx(); toast('Added to join set. Enter to join'); }
   }
   else if (drag.kind === 'hatchtap'){ hatchTap(sx, sy); syncCtx(); }
   else if (drag.kind === 'arraytap'){

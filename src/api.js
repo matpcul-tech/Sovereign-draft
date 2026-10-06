@@ -84,7 +84,7 @@ function fromValidated(p){
 export function open(input, filename){
   if (input && typeof input !== 'string' && (input.byteLength != null || input.buffer)){
     if (isDwgBuffer(input, filename)){
-      throw new Error('DWG is binary — use openAsync(arrayBuffer, filename)');
+      throw new Error('DWG is binary. Use openAsync(arrayBuffer, filename)');
     }
     input = new TextDecoder('latin1').decode(input instanceof Uint8Array ? input : new Uint8Array(input));
   }
@@ -94,7 +94,7 @@ export function open(input, filename){
     return fromValidated(validateProject(JSON.parse(text)));
   }
   if (kind === 'dwg'){
-    throw new Error('DWG is binary — use openAsync(arrayBuffer, filename)');
+    throw new Error('DWG is binary. Use openAsync(arrayBuffer, filename)');
   }
   const layers = defaultLayers();
   const { entities, count, layouts } = openDXF(text, makeEnsureLayer(layers));

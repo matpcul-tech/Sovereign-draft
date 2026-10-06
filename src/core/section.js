@@ -282,7 +282,7 @@ export function buildSectionView(entities, plane, opts){
       x: labelAt[0],
       y: labelAt[1] - 1.1,
       size: 0.6,
-      content: 'Height ' + fmtFtIn(maxH) + ' ASSUMED — set attrs.height to stamp a real story'
+      content: 'Height ' + fmtFtIn(maxH) + ' ASSUMED. Give the walls a height to show the real one'
     });
   }
 

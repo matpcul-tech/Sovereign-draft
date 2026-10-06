@@ -61,7 +61,7 @@ export async function encodeShare(text){
   const gz = await gzipU8(toU8(text));
   const token = b64urlEncode(gz);
   if (token.length > MAX_TOKEN){
-    const err = new Error('Drawing is too large to share as a URL — download HTML instead');
+    const err = new Error('Drawing is too large to share as a URL. Download HTML instead');
     err.code = 'SHARE_TOO_BIG';
     err.bytes = token.length;
     throw err;
