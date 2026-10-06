@@ -1269,6 +1269,28 @@ function wireUi(){
     toast('General arrangement, not a build spec');
   });
 
+  /* A finished project: plan, sheets, 3D solids and renders. It is a real
+   * .sdraft opened through the same path as a file, loaded on demand so it
+   * stays out of the main bundle. Room tags are placed by hand in it, so
+   * live rooms stay off until the user asks for ROOMS. */
+  $('mSampleRidge') && $('mSampleRidge').addEventListener('click', async () => {
+    closeSheets();
+    toast('Opening Culwell Ridge Cabin...');
+    let text;
+    try {
+      text = (await import('./samples/culwell-ridge-cabin.sdraft?raw')).default;
+    } catch (err){
+      toast('The sample could not load. Check the connection and try again');
+      return;
+    }
+    state.autoRooms = false;
+    openDrawingText(text, 'culwell-ridge-cabin.sdraft');
+    state.space = 'model';
+    zoomToPlan(); draw();
+    try { renderLayouts(); renderSpaceTabs(); } catch (err){ /* chrome not ready */ }
+    toast('Culwell Ridge Cabin: ' + state.layouts.length + ' sheets. Export All PDF prints the set, 3D shows the model');
+  });
+
   $('mLayouts') && $('mLayouts').addEventListener('click', () => { renderLayouts(); openSheet('sheetLayouts'); });
   $('mSheetSet') && $('mSheetSet').addEventListener('click', () => {
     closeSheets();
@@ -1399,9 +1421,18 @@ function wireUi(){
       },
       projectName: state.projectName,
       firm: state.firm,
-      revisions: state.revisions
+      revisions: state.revisions,
+      font: state.plotFont,
+      layers: state.layers,
+      textStyles: state.textStyles,
+      plotStyles: state.plotStyles,
+      plotStyle: state.currentPlotStyle
     });
-    download(fileSlug() + '-sheets.pdf', pdf, 'application/pdf');
+    /* The writer returns a binary string (one char per byte). Handing that
+     * string to a Blob would UTF-8 encode every byte above 0x7F and corrupt
+     * embedded JPEG streams, so it goes out as raw bytes like every other
+     * PDF path. */
+    download(fileSlug() + '-sheets.pdf', latin1ToBytes(pdf), 'application/pdf');
     toast(pages + ' sheet' + (pages === 1 ? '' : 's') + ' exported');
   });
   $('mSchedules') && $('mSchedules').addEventListener('click', () => {

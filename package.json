@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",
+    "fix-webm-duration": "^1.0.6",
     "three": "^0.185.1"
   },
   "devDependencies": {

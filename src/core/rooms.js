@@ -35,6 +35,57 @@ export function wallCenterlines(entities){
   return out;
 }
 
+/* A room separator is an invisible boundary: a plain line on the ROOM-SEP
+ * layer splits an open plan (kitchen into great room, say) into two rooms
+ * without a wall. It never extrudes and does not plot. An end drawn to a
+ * wall face, or a little short of the wall, is carried to the nearest wall
+ * centreline so the room graph closes. */
+export const ROOM_SEP_LAYER = 'ROOM-SEP';
+export function isRoomSeparator(e){
+  return !!e && e.type === 'line' && String(e.layer || '').toUpperCase() === ROOM_SEP_LAYER;
+}
+const SEP_REACH = 1;
+export function separatorLines(entities, walls){
+  const out = [];
+  (entities || []).forEach((e, i) => {
+    if (!isRoomSeparator(e)) return;
+    const len = dist(e.x1, e.y1, e.x2, e.y2);
+    if (!(len >= MIN_EDGE)) return;
+    const ux = (e.x2 - e.x1) / len, uy = (e.y2 - e.y1) / len;
+    const R = SEP_REACH, L = len + 2 * R;
+    const ax = e.x1 - ux * R, ay = e.y1 - uy * R;
+    const bx = e.x2 + ux * R, by = e.y2 + uy * R;
+    let s0 = R, s1 = R + len, d0 = Infinity, d1 = Infinity;
+    (walls || []).forEach(w => {
+      const hit = segSegIntersect(ax, ay, bx, by, w.x1, w.y1, w.x2, w.y2, 0.02);
+      if (!hit) return;
+      const s = hit.t * L;
+      const e0 = Math.abs(s - R), e1 = Math.abs(s - (R + len));
+      if (e0 <= R && e0 < d0 && s < R + len / 2){ d0 = e0; s0 = s; }
+      if (e1 <= R && e1 < d1 && s > R + len / 2){ d1 = e1; s1 = s; }
+    });
+    /* Near a wall corner the end lands on the corner itself, so the graph
+     * gets a real node there instead of a hit a hair off a wall's end. */
+    const snapEnd = (x, y) => {
+      let best = null, bd = 0.5;
+      (walls || []).forEach(w => {
+        [[w.x1, w.y1], [w.x2, w.y2]].forEach(p => {
+          const d = dist(x, y, p[0], p[1]);
+          if (d < bd){ bd = d; best = p; }
+        });
+      });
+      return best || [x, y];
+    };
+    const p = snapEnd(ax + ux * s0, ay + uy * s0);
+    const q = snapEnd(ax + ux * s1, ay + uy * s1);
+    out.push({
+      x1: p[0], y1: p[1], x2: q[0], y2: q[1],
+      th: 0, g: 'sep' + (e.id != null ? e.id : i), layer: ROOM_SEP_LAYER, sep: true
+    });
+  });
+  return out;
+}
+
 function splitAll(raw){
   const cuts = raw.map(() => [0, 1]);
   for (let i = 0; i < raw.length; i++){
@@ -148,12 +199,13 @@ function insetPts(pts, d){
 }
 
 export function detectRooms(entities){
-  const raw = wallCenterlines(entities);
+  const walls = wallCenterlines(entities);
+  const raw = walls.concat(separatorLines(entities, walls));
   if (raw.length < 3) return [];
   const segs = splitAll(raw);
   const nodes = buildGraph(segs);
   const faces = walkFaces(nodes);
-  const th = raw[0].th || 0.5;
+  const th = (walls[0] && walls[0].th) || 0.5;
   const rooms = [];
   faces.forEach(pts => {
     if (!pts || pts.length < 3) return;

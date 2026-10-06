@@ -367,6 +367,7 @@ export function shellHTML(){
   <button class="mrow" id="mSample"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M9 6v12"/></svg>Sample 24×36 cabin<small>walls, doors, hatch, dims</small></button>
   <button class="mrow" id="mSamplePart"><svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="8" rx="1"/><circle cx="8" cy="12" r="1"/><circle cx="16" cy="12" r="1"/></svg>Sample plate<small>12" × 8" · GD&T</small></button>
   <button class="mrow" id="mSamplePart3d"><svg viewBox="0 0 24 24"><path d="M4 18V8h12v10zM16 10h4v8h-4"/><circle cx="10" cy="13" r="1.5"/></svg>Sample 3D bracket<small>mesh solid · hole · STL</small></button>
+  <button class="mrow" id="mSampleRidge"><svg viewBox="0 0 24 24"><path d="M3 12 12 4l9 8M5 10v10h14V10M10 20v-5h4v5"/></svg>Culwell Ridge Cabin<small>full print set · 3D · renders</small></button>
   <button class="mrow" id="mSampleGA"><svg viewBox="0 0 24 24"><path d="M12 3 6 9v12h12V9z"/></svg>Sample GA<small>arrangement, not a spec</small></button>
   <button class="mrow" id="mNew"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg><span id="mNewLabel">New drawing</span></button>
   <div class="subtle" id="menuFooter">Issued 2D, free, DXF/DWG out. Open a DXF from AutoCAD, LibreCAD or DraftSight. Units follow $INSUNITS. Drawing stays on this device until you export.</div>

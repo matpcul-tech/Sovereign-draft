@@ -14,6 +14,7 @@ import { pushPullPrism } from '../core/model3d.js';
 import { snapPoints, makeSnapIndex, inferMove, grabTarget, moveMeshPoints, facePoints } from '../core/snap3d.js';
 import { sunVector } from '../core/sun.js';
 import { samplePath, easeInOut } from '../core/campath.js';
+import fixWebmDuration from 'fix-webm-duration';
 
 let renderer = null;
 let scene = null;
@@ -30,6 +31,11 @@ let lastSun = null;
 let lastMaterials = {};
 let sunLight = null;
 let hemiLight = null;
+/* A soft light that rides with the camera. The sun lights one side of the
+ * house; without this the far side reads nearly black once a turntable or
+ * an orbit swings round to it. It sits a little above the eye so faces
+ * still model instead of going flat. */
+let headLight = null;
 const _color = new THREE.Color();
 
 function disposeObject(obj){
@@ -125,7 +131,8 @@ function applySun(solid){
     sunLight.target.position.set(cx, 0, cz);
     sunLight.intensity = v.z > 0 ? 1.5 : 0.05;
     sunLight.color.setHex(v.elevation < 15 ? 0xffc890 : 0xfff4e0);
-    if (hemiLight) hemiLight.intensity = v.z > 0 ? 0.35 : 0.15;
+    if (hemiLight) hemiLight.intensity = v.z > 0 ? 0.55 : 0.2;
+    if (headLight) headLight.intensity = v.z > 0 ? 0.45 : 0.25;
     const cam = sunLight.shadow.camera;
     cam.left = -span; cam.right = span; cam.top = span; cam.bottom = -span;
     cam.near = 0.5; cam.far = span * 6;
@@ -143,8 +150,22 @@ function applySun(solid){
     sunLight.target.position.set(cx, 0, cz);
     sunLight.intensity = 1.05;
     sunLight.color.setHex(0xfff1d6);
-    if (hemiLight) hemiLight.intensity = 0.7;
+    if (hemiLight) hemiLight.intensity = 0.75;
+    if (headLight) headLight.intensity = 0.5;
   }
+}
+
+/* Put the camera light just above and behind the eye, aimed at what the
+ * eye looks at, so every side the camera sees is lit. */
+function syncHeadLight(cam, target){
+  if (!headLight || !cam) return;
+  const t = target || (controls ? controls.target : null);
+  const tx = t ? t.x : 0, ty = t ? t.y : 0, tz = t ? t.z : 0;
+  const dist = Math.hypot(cam.position.x - tx, cam.position.y - ty, cam.position.z - tz) || 1;
+  headLight.position.set(cam.position.x, cam.position.y + dist * 0.35, cam.position.z);
+  headLight.target.position.set(tx, ty, tz);
+  headLight.updateMatrixWorld();
+  headLight.target.updateMatrixWorld();
 }
 
 /* A drag leaves damping velocity that keeps the camera coasting for a
@@ -217,10 +238,23 @@ export function renderStill(width, level){
     cam.setViewOffset(w, h, 0, Math.max(-h, Math.min(h, -shift)), w, h);
   }
   cam.updateProjectionMatrix();
+  syncHeadLight(cam);
   r.render(scene, cam);
+  syncHeadLight(camera);
   const url = cv.toDataURL('image/png');
   r.dispose();
   return { url, w, h };
+}
+
+/* MediaRecorder writes a WebM with no Duration in its header, so players
+ * show no length and cannot seek. Patch the measured length in; if the
+ * patch fails the original recording still goes out. */
+function finishRecording(chunks, ms){
+  if (!chunks.length) return Promise.resolve(null);
+  const blob = new Blob(chunks, { type: 'video/webm' });
+  return Promise.resolve()
+    .then(() => fixWebmDuration(blob, Math.max(1, Math.round(ms)), { logger: false }))
+    .then(b => b || blob, () => blob);
 }
 
 /* A turntable: the camera orbits the target once while the live canvas is
@@ -261,8 +295,10 @@ export function renderTurntable(seconds){
       render();
       requestAnimationFrame(spin);
     };
-    rec.onstop = () => resolve(chunks.length ? new Blob(chunks, { type: 'video/webm' }) : null);
+    let recT0 = 0;
+    rec.onstop = () => finishRecording(chunks, performance.now() - recT0).then(resolve);
     rec.start(200);
+    recT0 = performance.now();
     requestAnimationFrame(spin);
   });
 }
@@ -312,8 +348,10 @@ export function renderWalkthrough(views, seconds){
       render();
       requestAnimationFrame(step);
     };
-    rec.onstop = () => resolve(chunks.length ? new Blob(chunks, { type: 'video/webm' }) : null);
+    let recT0 = 0;
+    rec.onstop = () => finishRecording(chunks, performance.now() - recT0).then(resolve);
     rec.start(200);
+    recT0 = performance.now();
     requestAnimationFrame(step);
   });
 }
@@ -411,6 +449,7 @@ function addMeshes(solid){
 
 function render(){
   if (!running || !renderer || !scene || !camera) return;
+  syncHeadLight(camera);
   renderer.render(scene, camera);
 }
 
@@ -1456,6 +1495,11 @@ export function showView3d(opts){
     fill.position.set(-30, 20, -40);
     fill.userData.keep = 1;
     scene.add(fill);
+    headLight = new THREE.DirectionalLight(0xfff8ee, 0.5);
+    headLight.userData.keep = 1;
+    headLight.target.userData.keep = 1;
+    scene.add(headLight);
+    scene.add(headLight.target);
     controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
