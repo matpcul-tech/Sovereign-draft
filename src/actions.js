@@ -3,7 +3,7 @@
  * undo, autosave and redraw stay consistent.
  */
 import { state, layerByName, layerVisible, layerLocked, pushUndo, undoScope, afterChange, selMembers, addEntity, deleteEntities, replaceEntity, replaceMany, GRID_SNAP, OFFSETS, POLAR_STEP, rememberVec, pushCmd, currentDimStyleObj, activeLayout } from './core/state.js';
-import { deep, dist, polarSnap, distToSeg, closestOnSeg } from './core/geometry.js';
+import { deep, dist, polarSnap, distToSeg, closestOnSeg, pointInPoly } from './core/geometry.js';
 import { entPoints, entHit, translateEnt, membersBBox, entBBox, rotateMembers, explodeForIO } from './core/entities.js';
 import { offsetEntity } from './core/offset.js';
 import { trimEntity, extendEntity } from './core/trimExtend.js';
@@ -1260,6 +1260,18 @@ export function hatchTap(sx, sy){
     const h = makeHatch(pts, { layer: 'HATCH', pattern: state.hatchPattern || 'ANSI31' });
     if (h){ pushUndo(); addEntity(h); afterChange(); toast('Hatch ' + h.pattern); }
     return;
+  }
+  /* On a small screen a finger on the floor often lands within reach of a
+   * wall or a dimension, so the hit is not the room. Still hatch the room
+   * the tap is inside, unless a boundary is being picked point by point. */
+  if (!ix.polyPts.length){
+    const room = visible.filter(e => e.type === 'room' && (e.pts || []).length >= 3 && pointInPoly(w[0], w[1], e.pts))
+      .sort((a, b) => Math.abs(a.area || 0) - Math.abs(b.area || 0))[0];
+    if (room){
+      const h = makeHatch(deep(room.pts), { layer: 'HATCH', pattern: state.hatchPattern || 'ANSI31' });
+      if (h){ pushUndo(); addEntity(h); afterChange(); toast('Hatch ' + h.pattern); }
+      return;
+    }
   }
   const p = applyConstraint(ix.polyPts[ix.polyPts.length - 1] || null, snapPt(sx, sy));
   ix.polyPts.push(p);

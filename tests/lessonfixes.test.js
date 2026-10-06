@@ -69,3 +69,29 @@ describe('cover index after DRAWINGS SHEETS', () => {
     expect(idx.cells[idx.cells.length - 1][1]).toBe('SOUTH ELEVATION');
   });
 });
+
+/* Lesson 8 on a phone: zoomed out, a tap on the floor of a small room
+ * lands within reach of a wall, so the hit is the wall, not the room.
+ * HATCH still fills the room the tap is inside. */
+describe('HATCH on a floor near a wall', () => {
+  it('fills the room the tap is inside even when the hit is a wall', async () => {
+    const { state, addEntity } = await import('../src/core/state.js');
+    const { hatchTap, hitTest } = await import('../src/actions.js');
+    const { vp } = await import('../src/core/viewport.js');
+    const { ix } = await import('../src/interaction.js');
+    if (typeof globalThis.document === 'undefined') globalThis.document = { getElementById: () => null };
+    state.entities = []; state.selIds = []; ix.polyPts = [];
+    state.view = { x: 18, y: 12, scale: 4 };
+    vp.CW = 390; vp.CH = 700;
+    const wall = addEntity({ type: 'line', layer: 'WALLS', kind: 'wall', x1: 0, y1: 0.25, x2: 36, y2: 0.25 });
+    addEntity({ type: 'room', layer: 'ROOMS', name: 'BATH', area: 60,
+      pts: [[0.5, 0.5], [10, 0.5], [10, 7], [0.5, 7]], cx: 5, cy: 3 });
+    const sx = (x, y) => [(x - state.view.x) * state.view.scale + vp.CW / 2, vp.CH / 2 - (y - state.view.y) * state.view.scale];
+    const p = sx(5, 1.5);
+    expect(hitTest(p[0], p[1]).id).toBe(wall.id);
+    hatchTap(p[0], p[1]);
+    const h = state.entities.filter(e => e.type === 'hatch');
+    expect(h.length).toBe(1);
+    expect(ix.polyPts.length).toBe(0);
+  });
+});
