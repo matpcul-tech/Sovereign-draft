@@ -183,7 +183,7 @@ export function toPDF(doc, opts){
       projectName: d.name,
       firm: d.firm,
       dateStr: o.dateStr
-    });
+    }).pdf;
   }
   const { pdf } = buildAllSheetsPDF(d.entities || [], {
     sheets: layouts,

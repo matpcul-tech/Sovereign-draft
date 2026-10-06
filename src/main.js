@@ -1399,9 +1399,18 @@ function wireUi(){
       },
       projectName: state.projectName,
       firm: state.firm,
-      revisions: state.revisions
+      revisions: state.revisions,
+      font: state.plotFont,
+      layers: state.layers,
+      textStyles: state.textStyles,
+      plotStyles: state.plotStyles,
+      plotStyle: state.currentPlotStyle
     });
-    download(fileSlug() + '-sheets.pdf', pdf, 'application/pdf');
+    /* The writer returns a binary string (one char per byte). Handing that
+     * string to a Blob would UTF-8 encode every byte above 0x7F and corrupt
+     * embedded JPEG streams, so it goes out as raw bytes like every other
+     * PDF path. */
+    download(fileSlug() + '-sheets.pdf', latin1ToBytes(pdf), 'application/pdf');
     toast(pages + ' sheet' + (pages === 1 ? '' : 's') + ' exported');
   });
   $('mSchedules') && $('mSchedules').addEventListener('click', () => {
