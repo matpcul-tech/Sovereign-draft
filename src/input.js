@@ -641,6 +641,10 @@ export function handleCommand(text){
     try { document.dispatchEvent(new Event('sd-view3d')); } catch (e){ /* node */ }
     return;
   }
+  if (res.action === 'asset' || res.action === 'assetlevel' || res.action === 'assetartist' || res.action === 'assetsedan' || res.action === 'assetshop' || res.action === 'assetbin' || res.action === 'assetglb'){
+    try { document.dispatchEvent(new CustomEvent('sd-asset', { detail: res })); } catch (e){ /* node */ }
+    return;
+  }
   if (res.action === 'view2d'){
     try { document.dispatchEvent(new Event('sd-view2d')); } catch (e){ /* node */ }
     return;

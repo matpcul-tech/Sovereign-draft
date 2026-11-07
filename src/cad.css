@@ -346,3 +346,15 @@ body.embed #btnGuide{display:none !important}
 .projrow .pj-act:hover{border-color:var(--gold);color:var(--gold)}
 .projrow .pj-act.warn:hover{border-color:var(--terra);color:var(--terra)}
 #projlist .pj-empty{padding:14px 4px;color:var(--ink-dim);font-size:13px}
+
+#assetmode{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;background:var(--navy);color:var(--ink)}
+#assetmode .assethead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(env(safe-area-inset-top) + 10px) 12px 8px;border-bottom:1px solid var(--line)}
+#assetmode #assetname{font-family:'Playfair Display',Georgia,serif;font-size:18px}
+#assetmode #assetclose{height:36px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--navy-2);font-size:13px}
+#assetmode .assetview{flex:1;min-height:0;position:relative}
+#assetmode .assetview canvas{width:100%;height:100%}
+#assetmode .assetchips{display:flex;gap:6px;overflow:auto;padding:8px 12px;border-top:1px solid var(--line)}
+#assetmode .assetbar{display:flex;align-items:center;gap:8px;padding:0 12px 8px;font-size:13px;color:var(--ink-dim)}
+#assetmode #assetcmd{flex:1;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--navy-2);color:var(--ink);padding:0 12px;font:inherit}
+#assetmode #assetstatus{padding:0 12px calc(env(safe-area-inset-bottom) + 8px);font-size:12px;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+

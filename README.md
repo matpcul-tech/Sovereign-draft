@@ -287,6 +287,11 @@ Every generated number is held by a closed-form test. The hidden line pass runs 
 
 `3D` is a modelling view. Drag `BOX` / `CYL` / `SPHERE` / `CONE` on the workplane, or `EXTRUDE` / `REVOLVE` / `LOFT` / `SWEEP` a closed 2D sketch. Pick two solids and `U3D` / `SUB3D`. `STL` opens as welded meshes; `STL` / `OBJ` / GLB out. Sample 3D bracket is in the Sheet menu.
 
+## Street assets
+
+`ASSET` opens a meters space for hard-surface game pieces. It does not use the drawing's feet. `SEDAN`, `SHOP`, and `BIN` are built-in meshes. `LEVEL` lays out one city block (shops, cars, lamps, bins) and `ARTIST` builds one piece. `GLB` downloads the mesh. The artist calls xAI when an xAI key is saved under AI settings; without a key, `LEVEL` opens a built-in sample block. No people.
+
+
 The model is touchable, and touch is precise:
 
 - **Click** a solid to select it by name. **Drag** moves it in plan, shift lifts it. The drag infers against the real geometry of every other solid: corners lock corner-to-corner and edge midpoints lock the same way, exactly, with the HUD naming the inference (vertex, midpoint), so a box corner lands on a roof ridge end or an off-grid CSG corner without typing a number. Where no point is near it falls back to face-and-centre alignment and the half-foot grid (alt frees it entirely). The live delta reads out in feet and inches; **type a number, Enter** sets the distance exactly. **Ctrl-drag** commits a copy.

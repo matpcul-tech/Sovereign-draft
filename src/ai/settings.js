@@ -11,15 +11,20 @@ export function loadAISettings(){
     const o = JSON.parse(localStorage.getItem(KEY) || '{}');
     return {
       apiKey: typeof o.apiKey === 'string' ? o.apiKey : '',
+      xaiKey: typeof o.xaiKey === 'string' ? o.xaiKey : '',
       model: MODELS.includes(o.model) ? o.model : DEFAULT_MODEL
     };
   } catch (e){
-    return { apiKey: '', model: DEFAULT_MODEL };
+    return { apiKey: '', xaiKey: '', model: DEFAULT_MODEL };
   }
 }
 
 export function saveAISettings(s){
   try {
-    localStorage.setItem(KEY, JSON.stringify({ apiKey: s.apiKey || '', model: s.model || DEFAULT_MODEL }));
+    localStorage.setItem(KEY, JSON.stringify({
+      apiKey: s.apiKey || '',
+      xaiKey: s.xaiKey || '',
+      model: s.model || DEFAULT_MODEL
+    }));
   } catch (e){ /* private mode — settings just won't persist */ }
 }

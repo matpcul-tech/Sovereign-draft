@@ -138,7 +138,14 @@ export const COMMANDS = {
   SOLIDS:  { aliases: ['SOLIDS'],                       tool: null,     action: 'solids' },
   SOLIDDEL:{ aliases: ['SOLIDDEL'],                     tool: null,     action: 'soliddel' },
   ELEV:    { aliases: ['ELEV', 'ELEVATION'],            tool: null,     action: 'elev' },
-  MODEL:   { aliases: ['MODEL', 'PLAN2SOLID'],          tool: null,     action: 'modelplan' }
+  MODEL:   { aliases: ['MODEL', 'PLAN2SOLID'],          tool: null,     action: 'modelplan' },
+  ASSET:   { aliases: ['ASSET'],                        tool: null,     action: 'asset' },
+  LEVEL:   { aliases: ['LEVEL'],                        tool: null,     action: 'assetlevel' },
+  ARTIST:  { aliases: ['ARTIST'],                       tool: null,     action: 'assetartist' },
+  SEDAN:   { aliases: ['SEDAN'],                        tool: null,     action: 'assetsedan' },
+  SHOP:    { aliases: ['SHOP', 'STOREFRONT'],           tool: null,     action: 'assetshop' },
+  DUMPSTER:{ aliases: ['DUMPSTER', 'BIN'],              tool: null,     action: 'assetbin' },
+  GAMEGLB: { aliases: ['GLB'],                          tool: null,     action: 'assetglb' }
 };
 
 const ALIAS = {};
