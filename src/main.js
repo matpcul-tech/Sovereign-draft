@@ -575,11 +575,16 @@ function wireUi(){
   function openSettings(){
     const s = loadAISettings();
     $('setKey').value = s.apiKey;
+    if ($('setXai')) $('setXai').value = s.xaiKey || '';
     $('setModel').value = s.model;
     openSheet('sheetSettings');
   }
   $('btnSaveSettings') && $('btnSaveSettings').addEventListener('click', () => {
-    saveAISettings({ apiKey: $('setKey').value.trim(), model: $('setModel').value });
+    saveAISettings({
+      apiKey: $('setKey').value.trim(),
+      xaiKey: $('setXai') ? $('setXai').value.trim() : '',
+      model: $('setModel').value
+    });
     closeSheets();
     toast($('setKey').value.trim() ? 'AI settings saved' : 'API key removed');
   });
@@ -1629,6 +1634,14 @@ function wireUi(){
     toast('Something went wrong: ' + (ev.message || 'unknown error'), 4000);
   });
   document.addEventListener('sd-view3d', () => openView3d());
+  document.addEventListener('sd-asset', (ev) => {
+    import('./asset/mode.js').then(m => m.openFromCommand(ev.detail || { action: 'asset' })).catch(err => {
+      toast(err && err.message ? err.message : 'Asset space failed to open');
+    });
+  });
+  $('btnAsset') && $('btnAsset').addEventListener('click', () => {
+    try { document.dispatchEvent(new CustomEvent('sd-asset', { detail: { action: 'asset' } })); } catch (e){ /* ignore */ }
+  });
   document.addEventListener('sd-export-stl', () => { const b = $('mSTL'); if (b) b.click(); });
   document.addEventListener('sd-export-obj', () => { const b = $('mOBJ'); if (b) b.click(); });
   document.addEventListener('sd-tool3d', async (ev) => {

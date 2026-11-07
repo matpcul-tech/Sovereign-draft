@@ -20,6 +20,7 @@ export function shellHTML(){
   <h2>CAD editor</h2>
   <p>Open a DXF or DWG, drop a file, or tap <span class="k">AI</span> to describe a plan.<br>
   Type <span class="k">3D</span> to model, <span class="k">SHEETSET</span> to issue pages.<br>
+  Type <span class="k">ASSET</span> for street pieces, <span class="k">LEVEL</span> for a block.<br>
   Type <span class="k">HELP</span> for the Field Guide.</p>
   <div class="hint-actions">
     <button type="button" id="hintOpen">Open drawing</button>
@@ -156,6 +157,7 @@ export function shellHTML(){
       ${tool('bdwgs','DWGS','Whole drawing set on sheets (DRAWINGS)','<rect x="3" y="4" width="12" height="14"/><rect x="8" y="7" width="12" height="14"/><path d="M11 11h6M11 14h6M11 17h4"/>')}
       ${tool('bqto','QTO','Model takeoff table (QTO)','<path d="M4 4h16v16H4zM4 9h16M10 9v11M16 9v11"/>')}
       ${tool('box3d','BOX','Box solid (BOX)','<path d="M4 8 12 4l8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/>')}
+      <button class="tool" id="btnAsset" title="Street assets, meters (ASSET)"><svg viewBox="0 0 24 24"><path d="M4 20V10l8-6 8 6v10"/><path d="M9 20v-6h6v6"/></svg><span>ASSET</span></button>
       ${tool('extrude3d','EXT','Extrude closed sketch (EXTRUDE)','<path d="M7 16V6h10v10zM7 16l-3 4h16l-3-4"/>')}
     </div>
   </div>
@@ -201,6 +203,8 @@ export function shellHTML(){
   <h3><i>AI settings</i></h3>
   <h4>Anthropic API key (optional)</h4>
   <input id="setKey" type="password" class="field" placeholder="sk-ant-... fallback only" autocomplete="off" style="height:44px">
+  <h4>xAI API key (street artist, optional)</h4>
+  <input id="setXai" type="password" class="field" placeholder="xAI key for ASSET / LEVEL" autocomplete="off" style="height:44px">
   <h4>Model</h4>
   <select id="setModel" class="field" style="height:44px">
     <option value="claude-opus-4-5">Claude Opus 4.5</option>
