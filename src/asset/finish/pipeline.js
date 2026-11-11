@@ -5,7 +5,7 @@ import { decodeRaster } from "./raster.js";
 import { buildCarMask, maskClass } from "./mask.js";
 import { zipStore } from "./zip.js";
 import { cutManualBody, cutSpecifiedWheels, exportedBleed, fitTireCylinder, meshBleedReport } from "./clip.js";
-import { faceTopology } from "./select.js";
+import { faceTopology, manifoldEdgeKeys } from "./select.js";
 import { packGlb, sha256Hex, sourceCensus } from "./glb.js";
 
 const WELD = 2000;
@@ -108,6 +108,19 @@ export async function runFinish(loaded, profile, options = {}) {
   let parts;
   let wheelCylinders = [];
   let namedWheels = false;
+  let preCutManifold = null;
+  let capUv = null;
+  if (profile.id === "CAR") {
+    const image = (loaded.images || []).find((item) => item.bytes && item.bytes.length);
+    if (image) {
+      try {
+        const decoded = await decodeRaster(image.bytes, image.mime);
+        capUv = darkTexelUv(decoded.rgba, decoded.width, decoded.height);
+      } catch (error) {
+        capUv = null;
+      }
+    }
+  }
   if (profile.id === "CAR") {
     const split = splitByLabel(mesh) || splitWheels(mesh);
     log.push(split.detail);
@@ -126,6 +139,7 @@ export async function runFinish(loaded, profile, options = {}) {
     }
     if (split.named) {
       namedWheels = true;
+      preCutManifold = manifoldEdgeKeysOf(split.parts);
       parts = split.parts;
       wheelCylinders = parts.filter((part) => part.wheel).map((part) => fitTireCylinder(part.mesh, part.name));
       log.push("The wheels are already separate meshes. The body was not clipped to a bounding cylinder. Bleed uses the fitted tire cylinder.");
@@ -138,7 +152,8 @@ export async function runFinish(loaded, profile, options = {}) {
       });
     } else {
       const fitted = split.separated ? split.parts.filter((part) => part.wheel).map((part) => fitTireCylinder(part.mesh, part.name)) : null;
-      const cut = cutSpecifiedWheels(split.parts, fitted ? { cylinders: fitted, keepInsideOnBody: true } : {});
+      preCutManifold = manifoldEdgeKeysOf(split.parts);
+      const cut = cutSpecifiedWheels(split.parts, fitted ? { cylinders: fitted, keepInsideOnBody: true, capUv } : {});
       const bleedAfter = split.separated ? exportedBleed(cut.parts, cut.cylinders) : 0;
       const keepCut = !split.separated || bleedAfter === 0;
       parts = keepCut ? cut.parts : split.parts;
@@ -305,11 +320,12 @@ export async function runFinish(loaded, profile, options = {}) {
     detail: bad.zero + " zero-area triangles and " + bad.duplicate + " repeated triangles remain.",
     action: bad.zero || bad.duplicate ? "Remove the remaining bad triangles." : ""
   });
+  const manifoldReport = manifoldNovelty(preCutManifold, parts);
   checks.push({
     id: "manifold",
-    pass: bad.nonManifold === 0,
-    detail: bad.nonManifold + " edges are shared by more than two triangles. The source had " + sourceNonManifold + ". The rewrite " + (bad.nonManifold > sourceNonManifold ? "increased this count." : "did not increase this count."),
-    action: bad.nonManifold ? "These edges were not repaired. An inherited non-manifold edge stays a failure." : ""
+    pass: bad.nonManifold === 0 && manifoldReport.novel === 0,
+    detail: bad.nonManifold + " edges are shared by more than two triangles. " + manifoldReport.novel + " are new after the cut. " + manifoldReport.before + " non-manifold edges were already on the split parts. The raw source had " + sourceNonManifold + ".",
+    action: manifoldReport.novel ? "The cut added a non-manifold edge. That face was not a valid cap." : (bad.nonManifold ? "These edges were not repaired. An inherited non-manifold edge stays a failure." : "")
   });
   checks.push({
     id: "open-edges",
@@ -428,6 +444,45 @@ function wheelBleed(parts) {
     detail: shared + " wheel vertices sit on the body within 0.5 mm.",
     action: shared ? "The wheel boundary meets the body. Do not call that split clean." : ""
   };
+}
+
+function darkTexelUv(rgba, width, height) {
+  for (let y = 0; y < height; y += 2) {
+    for (let x = 0; x < width; x += 2) {
+      const index = (y * width + x) * 4;
+      if (rgba[index] < 24 && rgba[index + 1] < 24 && rgba[index + 2] < 24) {
+        return [(x + 0.5) / width, 1 - (y + 0.5) / height];
+      }
+    }
+  }
+  return null;
+}
+
+function manifoldEdgeKeysOf(parts) {
+  const keys = new Set();
+  for (const part of parts || []) for (const key of manifoldEdgeKeys(part.mesh)) keys.add(key);
+  return keys;
+}
+
+function edgeMidpoint(key) {
+  const [a, b] = key.split("|");
+  const pa = a.split(",").map(Number);
+  const pb = b.split(",").map(Number);
+  return pa.map((value, index) => (value + pb[index]) / 2 / 2000);
+}
+
+function manifoldNovelty(before, parts) {
+  if (!before) return { before: 0, novel: 0 };
+  const prior = [...before].map((key) => edgeMidpoint(key));
+  let novel = 0;
+  const after = manifoldEdgeKeysOf(parts);
+  for (const key of after) {
+    if (before.has(key)) continue;
+    const mid = edgeMidpoint(key);
+    const same = prior.some((point) => Math.hypot(point[0] - mid[0], point[1] - mid[1], point[2] - mid[2]) <= 0.001);
+    if (!same) novel += 1;
+  }
+  return { before: before.size, novel };
 }
 
 function outputDefects(parts) {

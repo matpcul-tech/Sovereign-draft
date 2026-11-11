@@ -65,7 +65,22 @@ export function faceTopology(corners) {
     neighbors[a].push(b);
     neighbors[b].push(a);
   }
-  return { faceCount, neighbors, degenerate, duplicate, nonManifold, boundary };
+  const nonManifoldEdges = [];
+  for (const [key, list] of edges) {
+    if (list.length > 2) nonManifoldEdges.push(key);
+  }
+  return { faceCount, neighbors, degenerate, duplicate, nonManifold, boundary, nonManifoldEdges };
+}
+
+export function manifoldEdgeKeys(mesh) {
+  const corners = [];
+  for (let face = 0; face < mesh.indices.length; face += 3) {
+    for (let corner = 0; corner < 3; corner++) {
+      const id = mesh.indices[face + corner];
+      corners.push(mesh.positions[id * 3], mesh.positions[id * 3 + 1], mesh.positions[id * 3 + 2]);
+    }
+  }
+  return new Set(faceTopology(new Float32Array(corners)).nonManifoldEdges || []);
 }
 
 export function wheelSurfaceBlocks(world) {
