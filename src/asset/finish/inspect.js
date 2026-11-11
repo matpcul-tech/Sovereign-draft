@@ -20,7 +20,8 @@ export function boundsOf(surfaces) {
 }
 
 function fmt(value) {
-  return Number(value).toFixed(3);
+  const shown = Math.abs(value) < 5e-4 ? 0 : value;
+  return Number(shown).toFixed(3);
 }
 
 export function inspectVehicle(loaded) {
@@ -51,7 +52,7 @@ export function inspectVehicle(loaded) {
   const axes = ["X", "Y", "Z"];
   const longAxis = axes[size.indexOf(longest)] || "Z";
   issues.push(
-    "Size is " + fmt(size[0]) + " m wide (X), " + fmt(size[1]) + " m high (Y), " + fmt(size[2]) + " m long (Z). Nothing was rescaled."
+    "Source size is " + fmt(size[0]) + " m wide (X), " + fmt(size[1]) + " m high (Y), " + fmt(size[2]) + " m long (Z). Import did not rescale or move the file."
   );
   if (longest < 2 || longest > 12) {
     const guess = longest > 1e-6 ? (4.5 / size[2]) : 0;
@@ -102,4 +103,41 @@ export function inspectVehicle(loaded) {
     duplicate,
     nonManifold
   };
+}
+
+export function describeView(info, edit, live) {
+  const issues = [];
+  const source = info.bounds;
+  issues.push(
+    "Source size is " + fmt(source.size[0]) + " m wide (X), " + fmt(source.size[1]) + " m high (Y), " + fmt(source.size[2]) + " m long (Z). Import did not rescale or move the file."
+  );
+  if (edit) {
+    const factor = Number(edit.scale || 1);
+    issues.push(
+      "View size is " + fmt(source.size[0] * factor) + " m wide (X), " + fmt(source.size[1] * factor) + " m high (Y), " + fmt(source.size[2] * factor) + " m long (Z) at scale " + factor.toFixed(3) + ". Preview angles are not included in this size."
+    );
+  }
+  if (edit.ground && live && live.bounds) {
+    const wheelBottoms = Object.values(live.wheels || {}).filter(Boolean).map((wheel) => wheel.minY).filter((value) => Number.isFinite(value));
+    const wheelLine = wheelBottoms.length
+      ? " Lowest wheel is Y " + fmt(Math.min(...wheelBottoms)) + " m."
+      : "";
+    const shellLine = Number.isFinite(live.shellMinY)
+      ? " Lowest mesh that is not a wheel is Y " + fmt(live.shellMinY) + " m."
+      : "";
+    issues.push(
+      "Sit on ground is on. Lowest point in the view is Y " + fmt(live.bounds.min[1]) + " m." + wheelLine + shellLine + " The move uses the lowest vertex. It does not bury the shell on purpose."
+    );
+  }
+  for (const line of info.issues) {
+    if (line.startsWith("Source size") || line.startsWith("Size is ")) continue;
+    if (line.startsWith("Lowest point") && edit.ground) continue;
+    if (line.startsWith("Longest side") && edit.scale && edit.scale !== 1) {
+      issues.push(line.replace("That guess is not applied.", "A scale is now applied in the view. The source file is unchanged."));
+      continue;
+    }
+    issues.push(line);
+  }
+  for (const note of info.textureNotes || []) issues.push(note);
+  return issues;
 }

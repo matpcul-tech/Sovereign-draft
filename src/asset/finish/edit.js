@@ -434,7 +434,10 @@ export function applyPreview(root, preview) {
   const spin = THREE.MathUtils.degToRad(preview.spin || 0);
   const steer = THREE.MathUtils.degToRad(preview.steer || 0);
   root.traverse((obj) => {
-    if (/^door_(fl|fr|rl|rr)$/.test(obj.name)) obj.rotation.y = door;
+    if (/^door_(fl|fr|rl|rr)$/.test(obj.name)) {
+      const outward = /r$/.test(obj.name) ? -door : door;
+      obj.rotation.y = outward;
+    }
     if (obj.userData.sePivot === "spin" || /_spin$/.test(obj.name)) obj.rotation.x = spin;
     if (obj.userData.sePivot === "steer" || /_steer$/.test(obj.name)) obj.rotation.y = steer;
   });
@@ -557,6 +560,7 @@ export function measureRig(rig) {
     const span = bounds.getSize(new THREE.Vector3()).length();
     wheels[part.id] = {
       distance: origin.distanceTo(center),
+      minY: bounds.min.y,
       span,
       steer: !!steer && steer.getObjectByName(spin.name) === spin,
       triangles: countUnder(spin)
@@ -576,6 +580,19 @@ export function measureRig(rig) {
       triangles: countUnder(node)
     };
   }
+  let shellMinY = Infinity;
+  rig.traverse((obj) => {
+    if (!obj.isMesh || (obj.userData && obj.userData.helper)) return;
+    let parent = obj;
+    let underWheel = false;
+    while (parent) {
+      if (/^wheel_/.test(parent.name || "")) underWheel = true;
+      parent = parent.parent;
+    }
+    if (underWheel) return;
+    const bounds = new THREE.Box3().setFromObject(obj);
+    if (Number.isFinite(bounds.min.y)) shellMinY = Math.min(shellMinY, bounds.min.y);
+  });
   return {
     triangles,
     materials: [...materials.entries()].map(([name, count]) => ({ name, triangles: count })),
@@ -584,8 +601,15 @@ export function measureRig(rig) {
       size: [size.x, size.y, size.z]
     },
     wheels,
-    doors
+    doors,
+    shellMinY: Number.isFinite(shellMinY) ? shellMinY : null
   };
+}
+
+export function trianglesUnder(scene, name) {
+  const node = scene.getObjectByName(name);
+  if (!node) return 0;
+  return countUnder(node);
 }
 
 function countUnder(node) {
@@ -603,6 +627,19 @@ export function validateExport(loaded, edit, doc, stats) {
   const checks = [];
   const add = (id, pass, detail) => checks.push({ id, pass: !!pass, detail });
   add("triangles", stats.triangles > 0, stats.triangles + " triangles exported.");
+  let degenerate = 0;
+  let duplicate = 0;
+  let nonManifold = 0;
+  for (const surface of loaded.surfaces || []) {
+    const topology = surface.topology;
+    if (!topology) continue;
+    degenerate += topology.degenerate;
+    duplicate += topology.duplicate;
+    nonManifold += topology.nonManifold;
+  }
+  add("degenerate", degenerate === 0, degenerate + " source triangles have no area. Export keeps them. It does not repair them.");
+  add("duplicate", duplicate === 0, duplicate + " source triangles repeat the same corners within 0.5 mm. Export keeps them.");
+  add("nonmanifold", nonManifold === 0, nonManifold + " source edges are shared by more than two triangles. Export keeps them.");
   add("meshopt", true, "Export writes plain glTF geometry. Meshopt is not required.");
   const webp = doc.materials.some((material) =>
     [material.baseColorImage, material.metallicRoughnessImage, material.emissiveImage].some((image) => image && image.mime === "image/webp")

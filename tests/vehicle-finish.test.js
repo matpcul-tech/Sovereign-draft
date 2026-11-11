@@ -5,11 +5,11 @@ import { lookupCommand } from '../src/core/command.js';
 import { parseLine } from '../src/asset/grammar.js';
 import { growFaces } from '../src/asset/finish/select.js';
 import { loadVehicle, readGlb, sha256Hex } from '../src/asset/finish/glb.js';
-import { inspectVehicle } from '../src/asset/finish/inspect.js';
 import { RANGES, fusedShellGlb } from '../src/asset/finish/fixture.js';
 import { decodePng } from '../src/asset/finish/png.js';
 import { unzipStore } from '../src/asset/finish/zip.js';
 import { finishZip } from '../src/asset/finish/review.js';
+import { describeView, inspectVehicle } from '../src/asset/finish/inspect.js';
 import {
   applyPreview,
   assignFaces,
@@ -18,11 +18,14 @@ import {
   countAssigned,
   createSession,
   disposeVehicle,
+  emptyEdit,
   exportVehicle,
   innerOf,
   linearFactor,
+  measureRig,
   restoreEdit,
   serializeEdit,
+  trianglesUnder,
   undoEdit,
   worldToInner
 } from '../src/asset/finish/edit.js';
@@ -231,7 +234,8 @@ describe('vehicle finish', () => {
     expect(info.materials.map((item) => item.name).sort()).toEqual(['body_paint', 'sedan_atlas', 'sedan_glass', 'sedan_lamps']);
     const text = info.issues.join('\n');
     expect(text).toContain('0.956');
-    expect(text).toContain('Nothing was rescaled');
+    expect(text).toContain('Import did not rescale or move the file');
+    expect(text).not.toContain('Nothing was rescaled');
     expect(text).toContain('Lowest point');
     expect(text).toContain('meshopt');
     expect(text).toContain('WebP');
@@ -255,6 +259,12 @@ describe('vehicle finish', () => {
     const albedo = loaded.images.find((image) => image.name === 'albedo').bytes;
     expect(sameBytes(material(untouched.doc, 'sedan_atlas').baseColorImage.bytes, albedo)).toBe(true);
     expect(untouched.checks.some((check) => check.id === 'textures' && check.pass === false)).toBe(true);
+    const degenerate = untouched.checks.find((check) => check.id === 'degenerate');
+    expect(degenerate.pass).toBe(false);
+    expect(degenerate.detail.startsWith(String(info.degenerate) + ' source triangles')).toBe(true);
+    expect(untouched.checks.some((check) => !check.pass)).toBe(true);
+    expect(trianglesUnder(loaded.scene, 'door_fl')).toBeGreaterThan(1000);
+    expect(trianglesUnder(loaded.scene, 'wheel_fl')).toBeGreaterThan(1000);
     expect(untouched.checks.some((check) => /game ready/i.test(check.detail))).toBe(false);
 
     const atlas = loaded.surfaces.find((surface) => surface.material === 'sedan_atlas' && surface.faceCount > 6);
@@ -286,4 +296,43 @@ describe('vehicle finish', () => {
     const packedGlass = readBack.json.materials.find((item) => item.name === 'sedan_glass').pbrMetallicRoughness.baseColorFactor;
     expect(packedGlass).toEqual(sourceGlass);
   }, 60000);
+
+  it('updates the view notes after scale and opens both front doors outward', async () => {
+    const source = new Uint8Array(readFileSync('fixtures/vehicle/sedan-review.glb'));
+    const loaded = await loadVehicle(source, 'sedan-review.glb');
+    const info = inspectVehicle(loaded);
+    const edit = emptyEdit();
+    edit.scale = 4.5 / info.bounds.size[2];
+    edit.ground = true;
+    const rig = buildVehicle(loaded, edit);
+    const live = measureRig(rig);
+    const lines = describeView(info, edit, live).join('\n');
+    expect(lines).toContain('Import did not rescale or move the file');
+    expect(lines).toContain('View size is');
+    expect(lines).toContain('4.500');
+    expect(lines).not.toContain('Nothing was rescaled');
+    expect(lines).toContain('Sit on ground is on');
+    expect(lines).toContain('Lowest wheel is Y 0.000');
+    expect(live.shellMinY).toBeGreaterThan(live.bounds.min[1] + 0.05);
+    disposeVehicle(rig);
+
+    function side(root, id) {
+      const node = root.getObjectByName(id);
+      const box = new THREE.Box3().setFromObject(node);
+      const origin = new THREE.Vector3().setFromMatrixPosition(node.matrixWorld);
+      return { minX: box.min.x, maxX: box.max.x, x: origin.x, z: origin.z };
+    }
+    const closed = buildVehicle(loaded, emptyEdit(), { preview: { door: 0 } });
+    const opened = buildVehicle(loaded, emptyEdit(), { preview: { door: 40 } });
+    const leftClosed = side(closed, 'door_fl');
+    const leftOpen = side(opened, 'door_fl');
+    const rightClosed = side(closed, 'door_fr');
+    const rightOpen = side(opened, 'door_fr');
+    expect(leftOpen.minX).toBeLessThan(leftClosed.minX - 0.04);
+    expect(rightOpen.maxX).toBeGreaterThan(rightClosed.maxX + 0.04);
+    expect(Math.hypot(leftOpen.x - leftClosed.x, leftOpen.z - leftClosed.z)).toBeLessThan(0.02);
+    expect(Math.hypot(rightOpen.x - rightClosed.x, rightOpen.z - rightClosed.z)).toBeLessThan(0.02);
+    disposeVehicle(closed);
+    disposeVehicle(opened);
+  }, 30000);
 });

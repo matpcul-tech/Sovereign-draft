@@ -247,8 +247,11 @@ function ensure() {
       if (kind === "level") void artist("", "level");
       else if (kind === "artist") void artist("", "asset");
       else if (kind === "glb") {
-        if (vehicle && vehicle.isOpen()) host.querySelector("#vehexport").click();
-        else void exportGlb();
+        if (vehicle && vehicle.isOpen()) {
+          toast("Use Export GLB in the vehicle panel. The GLB chip does not download while a vehicle is open.");
+          return;
+        }
+        void exportGlb();
       }
       else if (kind === "vehicle") vehicle.open();
       else setRecipe(kind);

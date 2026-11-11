@@ -87,6 +87,63 @@ const maps = await page.evaluate(() => window.__vehicleMaps || []);
 console.log("maps", maps.slice(0, 8).join(" | "));
 check(maps.some((item) => /:[1-9]\d{2,}$/.test(item)), "imported textures are on the meshes");
 check(!!textured.canvas, "vehicle canvas is mounted");
+const doorLabel = await page.locator("[data-structure=door_fl]").innerText();
+check(/file/.test(doorLabel) && !/new 0$/.test(doorLabel), "imported door count is separate from new faces: " + doorLabel);
+const wheelLabel = await page.locator("[data-structure=wheel_fl]").innerText();
+check(/file/.test(wheelLabel), "imported wheel count is shown: " + wheelLabel);
+const closedDoors = await page.evaluate(() => window.__vehicleState.doors);
+await page.locator("#vehdoor").evaluate((el) => {
+  el.value = "40";
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+});
+await page.waitForTimeout(300);
+const openDoors = await page.evaluate(() => window.__vehicleState.doors);
+check(openDoors.door_fl.minX < closedDoors.door_fl.minX - 0.02, "left door opens outward");
+check(openDoors.door_fr.maxX > closedDoors.door_fr.maxX + 0.02, "right door opens outward");
+const downloads = [];
+page.on("download", (download) => downloads.push(download.suggestedFilename()));
+await page.click("#vehscale");
+await page.waitForTimeout(400);
+check(downloads.length === 0, "Apply scale does not download a file");
+const scaledIssues = await page.locator("#vehissues").innerText();
+check(scaledIssues.includes("View size is"), "view size updates after scale: " + scaledIssues.slice(0, 280));
+check(!scaledIssues.includes("Nothing was rescaled"), "stale rescale sentence is gone");
+check(scaledIssues.includes("Import did not rescale"), "source size stays labeled as the import");
+await page.click("#vehground");
+await page.waitForTimeout(300);
+const grounded = await page.locator("#vehissues").innerText();
+check(grounded.includes("Sit on ground is on"), "ground note is current");
+check(grounded.includes("Lowest wheel"), "ground note names the wheels: " + grounded.split("\n").find((line) => line.includes("Lowest wheel")));
+check(grounded.includes("triangles have no area"), "degenerate warning stays visible");
+await page.click("[data-asset=glb]");
+await page.waitForTimeout(400);
+check(downloads.length === 0, "GLB chip does not export the open vehicle");
+const viewBox = await page.locator("#assetview").boundingBox();
+let painted = false;
+for (const point of [[0.5, 0.45], [0.58, 0.5], [0.42, 0.42], [0.62, 0.55]]) {
+  await page.mouse.click(viewBox.x + viewBox.width * point[0], viewBox.y + viewBox.height * point[1]);
+  await page.click("[data-material=paint]");
+  const label = await page.locator("[data-material=paint]").innerText();
+  if (/Paint [1-9]/.test(label)) { painted = label; break; }
+}
+check(!!painted, "a tapped face can become paint: " + painted);
+await page.click("#vehinge");
+let pivots = [];
+for (const point of [[0.5, 0.45], [0.4, 0.5], [0.6, 0.4], [0.48, 0.55]]) {
+  await page.mouse.click(viewBox.x + viewBox.width * point[0], viewBox.y + viewBox.height * point[1]);
+  pivots = await page.evaluate(() => window.__vehicleState.pivots);
+  if (pivots.length) break;
+  await page.click("#vehinge");
+}
+check(pivots.some((name) => name.startsWith("door_")), "hinge tap stored a door pivot: " + pivots.join(","));
+const [exported] = await Promise.all([
+  page.waitForEvent("download"),
+  page.click("#vehexport")
+]);
+check(/\.glb$/i.test(exported.suggestedFilename()), "Export GLB is an explicit download: " + exported.suggestedFilename());
+await page.waitForTimeout(500);
+const checksText = await page.locator("#vehchecks").innerText();
+check(/FAIL/.test(checksText) && /no area/.test(checksText), "export checks do not all pass while degenerate triangles remain");
 await shot(page, "04-sedan-import");
 
 await page.click("#assetclose");

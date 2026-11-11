@@ -1,6 +1,6 @@
 import { MATERIAL_ROLES, STRUCTURES } from "./finish/parts.js";
 import { growFaces } from "./finish/select.js";
-import { inspectVehicle } from "./finish/inspect.js";
+import { describeView, inspectVehicle } from "./finish/inspect.js";
 import { loadVehicle } from "./finish/glb.js";
 import { fusedShellGlb } from "./finish/fixture.js";
 import {
@@ -12,10 +12,12 @@ import {
   disposeVehicle,
   exportVehicle,
   innerOf,
+  measureRig,
   redoEdit,
   restoreEdit,
   selectionList,
   serializeEdit,
+  trianglesUnder,
   undoEdit,
   worldToInner
 } from "./finish/edit.js";
@@ -23,6 +25,51 @@ import { finishZip } from "./finish/review.js";
 import * as THREE from "three";
 
 const STORE = "sd-vehicle-finish";
+
+function averageImage(image) {
+  if (typeof document === "undefined" || !image) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = 16;
+  canvas.height = 16;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  try {
+    ctx.drawImage(image, 0, 0, 16, 16);
+    const data = ctx.getImageData(0, 0, 16, 16).data;
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    let count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      red += data[i];
+      green += data[i + 1];
+      blue += data[i + 2];
+      count += 1;
+    }
+    return [red / count, green / count, blue / count];
+  } catch {
+    return null;
+  }
+}
+
+function sampleTextures(root) {
+  const notes = [];
+  const seen = new Set();
+  root.traverse((obj) => {
+    if (!obj.isMesh || obj.userData.helper) return;
+    const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (const material of materials) {
+      if (!material || seen.has(material.uuid) || !material.map || !material.map.image) continue;
+      seen.add(material.uuid);
+      const average = averageImage(material.map.image);
+      if (!average) continue;
+      notes.push(material.name + " texture average RGB " + average.map((value) => Math.round(value)).join(", ") + ".");
+    }
+  });
+  const pale = notes.find((line) => line.startsWith("body_paint") && /2[0-5]\d, 2[0-5]\d, 2[0-5]\d/.test(line));
+  if (pale) notes.push("A pale body matches that paint texture. It does not mean the atlas, glass, or lamps failed to load.");
+  return notes.slice(0, 8);
+}
 
 function download(bytes, name, type) {
   const blob = new Blob([bytes], { type });
@@ -125,6 +172,7 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
       <button type="button" id="vehscale">Apply scale</button>
       <button type="button" id="vehground">Sit on ground</button>
     </div>
+    <p id="vehdoornote">The door slider opens the left and right doors outward around each door node's own origin. A large angle swings the trailing edge away from the opening. That hinge is the one already in the file until you set another.</p>
     <div class="vehrow">
       <label>Door <input id="vehdoor" type="range" min="-80" max="80" value="0"></label>
       <label>Spin <input id="vehspin" type="range" min="0" max="360" value="0"></label>
@@ -173,6 +221,7 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
 
   let session = null;
   let info = null;
+  let imported = {};
   let open = false;
   let display = null;
   let selectMode = "replace";
@@ -190,13 +239,21 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
     return panel.querySelector("#vehcolor").value || "#1c3d66";
   }
 
+  function partLabel(label, id) {
+    const existing = imported[id] || 0;
+    const fresh = session ? countAssigned(session.edit, "structure", id) : 0;
+    if (existing && fresh) return label + " file " + existing.toLocaleString() + ", new " + fresh;
+    if (existing) return label + " file " + existing.toLocaleString();
+    return label + " new " + fresh;
+  }
+
   function refreshLabels() {
     if (!session) return;
     panel.querySelectorAll("[data-structure]").forEach((button) => {
       const id = button.dataset.structure;
       if (!id) return;
       const part = STRUCTURES.find((item) => item.id === id);
-      button.textContent = part.label + " " + countAssigned(session.edit, "structure", id);
+      button.textContent = partLabel(part.label, id);
     });
     panel.querySelectorAll("[data-material]").forEach((button) => {
       const id = button.dataset.material;
@@ -220,6 +277,22 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
     });
     globalThis.__vehicleMaps = maps;
     api.showVehicle(display);
+    const doors = {};
+    for (const id of ["door_fl", "door_fr", "door_rl", "door_rr"]) {
+      const node = display.getObjectByName(id);
+      if (!node) continue;
+      const box = new THREE.Box3().setFromObject(node);
+      doors[id] = { minX: box.min.x, maxX: box.max.x };
+    }
+    globalThis.__vehicleState = {
+      scale: session.edit.scale,
+      ground: !!session.edit.ground,
+      pivots: Object.keys(session.edit.pivots),
+      doors
+    };
+    if (!session.textureNotes) session.textureNotes = sampleTextures(display);
+    info.textureNotes = session.textureNotes;
+    fillReport(measureRig(display));
     refreshLabels();
     const count = selectedCount();
     panel.querySelector("#vehselcount").textContent =
@@ -227,8 +300,8 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
       (pending === "hinge" ? " Next tap sets the hinge." : "");
   }
 
-  function fillReport() {
-    if (!info) return;
+  function fillReport(live) {
+    if (!info || !session) return;
     const lines = [
       info.triangles.toLocaleString() + " tris, " + info.meshes + " meshes, " + info.materials.length + " materials, " + info.textures.length + " textures."
     ];
@@ -237,7 +310,7 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
     panel.querySelector("#vehsummary").textContent = lines.join(" ");
     const list = panel.querySelector("#vehissues");
     list.replaceChildren();
-    for (const issue of info.issues) {
+    for (const issue of describeView(info, session.edit, live || null)) {
       const item = document.createElement("li");
       item.textContent = issue;
       list.appendChild(item);
@@ -261,6 +334,8 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
     display = null;
     session = createSession(loaded);
     info = inspectVehicle(loaded);
+    imported = {};
+    for (const part of STRUCTURES) imported[part.id] = trianglesUnder(loaded.scene, part.id);
     selection = new Map();
     pending = "";
     preview = { door: 0, spin: 0, steer: 0 };
