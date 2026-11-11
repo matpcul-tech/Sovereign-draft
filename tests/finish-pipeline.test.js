@@ -472,4 +472,33 @@ describe('finish pipeline', () => {
     expect(text).toMatch(/does not read that mask/);
     expect(result.banner).toBe('NOT READY');
   }, 20000);
+
+  it('names four real wheel islands in the raw single-node sedan and does not keep a cut that adds intersections', async () => {
+    const bytes = readFileSync('fixtures/vehicle/sedan-01-textured.glb');
+    expect(await sha256Hex(bytes)).toBe('9e896daa94cd06ee47582c953f183cd26ab66a23ba3c856d7de74529d9c9cb8c');
+    const { loaded, result } = await run(bytes, resolveProfile('CAR'), { frontConfirmed: true });
+    expect(loaded.sha256).toBe('9e896daa94cd06ee47582c953f183cd26ab66a23ba3c856d7de74529d9c9cb8c');
+    expect(result.before.triangles).toBe(30710);
+    expect(result.banner).toBe('NOT READY');
+    const text = result.log.join('\n');
+    expect(text).toMatch(/One node was not treated as one island/);
+    expect(text).toMatch(/measured and not kept/);
+    expect(text).toMatch(/2048x2048 to 1024x1024/);
+    expect(text).toMatch(/does not read that mask/);
+    expect(result.checks.find((check) => check.id === 'wheels').pass).toBe(true);
+    expect(result.checks.find((check) => check.id === 'mesh-hit').detail).toMatch(/0 are new/);
+    expect(result.checks.find((check) => check.id === 'bleed').pass).toBe(false);
+    expect(result.checks.find((check) => check.id === 'mask-area').pass).toBe(true);
+    expect(result.checks.find((check) => check.id === 'mask-edge').pass).toBe(true);
+    expect(result.checks.find((check) => check.id === 'mask-clean').pass).toBe(false);
+    expect(result.checks.find((check) => check.id === 'budget').pass).toBe(true);
+    expect(result.after.triangles).toBeGreaterThan(30000);
+    expect(result.after.triangles).toBeLessThanOrEqual(40000);
+    expect(result.after.size[2]).toBeGreaterThan(4.45);
+    expect(result.after.size[2]).toBeLessThan(4.55);
+    expect(Math.abs(result.after.minY)).toBeLessThan(0.001);
+    expect(result.checks.find((check) => check.id === 'manifold').detail).toMatch(/did not increase/);
+    const names = readGlb(result.bytes).json.nodes.map((node) => node.name).sort();
+    expect(names).toEqual(['body', 'wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr']);
+  }, 60000);
 });
