@@ -1,0 +1,86 @@
+import { chromium } from "playwright-core";
+
+const URL = process.env.SMOKE_URL || "http://127.0.0.1:5173/";
+const EXE = process.env.CHROMIUM || "/opt/google/chrome/chrome";
+const browser = await chromium.launch({
+  executablePath: EXE,
+  headless: true,
+  args: ["--no-sandbox", "--disable-dev-shm-usage"]
+});
+const failures = [];
+const check = (ok, msg) => {
+  console.log((ok ? "ok   " : "FAIL ") + msg);
+  if (!ok) failures.push(msg);
+};
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const errors = [];
+page.on("pageerror", (error) => errors.push(error.message));
+await page.goto(URL, { waitUntil: "networkidle" });
+await page.click("[data-row=toolrow-3d]");
+await page.locator("#btnAsset").scrollIntoViewIfNeeded();
+await page.click("#btnAsset");
+await page.waitForSelector("#assetmode");
+await page.waitForSelector("[data-asset=finish]");
+const chooserWait = page.waitForEvent("filechooser");
+await page.click("[data-asset=finish]");
+const chooser = await chooserWait;
+check(await page.locator("#finishpanel:not([hidden])").count() === 1, "FINISH panel is open");
+check(await page.locator("#vehiclepanel:not([hidden])").count() === 0, "VEHICLE stays closed");
+await chooser.setFiles("fixtures/vehicle/sedan-review.glb");
+await page.waitForFunction(() => {
+  const el = document.querySelector("#finishmeasure");
+  return el && /bytes/.test(el.textContent || "") && /source tris/.test(el.textContent || "");
+}, null, { timeout: 20000 });
+const measure = await page.locator("#finishmeasure").innerText();
+check(/source tris/.test(measure), "measured source: " + measure);
+check(!/READY/.test(measure), "measure line is not a verdict");
+await page.click("[data-finish=CAR]");
+const target = await page.locator("#finish-target").inputValue();
+const ceiling = await page.locator("#finish-ceiling").inputValue();
+const length = await page.locator("#finish-length").inputValue();
+check(target === "30000", "CAR triangle target is " + target);
+check(ceiling === "40000", "CAR triangle ceiling is " + ceiling);
+check(length === "4.5", "CAR length field is " + length);
+const source = await page.locator("#finishsource").innerText();
+check(source.startsWith("NOT READY"), "multi-material sedan is not a CAR source: " + source.slice(0, 180));
+check(!/\bREADY\b/.test(source.replace("NOT READY", "")), "source line does not also claim READY");
+const note = await page.locator("#finishnote").innerText();
+check(note.includes("30000") && note.includes("40000"), "note names target and ceiling");
+check(note.includes("no material named paint or body"), "note forbids paint and body material names");
+check(note.includes("None of the finish checks run"), "note does not claim the later checks ran");
+check(!/rare/i.test(note), "note does not call a heavy file rare");
+await page.click("[data-finish=BUILDING]");
+check(await page.locator("#finish-ceiling").inputValue() === "8000", "BUILDING ceiling stays 8000");
+check(await page.locator("#finish-height").inputValue() === "4", "BUILDING height defaults to 4");
+await page.click("[data-finish=CHARACTER]");
+check(await page.locator("#finish-ceiling").inputValue() === "15000", "CHARACTER ceiling stays 15000");
+check(await page.locator("#finish-height").inputValue() === "1.8", "CHARACTER height defaults to 1.8");
+await page.click("[data-finish=PROP]");
+check(await page.locator("#finish-ceiling").inputValue() === "4000", "PROP ceiling stays 4000");
+check(await page.locator("#finish-tex").inputValue() === "512", "PROP maps stay 512");
+await page.click("[data-finish=CAR]");
+await page.locator("#finish-length").fill("4.9");
+await page.click("#finishsave");
+await page.waitForFunction(() => /CAR profile saved/.test(document.querySelector("#assetstatus").textContent || ""));
+const status = await page.locator("#assetstatus").innerText();
+check(/No cut, simplify, or verdict/.test(status), "save status: " + status);
+await page.click("[data-asset=vehicle]");
+check(await page.locator("#finishpanel").getAttribute("hidden") !== null, "VEHICLE hides FINISH");
+check(await page.locator("#vehiclepanel:not([hidden])").count() === 1, "VEHICLE panel opens");
+const downloads = [];
+page.on("download", (download) => downloads.push(download.suggestedFilename()));
+const again = page.waitForEvent("filechooser");
+await page.click("[data-asset=finish]");
+await again;
+await page.waitForSelector("#finishpanel:not([hidden])");
+await page.click("[data-asset=glb]");
+await page.waitForTimeout(400);
+check(downloads.length === 0, "GLB chip does not download while FINISH is open");
+check(errors.length === 0, "page errors: " + errors.join(" | "));
+await page.screenshot({ path: "/tmp/finish-phase1.png" });
+await browser.close();
+if (failures.length) {
+  console.log("FAILED " + failures.length);
+  process.exit(1);
+}
+console.log("finish browser ok");

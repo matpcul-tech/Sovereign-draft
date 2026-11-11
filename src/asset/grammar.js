@@ -117,7 +117,8 @@ function parseLine(input) {
     return { meta: "level", brief: parts.slice(1).join(" ").slice(0, 280) };
   }
   if (head === "GLB" || head === "EXPORT" || head === "GAMEEXPORT") return { meta: "export" };
-  if (head === "VEHICLE" || head === "FINISH") return { meta: "vehicle" };
+  if (head === "VEHICLE") return { meta: "vehicle" };
+  if (head === "FINISH") return { meta: "finish" };
   if (head === "FIT" || head === "ZOOM") return { meta: "fit" };
   if (head === "PIVOTS") {
     const on = flag(parts[1]);
@@ -132,7 +133,7 @@ function parseLine(input) {
   if (head === "HELP") {
     return {
       meta: "note",
-      text: "LEVEL builds a block. ARTIST builds one piece. Also SEDAN, BOX, GLB."
+      text: "LEVEL builds a block. ARTIST builds one piece. Also SEDAN, BOX, GLB, FINISH, VEHICLE."
     };
   }
   if (head === "UNITS") {
