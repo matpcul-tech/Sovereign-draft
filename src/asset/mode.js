@@ -16,6 +16,7 @@ import {
   setActiveFinish,
   clearActiveFinish
 } from "./finish/profiles.js";
+import { runFinish } from "./finish/pipeline.js";
 
 const RECIPES = {
   sedan: { name: "sedan", paint: "#1c3d66", budget: 12000 },
@@ -30,6 +31,7 @@ let vehicle = null;
 let busy = false;
 let finishKind = "CAR";
 let finishFile = null;
+let finishExport = null;
 let doc = {
   kind: "asset",
   recipe: "sedan",
@@ -173,7 +175,7 @@ function renderFinish() {
     sourceEl.textContent = "";
     sourceEl.classList.remove("bad");
   }
-  note.textContent = profileSummary(profile) + " A budget fail, when an export exists, is a triangle count above the ceiling. Crossing the target is not that fail. A locked border is not a budget fail. None of the finish checks run in this step.";
+  note.textContent = profileSummary(profile) + " A budget fail is an exported triangle count above the ceiling. Crossing the target is not that fail. Run finish logs the fixes. It does not issue READY.";
 }
 
 function openFinish() {
@@ -223,6 +225,56 @@ async function onFinishFile(event) {
     toast(finishFile.error);
   }
   renderFinish();
+}
+
+function downloadBytes(bytes, name, type) {
+  const blob = new Blob([bytes], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function runFinishNow() {
+  if (!finishFile || !finishFile.bytes) {
+    toast("Choose a GLB first.");
+    return;
+  }
+  const profile = resolveProfile(finishKind, finishInput());
+  if (profile.error) {
+    toast(profile.error);
+    return;
+  }
+  status("Running finish. Source bytes stay as loaded.");
+  try {
+    const loaded = await loadVehicle(finishFile.bytes, finishFile.fileName || "model.glb");
+    const result = await runFinish(loaded, profile, {
+      frontConfirmed: !!host.querySelector("#finishfront").checked
+    });
+    disposeVehicle(loaded.scene);
+    finishExport = result.bytes;
+    const banner = host.querySelector("#finishbanner");
+    banner.hidden = false;
+    banner.classList.toggle("bad", result.banner === "NOT READY");
+    banner.textContent = result.banner + ". " + result.summary;
+    const lines = [];
+    if (result.before) {
+      lines.push("Before  tris " + result.before.triangles + "  bytes " + result.before.bytes + "  size " + result.before.size.map((value) => value.toFixed(3)).join(" x "));
+    }
+    if (result.after) {
+      lines.push("After   tris " + result.after.triangles + "  bytes " + result.after.bytes + "  size " + result.after.size.map((value) => value.toFixed(3)).join(" x ") + "  minY " + result.after.minY.toFixed(4));
+    }
+    for (const check of result.checks) lines.push((check.pass ? "PASS  " : "FAIL  ") + check.detail + (check.action ? "  " + check.action : ""));
+    lines.push("");
+    lines.push(...result.log);
+    host.querySelector("#finishlog").textContent = lines.join("\n");
+    host.querySelector("#finishdownload").hidden = !result.bytes;
+    status(result.banner + ". " + (result.after ? result.after.triangles + " tris." : "No file written."));
+  } catch (error) {
+    toast(error instanceof Error ? error.message : "Finish failed.");
+  }
 }
 
 function saveFinish() {
@@ -412,7 +464,7 @@ function ensure() {
     </div>
     <div id="assetview" class="assetview"></div>
     <section id="finishpanel" hidden>
-      <p id="finishlead">FINISH stores a profile for a GLB. It does not move, scale, cut, simplify, or export. Source bytes stay as loaded.</p>
+      <p id="finishlead">FINISH logs fixes on a copy. Source bytes stay as loaded. A logged file is not a READY verdict, and Street Empire does not read a window mask from it.</p>
       <div class="vehrow">
         <button type="button" id="finishpick">Choose GLB</button>
         <input id="finishfile" type="file" accept=".glb,model/gltf-binary" hidden>
@@ -425,8 +477,13 @@ function ensure() {
       <div class="vehrow" id="finishfields"></div>
       <p id="finishnote"></p>
       <div class="vehrow">
+        <label><input id="finishfront" type="checkbox"> +Z end is the front</label>
         <button type="button" id="finishsave">Save profile</button>
+        <button type="button" id="finishrun">Run finish</button>
+        <button type="button" id="finishdownload" hidden>Download logged GLB</button>
       </div>
+      <p id="finishbanner" hidden></p>
+      <pre id="finishlog"></pre>
       <p id="finishrules"></p>
     </section>
     <div class="assetchips">
@@ -511,6 +568,11 @@ function ensure() {
     void onFinishFile(event);
   });
   host.querySelector("#finishsave").addEventListener("click", saveFinish);
+  host.querySelector("#finishrun").addEventListener("click", () => { void runFinishNow(); });
+  host.querySelector("#finishdownload").addEventListener("click", () => {
+    if (!finishExport) return;
+    downloadBytes(finishExport, "finish-logged.glb", "model/gltf-binary");
+  });
   host.querySelector("#finishrules").textContent = PENDING_RULES.implemented
     ? ""
     : "Later steps still unrun. " + PENDING_RULES.windows;

@@ -1,4 +1,6 @@
+import { writeFileSync } from "node:fs";
 import { chromium } from "playwright-core";
+import { singleAtlasCarGlb } from "../src/asset/finish/fixture.js";
 
 const URL = process.env.SMOKE_URL || "http://127.0.0.1:5173/";
 const EXE = process.env.CHROMIUM || "/opt/google/chrome/chrome";
@@ -47,7 +49,7 @@ check(!/\bREADY\b/.test(source.replace("NOT READY", "")), "source line does not 
 const note = await page.locator("#finishnote").innerText();
 check(note.includes("30000") && note.includes("40000"), "note names target and ceiling");
 check(note.includes("no material named paint or body"), "note forbids paint and body material names");
-check(note.includes("None of the finish checks run"), "note does not claim the later checks ran");
+check(note.includes("does not issue READY"), "note does not issue READY");
 check(!/rare/i.test(note), "note does not call a heavy file rare");
 await page.click("[data-finish=BUILDING]");
 check(await page.locator("#finish-ceiling").inputValue() === "8000", "BUILDING ceiling stays 8000");
@@ -64,6 +66,24 @@ await page.click("#finishsave");
 await page.waitForFunction(() => /CAR profile saved/.test(document.querySelector("#assetstatus").textContent || ""));
 const status = await page.locator("#assetstatus").innerText();
 check(/No cut, simplify, or verdict/.test(status), "save status: " + status);
+writeFileSync("/tmp/single-atlas-car.glb", singleAtlasCarGlb());
+await page.setInputFiles("#finishfile", "/tmp/single-atlas-car.glb");
+await page.waitForFunction(() => /single-atlas-car/.test(document.querySelector("#finishmeasure").textContent || ""), null, { timeout: 20000 });
+await page.click("[data-finish=CAR]");
+await page.check("#finishfront");
+await page.click("#finishrun");
+await page.waitForFunction(() => {
+  const banner = document.querySelector("#finishbanner");
+  return banner && /LOGGED|NOT READY/.test(banner.textContent || "");
+}, null, { timeout: 20000 });
+const banner = await page.locator("#finishbanner").innerText();
+const log = await page.locator("#finishlog").innerText();
+check(banner.startsWith("LOGGED"), "run banner: " + banner);
+check(!/Street Empire-ready|game ready/i.test(banner + log), "no game-ready claim");
+check(/Before/.test(log) && /After/.test(log), "before and after: " + log.split("\n").slice(0, 2).join(" | "));
+check(/wheel/i.test(log), "wheel split is in the log");
+console.log("NUMBERS " + log.split("\n").slice(0, 2).join(" | "));
+await page.screenshot({ path: "/tmp/finish-phase2.png" });
 await page.click("[data-asset=vehicle]");
 check(await page.locator("#finishpanel").getAttribute("hidden") !== null, "VEHICLE hides FINISH");
 check(await page.locator("#vehiclepanel:not([hidden])").count() === 1, "VEHICLE panel opens");

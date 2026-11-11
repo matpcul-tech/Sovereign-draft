@@ -1,5 +1,5 @@
 import { MATERIAL_ROLES, STRUCTURES } from "./finish/parts.js";
-import { growFaces } from "./finish/select.js";
+import { growFaces, seamBlocks } from "./finish/select.js";
 import { describeView, inspectVehicle } from "./finish/inspect.js";
 import { loadVehicle } from "./finish/glb.js";
 import { fusedShellGlb } from "./finish/fixture.js";
@@ -22,6 +22,7 @@ import {
   worldToInner
 } from "./finish/edit.js";
 import { finishZip } from "./finish/review.js";
+import { decodePng } from "./finish/png.js";
 import * as THREE from "three";
 
 const STORE = "sd-vehicle-finish";
@@ -536,11 +537,30 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
     }
     const crease = Number(panel.querySelector("#vehcrease").value) || 35;
     let added = 0;
+    let colorNote = "";
     const next = new Map();
     selection.forEach((faces, key) => {
       const surface = session.loaded.surfaces.find((item) => item.key === key);
       if (!surface) return;
-      const grown = growFaces(surface.topology, surface.normals, faces, island ? Infinity : crease * Math.PI / 180);
+      let blocks = null;
+      if (!island) {
+        let rgba = null;
+        let width = 0;
+        let height = 0;
+        const image = session.loaded.images && session.loaded.images.find((item) => item.mime === "image/png" && item.bytes && item.bytes.length);
+        if (image) {
+          try {
+            const decoded = decodePng(image.bytes);
+            rgba = decoded.rgba;
+            width = decoded.width;
+            height = decoded.height;
+          } catch (error) {
+            colorNote = " Color was not sampled from this PNG.";
+          }
+        } else colorNote = " Color was not sampled. This grow saw creases and UV seams only.";
+        blocks = seamBlocks(surface.world, surface.uvs, rgba, width, height);
+      }
+      const grown = growFaces(surface.topology, surface.normals, faces, island ? Infinity : crease * Math.PI / 180, blocks);
       added += grown.size - faces.size;
       next.set(key, grown);
     });
@@ -548,7 +568,7 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
     show();
     notify(island
       ? (added ? "Island added " + added + " connected faces." : "The selection is already the whole island.")
-      : (added ? "Grow added " + added + " faces under " + crease + " degrees." : "No added faces. Raise the crease to cross a sharper corner."));
+      : (added ? "Grow added " + added + " faces. It stops at a crease, a UV seam, or a sampled color edge." + colorNote : "No added faces. The next face is a crease, a UV seam, or a color edge."));
   }
 
   function doorTarget() {
