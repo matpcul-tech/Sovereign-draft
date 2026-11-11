@@ -291,6 +291,12 @@ Every generated number is held by a closed-form test. The hidden line pass runs 
 
 `ASSET` opens a meters space for hard-surface game pieces. It does not use the drawing's feet. `SEDAN`, `SHOP`, and `BIN` are built-in meshes. `LEVEL` lays out one city block (shops, cars, lamps, bins) and `ARTIST` builds one piece. `GLB` downloads the mesh. The artist calls xAI when an xAI key is saved under AI settings; without a key, `LEVEL` opens a built-in sample block. No people.
 
+`VEHICLE` in that space finishes an imported GLB. Import keeps the source bytes unchanged. The panel shows the real triangle, material, and texture counts, the bounds in meters, and geometry warnings (zero area triangles, repeated corners, edges shared by more than two triangles, scale, ground). Gold dots on a built-in sedan are pivot markers. Tap one to read its name. They do not edit the mesh.
+
+Face tools: tap, add, remove, Grow (connected faces under a crease angle), Island (the whole connected patch on that mesh). Assign the selection to `door_fl`, `door_fr`, `door_rl`, `door_rr`, or `wheel_fl`, `wheel_fr`, `wheel_rl`, `wheel_rr`. A second row gives those faces their own material: Paint, Glass, Trim, or Lights. Paint faces leave the shared atlas, get a box UV layout, and use material `se_paint` with a plain texture plus a color factor. Glass, trim, lights, and unassigned faces keep their textures. Tint material is separate: it recolors every face that already uses the material you pick, and the panel says so. One material on the whole shell cannot be split by that tint.
+
+Set hinge, then tap a point. Center wheels puts each spin origin on that wheel's bounds center without moving the mesh. Door, Spin, and Steer sliders preview motion and are not written into the file. Apply scale and Sit on ground are explicit. Export GLB writes a plain glTF (no meshopt) with the node names, `extras.seDoor` on doors, and steer parents on the front wheels. Export ZIP adds `mapping.json`, `validation.txt`, and four PNG review views. Failed checks stay listed. Nothing in the panel is a game ready badge. The tools do not rebuild topology or invent an interior.
+
 
 The model is touchable, and touch is precise:
 

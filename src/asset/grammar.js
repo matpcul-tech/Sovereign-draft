@@ -117,6 +117,7 @@ function parseLine(input) {
     return { meta: "level", brief: parts.slice(1).join(" ").slice(0, 280) };
   }
   if (head === "GLB" || head === "EXPORT" || head === "GAMEEXPORT") return { meta: "export" };
+  if (head === "VEHICLE" || head === "FINISH") return { meta: "vehicle" };
   if (head === "FIT" || head === "ZOOM") return { meta: "fit" };
   if (head === "PIVOTS") {
     const on = flag(parts[1]);

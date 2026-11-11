@@ -112,6 +112,10 @@ function mount(el, onStats) {
   let key = "";
   let framed = "";
   let running = true;
+  let external = null;
+  let pointerHooks = {};
+  const raycaster = new THREE.Raycaster();
+  const pointerNdc = new THREE.Vector2();
   const gizmoGeo = new THREE.SphereGeometry(0.06, 10, 8);
   const gizmoMat = new THREE.MeshBasicMaterial({ color: 13936707, depthTest: false });
   function resize() {
@@ -159,12 +163,14 @@ function mount(el, onStats) {
       const child = gizmos.children.pop();
       if (child) child.removeFromParent();
     }
-    if (!built || !doc?.showPivots) return;
+    if (external || !built || !doc?.showPivots) return;
     built.root.updateWorldMatrix(true, true);
     built.root.traverse((obj) => {
       if (!obj.userData.pivot) return;
       const marker = new THREE.Mesh(gizmoGeo, gizmoMat);
       marker.position.setFromMatrixPosition(obj.matrixWorld);
+      marker.userData.pivotMarker = true;
+      marker.userData.pivotName = obj.name;
       marker.renderOrder = 2;
       gizmos.add(marker);
     });
@@ -195,9 +201,27 @@ function mount(el, onStats) {
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
+  let down = null;
+  renderer.domElement.addEventListener("pointerdown", (event) => {
+    down = { x: event.clientX, y: event.clientY };
+  });
+  renderer.domElement.addEventListener("pointerup", (event) => {
+    if (!down) return;
+    const dx = event.clientX - down.x;
+    const dy = event.clientY - down.y;
+    down = null;
+    if (dx * dx + dy * dy > 36) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointerNdc, camera);
+    const hit = raycaster.intersectObjects([holder, gizmos], true)[0] || null;
+    if (pointerHooks.onPick) pointerHooks.onPick(hit);
+  });
   return {
     sync(next) {
       doc = next;
+      if (external) return;
       const nextKey = JSON.stringify({
         kind: next.kind,
         recipe: next.recipe,
@@ -263,7 +287,38 @@ function mount(el, onStats) {
       return `Saved ${link.download}${after}`;
     },
     frame() {
-      frameObject(built?.root ?? holder);
+      frameObject(external || built?.root || holder);
+    },
+    showVehicle(root) {
+      external = root;
+      holder.clear();
+      holder.add(root);
+      while (gizmos.children.length) gizmos.children[0].removeFromParent();
+      onStats(measure(root));
+      fitRig(root);
+      frameObject(root);
+      const offset = camera.position.clone().sub(controls.target).multiplyScalar(0.72);
+      camera.position.copy(controls.target).add(offset);
+      controls.update();
+    },
+    clearVehicle() {
+      external = null;
+      holder.clear();
+      if (doc) {
+        key = "";
+        this.sync(doc);
+      }
+    },
+    setPointerHooks(hooks) {
+      pointerHooks = hooks || {};
+    },
+    pick(clientX, clientY) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointerNdc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      pointerNdc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointerNdc, camera);
+      const hits = raycaster.intersectObjects([holder, gizmos], true);
+      return hits[0] || null;
     },
     dispose() {
       running = false;

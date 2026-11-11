@@ -145,7 +145,8 @@ export const COMMANDS = {
   SEDAN:   { aliases: ['SEDAN'],                        tool: null,     action: 'assetsedan' },
   SHOP:    { aliases: ['SHOP', 'STOREFRONT'],           tool: null,     action: 'assetshop' },
   DUMPSTER:{ aliases: ['DUMPSTER', 'BIN'],              tool: null,     action: 'assetbin' },
-  GAMEGLB: { aliases: ['GLB'],                          tool: null,     action: 'assetglb' }
+  GAMEGLB: { aliases: ['GLB'],                          tool: null,     action: 'assetglb' },
+  VEHICLE: { aliases: ['VEHICLE', 'FINISH'],            tool: null,     action: 'assetvehicle' }
 };
 
 const ALIAS = {};

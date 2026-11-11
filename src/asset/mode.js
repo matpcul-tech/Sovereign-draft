@@ -3,6 +3,7 @@ import { parseLine } from "./grammar.js";
 import { parseLevel } from "./level.js";
 import { askArtist, SAMPLE_LEVEL } from "./artist.js";
 import { toast } from "../ui/toast.js";
+import { mountVehicle } from "./vehicle.js";
 
 const RECIPES = {
   sedan: { name: "sedan", paint: "#1c3d66", budget: 12000 },
@@ -13,6 +14,7 @@ const RECIPES = {
 
 let host = null;
 let api = null;
+let vehicle = null;
 let busy = false;
 let doc = {
   kind: "asset",
@@ -38,6 +40,7 @@ function sync() {
 }
 
 function setRecipe(recipe) {
+  if (vehicle) vehicle.suspend();
   const spec = RECIPES[recipe] || RECIPES.blank;
   doc = {
     kind: "asset",
@@ -110,6 +113,7 @@ function submit(raw) {
   }
   if (parsed.meta === "recipe") { setRecipe(parsed.recipe); return; }
   if (parsed.meta === "export") { void exportGlb(); return; }
+  if (parsed.meta === "vehicle") { vehicle.open(); return; }
   if (parsed.meta === "fit") { api && api.frame(); return; }
   if (parsed.meta === "artist") { void artist(parsed.brief || "", "asset"); return; }
   if (parsed.meta === "level") { void artist(parsed.brief || "", "level"); return; }
@@ -198,23 +202,42 @@ function ensure() {
       <button type="button" class="chip" data-asset="storefront">SHOP</button>
       <button type="button" class="chip" data-asset="dumpster">BIN</button>
       <button type="button" class="chip" data-asset="glb">GLB</button>
+      <button type="button" class="chip" data-asset="vehicle">VEHICLE</button>
     </div>
+    <p class="assetnote">Gold dots are pivot markers. Tap one to read its name. They do not edit the mesh.</p>
     <form class="assetbar">
       <span>Command:</span>
-      <input id="assetcmd" autocomplete="off" spellcheck="false" placeholder="LEVEL    ARTIST a street lamp    GLB">
+      <input id="assetcmd" autocomplete="off" spellcheck="false" placeholder="VEHICLE    SEDAN    GLB">
     </form>
     <div id="assetstatus">Meters. Ground is Y. Forward is +Z. People are not this space.</div>
   `;
   document.body.appendChild(host);
   const view = host.querySelector("#assetview");
   api = mount(view, (stats) => {
+    const label = vehicle && vehicle.isOpen() && vehicle.label() || doc.name || "asset";
+    const name = host && host.querySelector("#assetname");
+    if (name && vehicle && vehicle.isOpen() && vehicle.label()) name.textContent = vehicle.label();
     status(
-      (doc.name || "asset") +
+      label +
       "   W " + stats.width.toFixed(2) +
       "  H " + stats.height.toFixed(2) +
       "  D " + stats.depth.toFixed(2) +
       "  TRI " + stats.triangles.toLocaleString()
     );
+  });
+  vehicle = mountVehicle({
+    host,
+    getApi: () => api,
+    status,
+    toast
+  });
+  api.setPointerHooks({
+    onPick(hit) {
+      if (vehicle && vehicle.isOpen()) vehicle.onPick(hit);
+      else if (hit && hit.object.userData.pivotMarker) {
+        status("Pivot " + hit.object.userData.pivotName + ". This marker only names the pivot.");
+      }
+    }
   });
   sync();
   host.querySelector("#assetclose").addEventListener("click", closeAsset);
@@ -223,7 +246,11 @@ function ensure() {
       const kind = button.getAttribute("data-asset");
       if (kind === "level") void artist("", "level");
       else if (kind === "artist") void artist("", "asset");
-      else if (kind === "glb") void exportGlb();
+      else if (kind === "glb") {
+        if (vehicle && vehicle.isOpen()) host.querySelector("#vehexport").click();
+        else void exportGlb();
+      }
+      else if (kind === "vehicle") vehicle.open();
       else setRecipe(kind);
     });
   });
@@ -243,6 +270,7 @@ export function isAssetOpen() {
 export function closeAsset() {
   if (api) api.dispose();
   api = null;
+  vehicle = null;
   if (host) host.remove();
   host = null;
 }
@@ -257,6 +285,7 @@ export function openFromCommand(res) {
   else if (action === "assetshop") setRecipe("storefront");
   else if (action === "assetbin") setRecipe("dumpster");
   else if (action === "assetglb") void exportGlb();
+  else if (action === "assetvehicle") vehicle.open();
   else if (rest) submit(rest);
   else if (doc.kind !== "level" && !doc.lines.length) setRecipe(doc.recipe || "sedan");
 }
