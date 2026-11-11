@@ -323,7 +323,8 @@ describe('finish pipeline', () => {
     expect(json.materials[0].emissiveFactor).toEqual([0, 0, 0]);
     const files = unzipStore(result.zip);
     const review = decodePng(files.find((file) => file.name === 'review-mask-4x.png').data);
-    expect(review.width).toBe(640);
+    expect(review.width).toBe(160 * 4);
+    expect(review.height).toBe(160 * 4);
     let teal = 0;
     let gold = 0;
     for (let i = 0; i < review.rgba.length; i += 4) {
@@ -467,7 +468,7 @@ describe('finish pipeline', () => {
     const unique = Number((clean.detail.match(/(\d+) unique/) || [0, '0'])[1]);
     expect(unique).toBeGreaterThan(0);
     expect(unique).toBeLessThan(1024 * 1024);
-    expect(result.checks.find((check) => check.id === 'manifold').detail).toMatch(/did not increase/);
+    expect(result.checks.find((check) => check.id === 'manifold').detail).toMatch(/0 are new after the cut/);
     expect(result.checks.find((check) => check.id === 'open-edges').detail).toMatch(/not a closed-shell certificate/);
     expect(text).toMatch(/does not read that mask/);
     expect(result.banner).toBe('NOT READY');
@@ -501,7 +502,10 @@ describe('finish pipeline', () => {
     expect(result.after.size[2]).toBeGreaterThan(4.45);
     expect(result.after.size[2]).toBeLessThan(4.55);
     expect(Math.abs(result.after.minY)).toBeLessThan(0.001);
-    expect(result.checks.find((check) => check.id === 'manifold').detail).toMatch(/did not increase/);
+    expect(result.checks.find((check) => check.id === 'manifold').detail).toMatch(/0 are new after the cut/);
+    const review = decodePng(result.files.find((file) => file.name === 'review-mask-4x.png').data);
+    expect(review.width).toBe(160 * 4);
+    expect(review.height).toBe(160 * 4);
     const names = readGlb(result.bytes).json.nodes.map((node) => node.name).sort();
     expect(names).toEqual(['body', 'wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr']);
   }, 60000);

@@ -232,6 +232,60 @@ function earClip(poly) {
   return tris;
 }
 
+function capFace(face, capUv) {
+  const copy = face.map((vert) => ({ p: vert.p.slice(), uv: capUv.slice(), n: (vert.n || [0, 1, 0]).slice() }));
+  copy.cut = true;
+  copy.cap = true;
+  return copy;
+}
+
+function edgeCountKey(a, b) {
+  const ka = a.p.map((value) => Math.round(value * 2000)).join(",");
+  const kb = b.p.map((value) => Math.round(value * 2000)).join(",");
+  return ka < kb ? ka + "|" + kb : kb + "|" + ka;
+}
+
+function edgeCounts(tris) {
+  const counts = new Map();
+  for (const face of tris) {
+    for (let corner = 0; corner < 3; corner++) {
+      const key = edgeCountKey(face[corner], face[(corner + 1) % 3]);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+  }
+  return counts;
+}
+
+function pruneNewNonManifold(tris, prior) {
+  const faces = tris.slice();
+  let guard = faces.length;
+  while (guard-- > 0) {
+    const users = new Map();
+    faces.forEach((face, index) => {
+      for (let corner = 0; corner < 3; corner++) {
+        const key = edgeCountKey(face[corner], face[(corner + 1) % 3]);
+        const list = users.get(key) || [];
+        list.push(index);
+        users.set(key, list);
+      }
+    });
+    let victim = -1;
+    for (const [key, list] of users) {
+      const allowed = Math.max(2, prior.get(key) || 0);
+      if (list.length <= allowed) continue;
+      const caps = list.filter((index) => faces[index].cap);
+      const cuts = list.filter((index) => faces[index].cut);
+      const pick = caps.length ? caps[0] : cuts.length ? cuts[0] : -1;
+      if (pick < 0) continue;
+      victim = pick;
+      break;
+    }
+    if (victim < 0) break;
+    faces.splice(victim, 1);
+  }
+  return faces;
+}
+
 function projectOntoCylinder(point, cyl) {
   const axis = [cyl.ax, cyl.ay, cyl.az];
   const center = [cyl.cx, cyl.cy, cyl.cz];
@@ -491,15 +545,24 @@ export function cutSpecifiedWheels(parts, options = {}) {
         continue;
       }
       cuts += 1;
-      if (hit.outside && hit.outside.length) keep.push(...hit.outside);
+      if (hit.outside && hit.outside.length) {
+        for (const face of hit.outside) face.cut = true;
+        keep.push(...hit.outside);
+      }
       if (hit.inside && hit.inside.length) {
-        if (options.keepInsideOnBody) keep.push(...hit.inside);
-        else extra.get(cyl.name).push(...hit.inside);
+        const caps = options.capUv ? hit.inside.map((face) => capFace(face, options.capUv)) : hit.inside;
+        for (const face of caps) {
+          face.cut = true;
+          face.cap = true;
+        }
+        if (options.keepInsideOnBody) keep.push(...caps);
+        else extra.get(cyl.name).push(...caps);
       }
       if (hit.boundary) boundary.push(...hit.boundary);
     }
     tris = keep;
   }
+  tris = pruneNewNonManifold(tris, edgeCounts(meshTriangles(body.mesh)));
   if (!cuts) return { parts, cuts: 0, cylinders, paired: true, boundary };
   const next = [{ ...body, mesh: trianglesToMesh(tris), locks: lockMask(trianglesToMesh(tris), cylinders) }];
   // locks must match the mesh we store. Rebuild once.
