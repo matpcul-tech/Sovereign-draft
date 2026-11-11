@@ -78,6 +78,77 @@ export function atlasPng() {
   return encodePng(4, 4, rgba);
 }
 
+function pushBox(dst, min, max) {
+  const [x0, y0, z0] = min;
+  const [x1, y1, z1] = max;
+  const verts = [
+    [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+    [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]
+  ];
+  const faces = [
+    [0, 2, 1], [0, 3, 2],
+    [4, 5, 6], [4, 6, 7],
+    [0, 1, 5], [0, 5, 4],
+    [3, 6, 2], [3, 7, 6],
+    [0, 4, 7], [0, 7, 3],
+    [1, 2, 6], [1, 6, 5]
+  ];
+  const start = dst.position.length / 3;
+  for (const vert of verts) {
+    dst.position.push(vert[0] + 0.25, vert[1] + 0.15, vert[2]);
+    dst.uv.push(0.2, 0.2);
+    dst.normal.push(0, 1, 0);
+  }
+  for (const face of faces) dst.indices.push(start + face[0], start + face[1], start + face[2]);
+}
+
+function carDocument(parts) {
+  const image = { name: "atlas", mime: "image/png", bytes: atlasPng() };
+  return {
+    sceneName: "car",
+    roots: [0],
+    materials: [{
+      name: "atlas",
+      baseColorFactor: [1, 1, 1, 1],
+      metallicFactor: 0,
+      roughnessFactor: 1,
+      baseColorImage: image
+    }],
+    meshes: [{
+      name: "shell",
+      primitives: [{
+        material: 0,
+        position: new Float32Array(parts.position),
+        normal: new Float32Array(parts.normal),
+        uv: new Float32Array(parts.uv),
+        indices: new Uint32Array(parts.indices)
+      }]
+    }],
+    nodes: [{ name: "shell", mesh: 0 }]
+  };
+}
+
+export function singleAtlasCarGlb() {
+  const parts = { position: [], uv: [], normal: [], indices: [] };
+  pushBox(parts, [-0.35, 0.4, -1], [0.35, 1.0, 1]);
+  pushBox(parts, [-0.78, 0.02, 0.62], [-0.52, 0.28, 0.88]);
+  pushBox(parts, [0.52, 0.02, 0.62], [0.78, 0.28, 0.88]);
+  pushBox(parts, [-0.78, 0.02, -0.88], [-0.52, 0.28, -0.62]);
+  pushBox(parts, [0.52, 0.02, -0.88], [0.78, 0.28, -0.62]);
+  const start = parts.position.length / 3;
+  parts.position.push(0.25, 0.6, 0, 0.26, 0.6, 0, 0.27, 0.6, 0);
+  parts.uv.push(0, 0, 0, 0, 0, 0);
+  parts.normal.push(0, 1, 0, 0, 1, 0, 0, 1, 0);
+  parts.indices.push(start, start + 1, start + 2);
+  return packGlb(carDocument(parts));
+}
+
+export function solidCarGlb() {
+  const parts = { position: [], uv: [], normal: [], indices: [] };
+  pushBox(parts, [-0.35, 0.2, -1], [0.35, 0.8, 1]);
+  return packGlb(carDocument(parts));
+}
+
 export function fusedShellGlb() {
   const geometry = fusedShellGeometry();
   const material = new THREE.MeshStandardMaterial({ name: "atlas", color: "#ffffff", roughness: 1, metalness: 0 });
