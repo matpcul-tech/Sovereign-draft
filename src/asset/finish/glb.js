@@ -422,8 +422,12 @@ export function packGlb(doc) {
       pbrMetallicRoughness: pbr
     };
     if (material.alphaMode && material.alphaMode !== "OPAQUE") def.alphaMode = material.alphaMode;
-    if (material.emissiveFactor && material.emissiveFactor.some((value) => value > 0)) def.emissiveFactor = material.emissiveFactor;
-    if (material.emissiveImage) def.emissiveTexture = { index: textureIndex(material.emissiveImage) };
+    if (material.emissiveImage) {
+      def.emissiveTexture = { index: textureIndex(material.emissiveImage) };
+      def.emissiveFactor = material.emissiveFactor || [0, 0, 0];
+    } else if (material.emissiveFactor && material.emissiveFactor.some((value) => value > 0)) {
+      def.emissiveFactor = material.emissiveFactor;
+    }
     if (material.extras) def.extras = material.extras;
     materials.push(def);
   }

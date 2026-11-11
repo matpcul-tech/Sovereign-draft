@@ -371,4 +371,14 @@ body:has(#assetmode) #toast{top:64px;bottom:auto}
 #vehiclepanel label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-dim)}
 #vehiclepanel #vehchecks{white-space:pre-wrap;font-size:11px;line-height:1.35;color:var(--ink-dim);margin-top:8px}
 #vehiclepanel ul{margin:6px 0 0 16px}
+#finishpanel{max-height:min(40vh,360px);overflow:auto;padding:8px 12px 10px;border-top:1px solid var(--line);background:#0b1830;-webkit-overflow-scrolling:touch}
+#finishpanel .vehrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}
+#finishpanel .vehlabel{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin-top:8px}
+#finishpanel p{font-size:12px;line-height:1.4;color:var(--ink-dim)}
+#finishpanel #finishlead{color:var(--ink)}
+#finishpanel p.bad{color:var(--gold)}
+#finishpanel button,#finishpanel select,#finishpanel input[type="number"],#finishpanel input[type="text"]{min-height:44px;border-radius:10px;border:1px solid var(--line);background:#07101f;color:var(--ink);padding:0 12px;font:inherit;font-size:13px}
+#finishpanel button.on{border-color:var(--teal);color:var(--teal)}
+#finishpanel label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-dim)}
+#finishpanel input[type="text"]{min-width:180px}
 

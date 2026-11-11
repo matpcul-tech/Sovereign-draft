@@ -146,7 +146,9 @@ export const COMMANDS = {
   SHOP:    { aliases: ['SHOP', 'STOREFRONT'],           tool: null,     action: 'assetshop' },
   DUMPSTER:{ aliases: ['DUMPSTER', 'BIN'],              tool: null,     action: 'assetbin' },
   GAMEGLB: { aliases: ['GLB'],                          tool: null,     action: 'assetglb' },
-  VEHICLE: { aliases: ['VEHICLE', 'FINISH'],            tool: null,     action: 'assetvehicle' }
+  VEHICLE: { aliases: ['VEHICLE'],                       tool: null,     action: 'assetvehicle' },
+  // Asset finisher. Surface finish stays on SF and SURF.
+  FINISH:  { aliases: ['FINISH'],                        tool: null,     action: 'assetfinish' }
 };
 
 const ALIAS = {};
