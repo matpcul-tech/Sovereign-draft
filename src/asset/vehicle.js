@@ -22,7 +22,7 @@ import {
   worldToInner
 } from "./finish/edit.js";
 import { finishZip } from "./finish/review.js";
-import { decodePng } from "./finish/png.js";
+import { decodeRaster } from "./finish/raster.js";
 import * as THREE from "three";
 
 const STORE = "sd-vehicle-finish";
@@ -530,7 +530,7 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
   panel.querySelector("#vehexport").addEventListener("click", () => { void runExport(false); });
   panel.querySelector("#vehzip").addEventListener("click", () => { void runExport(true); });
 
-  function grow(island) {
+  async function grow(island) {
     if (!requireSession() || !selectedCount()) {
       notify("Tap a face first.");
       return;
@@ -539,36 +539,43 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
     let added = 0;
     let colorNote = "";
     const next = new Map();
-    selection.forEach((faces, key) => {
+    for (const [key, faces] of selection) {
       const surface = session.loaded.surfaces.find((item) => item.key === key);
-      if (!surface) return;
+      if (!surface) continue;
       let blocks = null;
       if (!island) {
         let rgba = null;
         let width = 0;
         let height = 0;
-        const image = session.loaded.images && session.loaded.images.find((item) => item.mime === "image/png" && item.bytes && item.bytes.length);
+        const image = session.loaded.images && session.loaded.images.find((item) => item.bytes && item.bytes.length);
         if (image) {
           try {
-            const decoded = decodePng(image.bytes);
+            const decoded = await decodeRaster(image.bytes, image.mime);
             rgba = decoded.rgba;
             width = decoded.width;
             height = decoded.height;
           } catch (error) {
-            colorNote = " Color was not sampled from this PNG.";
+            colorNote = " Color was not sampled: " + (error instanceof Error ? error.message : "the image could not be read") + ".";
           }
-        } else colorNote = " Color was not sampled. This grow saw creases and UV seams only.";
-        blocks = seamBlocks(surface.world, surface.uvs, rgba, width, height);
+        } else colorNote = " This mesh has no texture to sample.";
+        const partIds = new Array(surface.faceCount).fill("shell");
+        const table = session.edit && session.edit.structure && session.edit.structure[surface.key];
+        if (table) {
+          for (const name of Object.keys(table)) {
+            for (const face of table[name]) partIds[face] = name;
+          }
+        }
+        blocks = seamBlocks(surface.world, surface.uvs, rgba, width, height, partIds);
       }
       const grown = growFaces(surface.topology, surface.normals, faces, island ? Infinity : crease * Math.PI / 180, blocks);
       added += grown.size - faces.size;
       next.set(key, grown);
-    });
+    }
     selection = next;
     show();
     notify(island
       ? (added ? "Island added " + added + " connected faces." : "The selection is already the whole island.")
-      : (added ? "Grow added " + added + " faces. It stops at a crease, a UV seam, or a sampled color edge." + colorNote : "No added faces. The next face is a crease, a UV seam, or a color edge."));
+      : (added ? "Grow added " + added + " faces. It stops at a part boundary, a sampled texture edge, a UV island, or a crease." + colorNote : "No added faces. The next face is a part boundary, a texture edge, a UV island, or a crease."));
   }
 
   function doorTarget() {

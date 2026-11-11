@@ -49,7 +49,8 @@ check(!/\bREADY\b/.test(source.replace("NOT READY", "")), "source line does not 
 const note = await page.locator("#finishnote").innerText();
 check(note.includes("30000") && note.includes("40000"), "note names target and ceiling");
 check(note.includes("no material named paint or body"), "note forbids paint and body material names");
-check(note.includes("does not issue READY"), "note does not issue READY");
+check(note.includes("every declared check passed"), "note says READY is every declared check");
+check(note.includes("does not read the mask"), "note says the game does not read the mask");
 check(!/rare/i.test(note), "note does not call a heavy file rare");
 await page.click("[data-finish=BUILDING]");
 check(await page.locator("#finish-ceiling").inputValue() === "8000", "BUILDING ceiling stays 8000");
