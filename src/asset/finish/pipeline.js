@@ -115,6 +115,8 @@ export async function runFinish(loaded, profile, options = {}) {
       : Math.max(4, Math.round(beforeTris / totalBefore * profile.triangleTarget));
     const simplified = await simplifyPart(part.mesh, share, totalBefore <= profile.triangleTarget);
     part.mesh = simplified.mesh;
+    dropBadFaces(part.mesh);
+    part.mesh = compact(part.mesh);
     triangles += part.mesh.indices.length / 3;
     log.push(part.name + ". " + simplified.detail + " (" + beforeTris + " to " + (part.mesh.indices.length / 3) + ").");
     recomputeNormals(part.mesh);

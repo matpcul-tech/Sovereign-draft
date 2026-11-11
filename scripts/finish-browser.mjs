@@ -84,6 +84,20 @@ check(/Before/.test(log) && /After/.test(log), "before and after: " + log.split(
 check(/wheel/i.test(log), "wheel split is in the log");
 console.log("NUMBERS " + log.split("\n").slice(0, 2).join(" | "));
 await page.screenshot({ path: "/tmp/finish-phase2.png" });
+await page.setInputFiles("#finishfile", "fixtures/vehicle/solid-car.glb");
+await page.waitForFunction(() => /solid-car/.test(document.querySelector("#finishmeasure").textContent || ""), null, { timeout: 20000 });
+await page.click("[data-finish=CAR]");
+await page.check("#finishfront");
+await page.evaluate(() => {
+  const banner = document.querySelector("#finishbanner");
+  const log = document.querySelector("#finishlog");
+  if (banner) banner.textContent = "";
+  if (log) log.textContent = "";
+});
+await page.click("#finishrun");
+await page.waitForFunction(() => /VEHICLE/.test(document.querySelector("#finishlog").textContent || ""));
+const solid = await page.locator("#finishlog").innerText();
+check(/VEHICLE/.test(solid) && /wheel/i.test(solid), "solid shell hands off to VEHICLE");
 await page.click("[data-asset=vehicle]");
 check(await page.locator("#finishpanel").getAttribute("hidden") !== null, "VEHICLE hides FINISH");
 check(await page.locator("#vehiclepanel:not([hidden])").count() === 1, "VEHICLE panel opens");
