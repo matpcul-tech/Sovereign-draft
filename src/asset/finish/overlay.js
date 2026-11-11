@@ -20,7 +20,7 @@ export function applyGlassOverlay(root, mask, size) {
   }
   const texture = new THREE.DataTexture(data, size, size);
   texture.colorSpace = THREE.SRGBColorSpace;
-  texture.flipY = false;
+  texture.flipY = true;
   texture.needsUpdate = true;
   const material = new THREE.MeshBasicMaterial({
     map: texture,
