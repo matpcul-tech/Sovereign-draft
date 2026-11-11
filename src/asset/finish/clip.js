@@ -322,10 +322,14 @@ export function cutSpecifiedWheels(parts) {
 }
 
 export function meshBleed(parts) {
+  return meshBleedReport(parts).count;
+}
+
+export function meshBleedReport(parts) {
   const body = parts.find((part) => !part.wheel);
   const wheels = parts.filter((part) => part.wheel);
-  if (!body || !wheels.length) return 0;
-  let count = 0;
+  const centroids = [];
+  if (!body || !wheels.length) return { count: 0, centroids };
   const bodyTris = meshTriangles(body.mesh).map((tri) => ({ tri, box: triBox(tri) }));
   for (const wheel of wheels) {
     const wheelTris = meshTriangles(wheel.mesh).map((tri) => ({ tri, box: triBox(tri) }));
@@ -338,10 +342,54 @@ export function meshBleed(parts) {
           break;
         }
       }
-      if (hit) count += 1;
+      if (!hit) continue;
+      const c = [0, 0, 0];
+      for (const vert of item.tri) for (let axis = 0; axis < 3; axis++) c[axis] += vert.p[axis];
+      centroids.push(c.map((value) => value / 3));
     }
   }
-  return count;
+  return { count: centroids.length, centroids };
+}
+
+export function fitTireCylinder(mesh, name) {
+  const verts = [];
+  const seen = new Set();
+  for (let i = 0; i < mesh.positions.length; i += 3) {
+    const p = [mesh.positions[i], mesh.positions[i + 1], mesh.positions[i + 2]];
+    const key = p.map((value) => Math.round(value * 1000)).join(",");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    verts.push(p);
+  }
+  if (!verts.length) return { name, cx: 0, cy: 0, cz: 0, ax: 1, ay: 0, az: 0, radius: 0.1, half: 0.05 };
+  const mean = [0, 0, 0];
+  for (const p of verts) for (let axis = 0; axis < 3; axis++) mean[axis] += p[axis];
+  for (let axis = 0; axis < 3; axis++) mean[axis] /= verts.length;
+  const radial = verts.map((p) => Math.hypot(p[1] - mean[1], p[2] - mean[2])).sort((a, b) => a - b);
+  const radius = radial.length ? radial[radial.length - 1] : 0.1;
+  const band = verts.filter((p) => Math.hypot(p[1] - mean[1], p[2] - mean[2]) >= radius * 0.85);
+  const use = band.length > 8 ? band : verts;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let sy = 0;
+  let sz = 0;
+  for (const p of use) {
+    if (p[0] < minX) minX = p[0];
+    if (p[0] > maxX) maxX = p[0];
+    sy += p[1];
+    sz += p[2];
+  }
+  return {
+    name,
+    cx: (minX + maxX) / 2,
+    cy: sy / use.length,
+    cz: sz / use.length,
+    ax: 1,
+    ay: 0,
+    az: 0,
+    radius,
+    half: (maxX - minX) / 2 + 0.001
+  };
 }
 
 function triBox(tri) {
