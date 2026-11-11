@@ -102,8 +102,8 @@ function pushBox(dst, min, max) {
   for (const face of faces) dst.indices.push(start + face[0], start + face[1], start + face[2]);
 }
 
-function carDocument(parts) {
-  const image = { name: "atlas", mime: "image/png", bytes: atlasPng() };
+function carDocument(parts, image) {
+  image = image || { name: "atlas", mime: "image/png", bytes: atlasPng() };
   return {
     sceneName: "car",
     roots: [0],
@@ -128,8 +128,7 @@ function carDocument(parts) {
   };
 }
 
-export function singleAtlasCarGlb() {
-  const parts = { position: [], uv: [], normal: [], indices: [] };
+function atlasShell(parts) {
   pushBox(parts, [-0.35, 0.4, -1], [0.35, 1.0, 1]);
   pushBox(parts, [-0.78, 0.02, 0.62], [-0.52, 0.28, 0.88]);
   pushBox(parts, [0.52, 0.02, 0.62], [0.78, 0.28, 0.88]);
@@ -140,6 +139,35 @@ export function singleAtlasCarGlb() {
   parts.uv.push(0, 0, 0, 0, 0, 0);
   parts.normal.push(0, 1, 0, 0, 1, 0, 0, 1, 0);
   parts.indices.push(start, start + 1, start + 2);
+}
+
+export function singleAtlasCarGlb(image) {
+  const parts = { position: [], uv: [], normal: [], indices: [] };
+  atlasShell(parts);
+  return packGlb(carDocument(parts, image));
+}
+
+export function crossingCarGlb() {
+  const parts = { position: [], uv: [], normal: [], indices: [] };
+  atlasShell(parts);
+  const cx = ((-0.78 + 0.25) + (-0.52 + 0.25)) / 2;
+  const cy = ((0.02 + 0.15) + (0.28 + 0.15)) / 2;
+  const cz = (0.62 + 0.88) / 2;
+  const A = [cx, cy + 1.2, cz + 1.2];
+  const B = [cx, cy - 1.2, cz + 1.2];
+  const C = [cx, cy, cz - 1.8];
+  const body = [-0.35 + 0.25, 0.4 + 0.15, -1];
+  const pushTri = (verts, uvs, normal) => {
+    const start = parts.position.length / 3;
+    for (const vert of verts) {
+      parts.position.push(vert[0], vert[1], vert[2]);
+      parts.normal.push(normal[0], normal[1], normal[2]);
+    }
+    parts.uv.push(...uvs);
+    parts.indices.push(start, start + 1, start + 2);
+  };
+  pushTri([A, B, C], [0.05, 0.05, 0.45, 0.05, 0.25, 0.55], [1, 0, 0]);
+  pushTri([body, A, B], [0.2, 0.2, 0.05, 0.05, 0.45, 0.05], [0, 1, 0]);
   return packGlb(carDocument(parts));
 }
 

@@ -81,7 +81,7 @@ function pairKey(a, b) {
   return a < b ? a + ":" + b : b + ":" + a;
 }
 
-export function seamBlocks(world, uvs, rgba, width, height) {
+export function seamBlocks(world, uvs, rgba, width, height, partIds) {
   const blocks = new Set();
   const faceCount = world.length / 9;
   const edges = new Map();
@@ -109,6 +109,7 @@ export function seamBlocks(world, uvs, rgba, width, height) {
   for (const list of edges.values()) {
     if (list.length !== 2) continue;
     const [a, b] = list;
+    if (partIds && partIds[a.face] !== partIds[b.face]) blocks.add(pairKey(a.face, b.face));
     if (uvs && uvGap(a, b)) blocks.add(pairKey(a.face, b.face));
     if (rgba && uvs && colorGap(a, b, rgba, width, height)) blocks.add(pairKey(a.face, b.face));
   }

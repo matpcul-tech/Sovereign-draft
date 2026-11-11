@@ -5,7 +5,7 @@ import { askArtist, SAMPLE_LEVEL } from "./artist.js";
 import { toast } from "../ui/toast.js";
 import { mountVehicle } from "./vehicle.js";
 import { boundsOf } from "./finish/inspect.js";
-import { loadVehicle } from "./finish/glb.js";
+import { loadVehicle, replaceNamedImage } from "./finish/glb.js";
 import { disposeVehicle } from "./finish/edit.js";
 import {
   PENDING_RULES,
@@ -17,6 +17,9 @@ import {
   clearActiveFinish
 } from "./finish/profiles.js";
 import { runFinish } from "./finish/pipeline.js";
+import { editMask, reviewSheet } from "./finish/mask.js";
+import { encodePng } from "./finish/png.js";
+import { zipStore } from "./finish/zip.js";
 
 const RECIPES = {
   sedan: { name: "sedan", paint: "#1c3d66", budget: 12000 },
@@ -33,6 +36,8 @@ let finishKind = "CAR";
 let finishFile = null;
 let finishExport = null;
 let finishZip = null;
+let finishFiles = null;
+let finishMask = null;
 let doc = {
   kind: "asset",
   recipe: "sedan",
@@ -176,7 +181,7 @@ function renderFinish() {
     sourceEl.textContent = "";
     sourceEl.classList.remove("bad");
   }
-  note.textContent = profileSummary(profile) + " A budget fail is an exported triangle count above the ceiling. Crossing the target is not that fail. Run finish logs the fixes. It does not issue READY.";
+  note.textContent = profileSummary(profile) + " A budget fail is an exported triangle count above the ceiling. Crossing the target is not that fail. Run finish logs the fixes. READY means every declared check passed. It is not a gameplay or phone test. Street Empire does not read the mask.";
 }
 
 function openFinish() {
@@ -228,6 +233,19 @@ async function onFinishFile(event) {
   renderFinish();
 }
 
+function concatBytes(left, right) {
+  const a = left instanceof Uint8Array ? left : new Uint8Array(left);
+  const b = right instanceof Uint8Array ? right : new Uint8Array(right);
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a, 0);
+  out.set(b, a.length);
+  return out;
+}
+
+function phoneReview(mask, size) {
+  return reviewSheet(mask, size);
+}
+
 function downloadBytes(bytes, name, type) {
   const blob = new Blob([bytes], { type });
   const url = URL.createObjectURL(blob);
@@ -257,6 +275,7 @@ async function runFinishNow() {
     disposeVehicle(loaded.scene);
     finishExport = result.bytes;
     finishZip = result.zip;
+    finishFiles = result.files || null;
     const banner = host.querySelector("#finishbanner");
     banner.hidden = false;
     banner.classList.toggle("bad", result.banner === "NOT READY");
@@ -275,6 +294,15 @@ async function runFinishNow() {
     host.querySelector("#finishlog").textContent = lines.join("\n");
     host.querySelector("#finishdownload").hidden = !result.bytes;
     host.querySelector("#finishzip").hidden = !result.zip;
+    const review = host.querySelector("#finishreview");
+    if (result.review) {
+      finishMask = result.mask || null;
+      review.hidden = false;
+      review.src = URL.createObjectURL(new Blob([result.review], { type: "image/png" }));
+    } else {
+      finishMask = null;
+      review.hidden = true;
+    }
     status(result.banner + ". " + (result.after ? result.after.triangles + " tris." : "No file written."));
   } catch (error) {
     toast(error instanceof Error ? error.message : "Finish failed.");
@@ -488,6 +516,12 @@ function ensure() {
         <button type="button" id="finishzip" hidden>Download ZIP</button>
       </div>
       <p id="finishbanner" hidden></p>
+      <img id="finishreview" alt="Glass is teal, paint is gold, chrome is white, other is gray" hidden>
+      <div class="vehrow">
+        <button type="button" id="finishadd">Add glass</button>
+        <button type="button" id="finishremove">Remove glass</button>
+        <button type="button" id="finishbrush">Edge brush</button>
+      </div>
       <pre id="finishlog"></pre>
       <p id="finishrules"></p>
     </section>
@@ -582,6 +616,42 @@ function ensure() {
     if (!finishZip) return;
     downloadBytes(finishZip, "finish.zip", "application/zip");
   });
+  const paintMask = (op, radius) => {
+    if (!finishMask) {
+      toast("Run finish on a car that has a base image first.");
+      return;
+    }
+    const size = finishMask.size;
+    const pixels = [];
+    const y = Math.floor(size * 0.5);
+    for (let x = Math.floor(size * 0.46); x <= Math.floor(size * 0.54); x++) pixels.push({ x, y });
+    finishMask.rgba = editMask(finishMask.rgba, size, size, { op: op === "brush" ? "add" : op, pixels, radius: radius || 0 });
+    const sheet = phoneReview(finishMask.rgba, size);
+    const reviewPng = encodePng(sheet.width, sheet.height, sheet.rgba);
+    const review = host.querySelector("#finishreview");
+    review.hidden = false;
+    review.src = URL.createObjectURL(new Blob([reviewPng], { type: "image/png" }));
+    const maskPng = encodePng(size, size, finishMask.rgba);
+    if (finishExport) finishExport = replaceNamedImage(finishExport, "mask", maskPng, "image/png");
+    if (finishFiles) {
+      const note = new TextEncoder().encode("\nMask edit after the verdict. The previous READY or NOT READY line is stale until finish is run again. The download uses this mask.\n");
+      finishFiles = finishFiles.map((file) => {
+        if (file.name === "model.glb") return { name: file.name, data: finishExport };
+        if (file.name === "review-mask-4x.png") return { name: file.name, data: reviewPng };
+        if (file.name === "validation.txt") return { name: file.name, data: concatBytes(file.data, note) };
+        return file;
+      });
+      finishZip = zipStore(finishFiles);
+    }
+    const banner = host.querySelector("#finishbanner");
+    banner.classList.add("bad");
+    banner.classList.remove("ready");
+    banner.textContent = "NOT READY. The mask was edited after the check. Run finish again before treating the verdict as current. The download already contains this mask.";
+    toast(op === "remove" ? "Removed a glass region. The teal overlay and the download use it." : op === "brush" ? "Edge brush painted a 2 px glass stroke on the teal overlay." : "Added a glass region. The teal overlay and the download use it.");
+  };
+  host.querySelector("#finishadd").addEventListener("click", () => paintMask("add", 0));
+  host.querySelector("#finishremove").addEventListener("click", () => paintMask("remove", 0));
+  host.querySelector("#finishbrush").addEventListener("click", () => paintMask("brush", 2));
   host.querySelector("#finishrules").textContent = PENDING_RULES.implemented
     ? ""
     : "Later steps still unrun. " + PENDING_RULES.windows;

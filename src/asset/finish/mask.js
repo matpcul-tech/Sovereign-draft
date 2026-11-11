@@ -435,6 +435,39 @@ export function paddingConflicts(islands, padPx = MASK.padPx) {
   };
 }
 
+export function reviewSheet(mask, size) {
+  const preview = reviewFit(mask, size, 160, 160);
+  return reviewImage(preview, 160, 160, 4);
+}
+
+function reviewFit(mask, size, width, height) {
+  const out = new Uint8Array(width * height * 4);
+  for (let i = 0; i < out.length; i += 4) {
+    out[i] = 10;
+    out[i + 1] = 20;
+    out[i + 2] = 30;
+  }
+  const rank = (r, g, b) => {
+    const kind = maskClass(r, g, b);
+    if (kind === "glass") return 3;
+    if (kind === "chrome") return 2;
+    if (kind === "paint") return 1;
+    return 0;
+  };
+  for (let y = 0; y < size; y++) {
+    const dy = Math.min(height - 1, Math.floor(y * height / size));
+    for (let x = 0; x < size; x++) {
+      const dx = Math.min(width - 1, Math.floor(x * width / size));
+      const from = (y * size + x) * 4;
+      const score = rank(mask[from], mask[from + 1], mask[from + 2]);
+      if (!score) continue;
+      const to = (dy * width + dx) * 4;
+      if (score >= rank(out[to], out[to + 1], out[to + 2])) out.set(mask.subarray(from, from + 4), to);
+    }
+  }
+  return out;
+}
+
 export function reviewImage(mask, width, height, scale = MASK.reviewScale) {
   const outW = width * scale;
   const outH = height * scale;
@@ -466,13 +499,17 @@ export function buildCarMask(parts, rgba, width, height) {
   const wheels = parts.filter((part) => part.wheel).map(wheelCylinder);
   const glassFaces = [];
   const faceCount = body.mesh.indices.length / 3;
+  let above = 0;
+  let tone = 0;
   for (let face = 0; face < faceCount; face++) {
     const tri = faceVerts(body.mesh, face);
     const center = average(tri.map((vert) => vert.p));
     const uv = average(tri.map((vert) => vert.uv));
     if (center[1] < belt || inAnyWheel(center, wheels)) continue;
+    above += 1;
     const color = texel(rgba, width, height, uv);
     if (!isGlassTone(color[0], color[1], color[2])) continue;
+    tone += 1;
     glassFaces.push(face);
   }
   const regions = components(body.mesh, glassFaces);
@@ -480,7 +517,7 @@ export function buildCarMask(parts, rgba, width, height) {
   if (!kept.length) {
     return {
       ok: false,
-      detail: "Cabin glass was not found from the upper body and the texture together. Color alone was not treated as glass.",
+      detail: "Cabin glass was not found from the upper body and the texture together. Above belt " + above + ", glass tone " + tone + ", faces " + faceCount + ". Color alone was not treated as glass.",
       action: "Mark the window by hand. This finish will not guess a cabin."
     };
   }
@@ -492,7 +529,8 @@ export function buildCarMask(parts, rgba, width, height) {
     mask[i + 2] = 30;
     mask[i + 3] = 0;
   }
-  for (const part of parts) {
+  const ordered = parts.filter((part) => part.wheel).concat(parts.filter((part) => !part.wheel));
+  for (const part of ordered) {
     const count = part.mesh.indices.length / 3;
     for (let face = 0; face < count; face++) {
       const tri = faceVerts(part.mesh, face);
@@ -515,11 +553,13 @@ export function buildCarMask(parts, rgba, width, height) {
     { id: "mask-edge", pass: edge.count === 0 || edge.pass, detail: edge.count === 0 ? "Glass and paint do not share a texel edge, so there is no blur wider than 2 px." : edge.detail, action: edge.count === 0 || edge.pass ? "" : "Keep the mask edge at 1 to 2 px." },
     { id: "mask-clean", pass: hues.pass && cleaned.ready, detail: hues.detail + " " + (cleaned.conflicts ? cleaned.conflicts + " pad conflicts." : "No pad conflict."), action: hues.pass && cleaned.ready ? "" : "Clean the glass and the paint fringe by hand. UVs were not moved." }
   ];
-  const review = reviewImage(mask, MASK.size, MASK.size, 1);
+  const review = reviewSheet(mask, MASK.size);
   return {
     ok: true,
     checks,
     maskPng: encodePng(MASK.size, MASK.size, mask),
+    maskRgba: mask,
+    maskSize: MASK.size,
     baseRgba: cleaned.base,
     baseWidth: width,
     baseHeight: height,
@@ -627,6 +667,7 @@ function splat(mask, size, tri, color) {
   const maxX = Math.min(size - 1, Math.ceil(Math.max(points[0][0], points[1][0], points[2][0])));
   const minY = Math.max(0, Math.floor(Math.min(points[0][1], points[1][1], points[2][1])));
   const maxY = Math.min(size - 1, Math.ceil(Math.max(points[0][1], points[1][1], points[2][1])));
+  let wrote = 0;
   for (let y = minY; y <= maxY; y++) {
     for (let x = minX; x <= maxX; x++) {
       if (!bary([x + 0.5, y + 0.5], points)) continue;
@@ -635,8 +676,19 @@ function splat(mask, size, tri, color) {
       mask[index + 1] = color[1];
       mask[index + 2] = color[2];
       mask[index + 3] = 255;
+      wrote += 1;
     }
   }
+  if (wrote) return;
+  const u = (tri[0].uv[0] + tri[1].uv[0] + tri[2].uv[0]) / 3;
+  const v = (tri[0].uv[1] + tri[1].uv[1] + tri[2].uv[1]) / 3;
+  const x = Math.max(0, Math.min(size - 1, Math.round(u * (size - 1))));
+  const y = Math.max(0, Math.min(size - 1, Math.round((1 - v) * (size - 1))));
+  const index = (y * size + x) * 4;
+  mask[index] = color[0];
+  mask[index + 1] = color[1];
+  mask[index + 2] = color[2];
+  mask[index + 3] = 255;
 }
 
 function bary(p, tri) {

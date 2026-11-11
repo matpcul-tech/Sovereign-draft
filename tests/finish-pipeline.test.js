@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadVehicle, packGlb, readGlb, sha256Hex } from '../src/asset/finish/glb.js';
-import { atlasPng, singleAtlasCarGlb, solidCarGlb } from '../src/asset/finish/fixture.js';
+import { atlasPng, crossingCarGlb, singleAtlasCarGlb, solidCarGlb } from '../src/asset/finish/fixture.js';
 import { encodePng } from '../src/asset/finish/png.js';
 import { unzipStore } from '../src/asset/finish/zip.js';
 import { resolveProfile } from '../src/asset/finish/profiles.js';
@@ -312,9 +312,36 @@ describe('finish pipeline', () => {
     const files = unzipStore(result.zip);
     const names = files.map((file) => file.name);
     expect(names).toContain('validation.txt');
+    expect(names).toContain('mapping.json');
     expect(names).toContain('model.glb');
+    expect(names).toContain('review-mask-4x.png');
+    expect(names).toContain('review-side.png');
     const note = new TextDecoder().decode(files.find((file) => file.name === 'validation.txt').data);
     expect(note.startsWith('READY')).toBe(true);
+  });
+
+  it('cuts a large triangle through a specified wheel cylinder and keeps the exported border', async () => {
+    const { result } = await run(crossingCarGlb(), resolveProfile('CAR'), { frontConfirmed: true });
+    const text = result.log.join('\n');
+    expect(text).toMatch(/Cut [1-9]/);
+    expect(text).toMatch(/interpolate UV and normals/);
+    const border = result.checks.find((check) => check.id === 'border');
+    const bleed = result.checks.find((check) => check.id === 'bleed');
+    expect(border.pass).toBe(true);
+    expect(bleed.pass).toBe(true);
+    expect(bleed.detail.startsWith('0 exported')).toBe(true);
+    const { json, bin } = readGlb(result.bytes);
+    const mesh = json.meshes.find((item) => item.name === 'body') || json.meshes[0];
+    const uvView = json.bufferViews[json.accessors[mesh.primitives[0].attributes.TEXCOORD_0].bufferView];
+    const uvStart = uvView.byteOffset || 0;
+    const uvs = new Float32Array(bin.buffer, bin.byteOffset + uvStart, uvView.byteLength / 4);
+    let interpolated = 0;
+    for (let i = 0; i < uvs.length; i += 2) {
+      const plain = Math.abs(uvs[i] - 0.2) < 1e-4 && Math.abs(uvs[i + 1] - 0.2) < 1e-4;
+      const zero = Math.abs(uvs[i]) < 1e-4 && Math.abs(uvs[i + 1]) < 1e-4;
+      if (!plain && !zero) interpolated += 1;
+    }
+    expect(interpolated).toBeGreaterThan(8);
   });
 
   it('finishes bad scale, ground, budget, and texture for each type', async () => {
@@ -366,7 +393,7 @@ describe('finish pipeline', () => {
     ]);
     const normals = new Float32Array([0, 0, 1, 0, 0, 1]);
     const topology = { neighbors: [[1], [0]] };
-    const blocks = seamBlocks(world, uvs, null, 0, 0);
+    const blocks = seamBlocks(world, uvs, null, 0, 0, ['shell', 'wheel']);
     expect(growFaces(topology, normals, [0], Infinity).size).toBe(2);
     expect(growFaces(topology, normals, [0], Infinity, blocks).size).toBe(1);
     const splitUv = new Float32Array([

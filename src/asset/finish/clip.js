@@ -274,6 +274,180 @@ function area(tri) {
   return hypot(cross(sub(tri[1].p, tri[0].p), sub(tri[2].p, tri[0].p))) * 0.5;
 }
 
+export function cutSpecifiedWheels(parts) {
+  const body = parts.find((part) => !part.wheel);
+  const wheels = parts.filter((part) => part.wheel);
+  if (!body || wheels.length !== 4) return { parts, cuts: 0, cylinders: [], paired: true };
+  const cylinders = wheels.map(cylinderFromPart);
+  let tris = meshTriangles(body.mesh);
+  const extra = new Map(wheels.map((part) => [part.name, []]));
+  let cuts = 0;
+  const boundary = [];
+  for (const cyl of cylinders) {
+    const keep = [];
+    for (const tri of tris) {
+      if (!nearWheel(tri, cyl)) {
+        keep.push(tri);
+        continue;
+      }
+      const hit = clipTriangle(tri, cyl);
+      if (!hit.ok || !hit.inside || !hit.inside.length) {
+        keep.push(tri);
+        continue;
+      }
+      cuts += 1;
+      if (hit.outside && hit.outside.length) keep.push(...hit.outside);
+      extra.get(cyl.name).push(...hit.inside);
+      if (hit.boundary) boundary.push(...hit.boundary);
+    }
+    tris = keep;
+  }
+  if (!cuts) return { parts, cuts: 0, cylinders, paired: true, boundary };
+  const next = [{ ...body, mesh: trianglesToMesh(tris), locks: lockMask(trianglesToMesh(tris), cylinders) }];
+  // locks must match the mesh we store. Rebuild once.
+  const bodyMesh = trianglesToMesh(tris);
+  next[0] = { ...body, mesh: bodyMesh, locks: lockMask(bodyMesh, cylinders) };
+  for (const wheel of wheels) {
+    const added = extra.get(wheel.name) || [];
+    const mesh = added.length ? trianglesToMesh(meshTriangles(wheel.mesh).concat(added)) : wheel.mesh;
+    const cyl = cylinders.find((item) => item.name === wheel.name);
+    next.push({ ...wheel, mesh, locks: lockMask(mesh, [cyl]) });
+  }
+  const paired = boundary.every((point) => {
+    const onBody = hasPoint(next[0].mesh, point);
+    const onWheel = next.slice(1).some((part) => hasPoint(part.mesh, point));
+    return onBody && onWheel;
+  });
+  return { parts: next, cuts, cylinders, paired, boundary };
+}
+
+export function exportedBleed(parts, cylinders) {
+  let count = 0;
+  for (const part of parts) {
+    const tris = meshTriangles(part.mesh);
+    for (const cyl of cylinders) {
+      const near = tris.filter((tri) => nearWheel(tri, cyl));
+      count += bleedCount(near, cyl);
+    }
+  }
+  return count;
+}
+
+function cylinderFromPart(part) {
+  const box = meshBox(part.mesh);
+  const center = part.center || [
+    (box.min[0] + box.max[0]) / 2,
+    (box.min[1] + box.max[1]) / 2,
+    (box.min[2] + box.max[2]) / 2
+  ];
+  return {
+    name: part.name,
+    cx: center[0],
+    cy: center[1],
+    cz: center[2],
+    ax: 1,
+    ay: 0,
+    az: 0,
+    radius: Math.max(box.max[1] - box.min[1], box.max[2] - box.min[2]) / 2,
+    half: (box.max[0] - box.min[0]) / 2 + 0.02,
+    capUv: [0.08, 0.08]
+  };
+}
+
+function nearWheel(tri, cyl) {
+  const xs = tri.map((vert) => vert.p[0]);
+  if (Math.max(...xs) < cyl.cx - cyl.half || Math.min(...xs) > cyl.cx + cyl.half) return false;
+  const ys = tri.map((vert) => vert.p[1]);
+  const zs = tri.map((vert) => vert.p[2]);
+  const pad = cyl.radius * 2.2;
+  return Math.max(...ys) >= cyl.cy - pad && Math.min(...ys) <= cyl.cy + pad
+    && Math.max(...zs) >= cyl.cz - pad && Math.min(...zs) <= cyl.cz + pad;
+}
+
+function meshTriangles(mesh) {
+  const tris = [];
+  for (let face = 0; face < mesh.indices.length; face += 3) {
+    const tri = [];
+    for (let corner = 0; corner < 3; corner++) {
+      const id = mesh.indices[face + corner];
+      tri.push({
+        p: [mesh.positions[id * 3], mesh.positions[id * 3 + 1], mesh.positions[id * 3 + 2]],
+        uv: [mesh.uvs[id * 2] || 0, mesh.uvs[id * 2 + 1] || 0],
+        n: [mesh.normals[id * 3] || 0, mesh.normals[id * 3 + 1] || 1, mesh.normals[id * 3 + 2] || 0]
+      });
+    }
+    tris.push(tri);
+  }
+  return tris;
+}
+
+function trianglesToMesh(tris) {
+  const map = new Map();
+  const positions = [];
+  const uvs = [];
+  const normals = [];
+  const indices = [];
+  const take = (vert) => {
+    const key = vert.p.map((value) => Math.round(value * 2000)).join(",") + "/" + vert.uv.map((value) => Math.round(value * 4096)).join(",");
+    if (map.has(key)) return map.get(key);
+    const id = positions.length / 3;
+    map.set(key, id);
+    positions.push(...vert.p);
+    uvs.push(...vert.uv);
+    const n = vert.n || [0, 1, 0];
+    normals.push(n[0], n[1], n[2]);
+    return id;
+  };
+  for (const tri of tris) {
+    const ids = tri.map(take);
+    if (ids[0] === ids[1] || ids[1] === ids[2] || ids[0] === ids[2]) continue;
+    indices.push(...ids);
+  }
+  return {
+    positions: new Float32Array(positions),
+    uvs: new Float32Array(uvs),
+    normals: new Float32Array(normals),
+    indices: new Uint32Array(indices)
+  };
+}
+
+function lockMask(mesh, cylinders) {
+  const lock = new Uint8Array(mesh.positions.length / 3);
+  for (let i = 0; i < lock.length; i++) {
+    const p = [mesh.positions[i * 3], mesh.positions[i * 3 + 1], mesh.positions[i * 3 + 2]];
+    for (const cyl of cylinders) {
+      if (Math.abs(p[0] - cyl.cx) > cyl.half) continue;
+      const dist = Math.hypot(p[1] - cyl.cy, p[2] - cyl.cz);
+      if (Math.abs(dist - cyl.radius) <= 0.001) lock[i] = 1;
+    }
+  }
+  return lock;
+}
+
+function hasPoint(mesh, point) {
+  for (let i = 0; i < mesh.positions.length; i += 3) {
+    const d = Math.hypot(
+      mesh.positions[i] - point[0],
+      mesh.positions[i + 1] - point[1],
+      mesh.positions[i + 2] - point[2]
+    );
+    if (d <= 0.001) return true;
+  }
+  return false;
+}
+
+function meshBox(mesh) {
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < mesh.positions.length; i += 3) {
+    for (let axis = 0; axis < 3; axis++) {
+      if (mesh.positions[i + axis] < min[axis]) min[axis] = mesh.positions[i + axis];
+      if (mesh.positions[i + axis] > max[axis]) max[axis] = mesh.positions[i + axis];
+    }
+  }
+  return { min, max };
+}
+
 function sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
 function add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
 function scale(a, s) { return [a[0] * s, a[1] * s, a[2] * s]; }

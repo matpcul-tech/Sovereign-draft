@@ -485,7 +485,28 @@ export function packGlb(doc) {
     json.extensionsUsed = ["EXT_texture_webp"];
     json.extensionsRequired = ["EXT_texture_webp"];
   }
-  const binBytes = bin.toBuffer();
+  return writeGlb(json, bin.toBuffer());
+}
+
+export function replaceNamedImage(bytes, name, imageBytes, mime) {
+  const { json, bin } = readGlb(bytes);
+  const index = (json.images || []).findIndex((image) => image.name === name);
+  if (index < 0) throw new Error("No image named " + name + ".");
+  const image = json.images[index];
+  if (image.bufferView == null) throw new Error(name + " has no buffer.");
+  if (mime) image.mimeType = mime;
+  const writer = new BinWriter();
+  for (let viewIndex = 0; viewIndex < json.bufferViews.length; viewIndex++) {
+    const view = json.bufferViews[viewIndex];
+    const start = view.byteOffset || 0;
+    const data = viewIndex === image.bufferView ? imageBytes : bin.subarray(start, start + view.byteLength);
+    view.byteOffset = writer.add(data);
+    view.byteLength = data.byteLength != null ? data.byteLength : data.length;
+  }
+  return writeGlb(json, writer.toBuffer());
+}
+
+function writeGlb(json, binBytes) {
   json.buffers = [{ byteLength: binBytes.length }];
   const jsonBytes = pad(new TextEncoder().encode(JSON.stringify(json)), 4, 0x20);
   const binChunk = pad(binBytes, 4, 0);
@@ -634,27 +655,4 @@ export function sceneToDoc(root, sourceImages, options = {}) {
     meshes: meshList,
     materials: materialList
   };
-}
-
-export function summarizeTree(scene) {
-  const nodes = [];
-  scene.traverse((obj) => {
-    if (!obj.parent) return;
-    if (obj.userData && obj.userData.helper) return;
-    const materials = obj.isMesh ? (Array.isArray(obj.material) ? obj.material : [obj.material]).map((material) => material && material.name) : [];
-    let triangles = 0;
-    if (obj.isMesh && obj.geometry) {
-      const index = obj.geometry.getIndex();
-      const position = obj.geometry.getAttribute("position");
-      triangles = index ? index.count / 3 : position ? position.count / 3 : 0;
-    }
-    nodes.push({
-      name: obj.name,
-      parent: obj.parent.name || "",
-      extras: keptExtras(obj.userData) || null,
-      materials,
-      triangles
-    });
-  });
-  return nodes;
 }

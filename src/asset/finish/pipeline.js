@@ -1,8 +1,11 @@
 import { MeshoptSimplifier } from "three/addons/libs/meshopt_simplifier.module.js";
 import { GAME_TINT, carSourceCheck, drawCallCheck } from "./profiles.js";
-import { decodePng, encodePng } from "./png.js";
+import { encodePng } from "./png.js";
+import { decodeRaster } from "./raster.js";
 import { buildCarMask } from "./mask.js";
 import { zipStore } from "./zip.js";
+import { cutSpecifiedWheels, exportedBleed } from "./clip.js";
+import { faceTopology } from "./select.js";
 import { packGlb, sha256Hex, sourceCensus } from "./glb.js";
 
 const WELD = 2000;
@@ -89,6 +92,7 @@ export async function runFinish(loaded, profile, options = {}) {
   log.push("Welded " + welded.merged + " vertices within 0.5 mm. UV seams and creases stayed split.");
 
   let parts;
+  let wheelCylinders = [];
   if (profile.id === "CAR") {
     const split = splitWheels(mesh);
     log.push(split.detail);
@@ -96,7 +100,18 @@ export async function runFinish(loaded, profile, options = {}) {
       checks.push({ id: "wheels", pass: false, detail: split.detail, action: "Hand the shell to VEHICLE and split the four wheels by hand. This finish will not invent a cut." });
       return finishResult({ sourceSha, before, log, checks, banner: "NOT READY", summary: split.detail });
     }
-    parts = split.parts;
+    const cut = cutSpecifiedWheels(split.parts);
+    parts = cut.parts;
+    wheelCylinders = cut.cylinders;
+    log.push(cut.cuts
+      ? "Cut " + cut.cuts + " body triangles on the specified wheel cylinders. New vertices interpolate UV and normals. The shared loop stays within 1 mm."
+      : "No body triangle crossed a wheel cylinder, so no new cut was required.");
+    checks.push({
+      id: "border",
+      pass: cut.paired !== false,
+      detail: cut.cuts ? "Shared border points from the cut are on both the body and the wheel within 1 mm. Paired: " + (cut.paired ? "yes" : "no") + "." : "No shared cut was required.",
+      action: cut.paired === false ? "The cut did not copy the same border onto both sides." : ""
+    });
     const axles = split.parts.filter((part) => part.wheel).map((part) => part.name + " " + part.center.map((value) => value.toFixed(3)).join(" ")).join("; ");
     checks.push({ id: "wheels", pass: true, detail: "Four wheel islands were named. No cylinder was guessed.", action: "" });
     checks.push({ id: "axle", pass: true, detail: "Wheel origins are the island centers. " + axles, action: "" });
@@ -113,13 +128,13 @@ export async function runFinish(loaded, profile, options = {}) {
     const share = totalBefore <= profile.triangleTarget
       ? beforeTris
       : Math.max(4, Math.round(beforeTris / totalBefore * profile.triangleTarget));
-    const simplified = await simplifyPart(part.mesh, share, totalBefore <= profile.triangleTarget);
+    const simplified = await simplifyPart(part.mesh, share, totalBefore <= profile.triangleTarget, part.locks);
     part.mesh = simplified.mesh;
     dropBadFaces(part.mesh);
     part.mesh = compact(part.mesh);
     triangles += part.mesh.indices.length / 3;
     log.push(part.name + ". " + simplified.detail + " (" + beforeTris + " to " + (part.mesh.indices.length / 3) + ").");
-    recomputeNormals(part.mesh);
+    recomputeNormals(part.mesh, wheelCylinders);
   }
   const budget = triangles > profile.triangleCeiling;
   checks.push({
@@ -128,7 +143,7 @@ export async function runFinish(loaded, profile, options = {}) {
     detail: "Exported triangles " + triangles + ". Target " + profile.triangleTarget + ". Ceiling " + profile.triangleCeiling + ".",
     action: budget ? "The count is over the ceiling. Borders were not unlocked." : ""
   });
-  checks.push(wheelBleed(parts));
+  checks.push(wheelCylinders.length ? cylinderBleed(parts, wheelCylinders) : wheelBleed(parts));
   checks.push({
     id: "drawcalls",
     pass: drawCallCheck(parts.length, profile).pass,
@@ -136,25 +151,26 @@ export async function runFinish(loaded, profile, options = {}) {
     action: drawCallCheck(parts.length, profile).pass ? "" : "Fewer draw calls are required. Do not split paint from glass to get there."
   });
 
-  const images = resizeImages(loaded, profile.maxTexture, log, checks);
+  const images = await resizeImages(loaded, profile.maxTexture, log, checks);
   let maskPack = null;
   if (profile.id === "CAR") {
-    const png = (images.outputs || []).find((image) => image.mime === "image/png" && image.bytes && image.bytes.length);
-    if (!png) {
-      checks.push({ id: "mask", pass: false, detail: "No PNG base image was measured, so no mask was built.", action: "Use one PNG base color. A new atlas was not baked." });
+    const sourceImage = (images.outputs || []).find((image) => image.bytes && image.bytes.length);
+    if (!sourceImage) {
+      checks.push({ id: "mask", pass: false, detail: "No base image was measured, so no mask was built.", action: "Keep the original base color image. A new atlas was not baked." });
     } else {
       try {
-        const decoded = decodePng(png.bytes);
+        const decoded = await decodeRaster(sourceImage.bytes, sourceImage.mime);
         const built = buildCarMask(parts, decoded.rgba, decoded.width, decoded.height);
         if (!built.ok) checks.push({ id: "mask", pass: false, detail: built.detail, action: built.action || "" });
         else {
           maskPack = built;
-          png.bytes = encodePng(decoded.width, decoded.height, built.baseRgba);
+          sourceImage.bytes = encodePng(decoded.width, decoded.height, built.baseRgba);
+          sourceImage.mime = "image/png";
           checks.push(...built.checks);
-          log.push("A 1024 mask was stored on emissiveTexture with factor 0, 0, 0 and extras.kitMask. Street Empire does not read that mask.");
+          log.push("A 1024 mask was stored on emissiveTexture with factor 0, 0, 0 and extras.kitMask. Street Empire src/kit.js does not read that mask.");
         }
       } catch (error) {
-        checks.push({ id: "mask", pass: false, detail: "The base PNG could not be masked.", action: "Replace the base image with an 8-bit RGBA PNG." });
+        checks.push({ id: "mask", pass: false, detail: "The base image could not be measured: " + (error instanceof Error ? error.message : "decode failed") + ".", action: "Keep the original channels. A new atlas was not baked." });
       }
     }
   }
@@ -204,6 +220,12 @@ export async function runFinish(loaded, profile, options = {}) {
     detail: bad.zero + " zero-area triangles and " + bad.duplicate + " repeated triangles remain.",
     action: bad.zero || bad.duplicate ? "Remove the remaining bad triangles." : ""
   });
+  checks.push({
+    id: "manifold",
+    pass: bad.nonManifold === 0,
+    detail: bad.nonManifold + " edges are shared by more than two triangles. Open tears that are not this kind of edge are not certified as closed.",
+    action: bad.nonManifold ? "Repair the non-manifold edges in VEHICLE. This finish did not call them clean." : ""
+  });
   if (profile.id === "CAR") {
     const missing = ["body", "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"].filter((name) => !parts.some((part) => part.name === name));
     checks.push({
@@ -221,11 +243,24 @@ export async function runFinish(loaded, profile, options = {}) {
   log.push("Source SHA " + sourceSha.slice(0, 12) + " was not modified. Output SHA " + afterSha.slice(0, 12) + ".");
   log.push(summary);
   const validation = [banner, summary, ""].concat(checks.map((check) => (check.pass ? "PASS  " : "FAIL  ") + check.detail + (check.action ? "  " + check.action : ""))).concat([""]).concat(log).join("\n");
+  const mapping = {
+    sourceSha,
+    verdict: banner,
+    ready: !failed,
+    gameReadsMask: false,
+    note: "Street Empire src/kit.js does not read extras.kitMask or the emissive image. READY is the declared checks only.",
+    profile: profile.id,
+    before,
+    after,
+    nodes: parts.map((part) => ({ name: part.name, kitWheel: !!part.wheel })),
+    material: materialName
+  };
   const files = [
     { name: "model.glb", data: bytes },
-    { name: "validation.txt", data: new TextEncoder().encode(validation) }
+    { name: "mapping.json", data: new TextEncoder().encode(JSON.stringify(mapping, null, 2)) },
+    { name: "validation.txt", data: new TextEncoder().encode(validation) },
+    ...reviewPngs(parts, maskPack)
   ];
-  if (maskPack) files.push({ name: "review-mask.png", data: maskPack.reviewPng });
   return finishResult({
     sourceSha,
     before,
@@ -234,12 +269,33 @@ export async function runFinish(loaded, profile, options = {}) {
     checks,
     bytes,
     zip: zipStore(files),
+    files,
+    review: maskPack && maskPack.reviewPng,
+    mask: maskPack && { rgba: maskPack.maskRgba, size: maskPack.maskSize },
     banner,
     summary
   });
 }
 
 function finishResult(result) {
+  let files = result.files || null;
+  let zip = result.zip || null;
+  if (!zip) {
+    const validation = [result.banner, result.summary || "", ""].concat((result.checks || []).map((check) => (check.pass ? "PASS  " : "FAIL  ") + check.detail + (check.action ? "  " + check.action : ""))).concat([""]).concat(result.log || []).join("\n");
+    const mapping = {
+      sourceSha: result.sourceSha || "",
+      verdict: result.banner,
+      ready: false,
+      gameReadsMask: false,
+      note: "No GLB was written. Street Empire src/kit.js does not read extras.kitMask or the emissive image.",
+      before: result.before || null
+    };
+    files = [
+      { name: "mapping.json", data: new TextEncoder().encode(JSON.stringify(mapping, null, 2)) },
+      { name: "validation.txt", data: new TextEncoder().encode(validation) }
+    ];
+    zip = zipStore(files);
+  }
   return {
     ready: result.banner === "READY",
     issuedReady: result.banner === "READY",
@@ -250,7 +306,10 @@ function finishResult(result) {
     before: result.before,
     after: result.after || null,
     bytes: result.bytes || null,
-    zip: result.zip || null,
+    zip,
+    files,
+    review: result.review || null,
+    mask: result.mask || null,
     sourceSha: result.sourceSha
   };
 }
@@ -283,13 +342,21 @@ function wheelBleed(parts) {
 function outputDefects(parts) {
   let zero = 0;
   let duplicate = 0;
+  const corners = [];
   for (const part of parts) {
     const copy = { ...part.mesh, indices: part.mesh.indices.slice() };
     const dropped = dropBadFaces(copy);
     zero += dropped.zero;
     duplicate += dropped.duplicate;
+    for (let face = 0; face < part.mesh.indices.length; face += 3) {
+      for (let corner = 0; corner < 3; corner++) {
+        const id = part.mesh.indices[face + corner];
+        corners.push(part.mesh.positions[id * 3], part.mesh.positions[id * 3 + 1], part.mesh.positions[id * 3 + 2]);
+      }
+    }
   }
-  return { zero, duplicate };
+  const topology = faceTopology(new Float32Array(corners));
+  return { zero, duplicate, nonManifold: topology.nonManifold };
 }
 
 function measureFile(loaded) {
@@ -576,9 +643,10 @@ function wheelSlot(box, whole) {
   return "wheel_" + (center[2] >= 0 ? "f" : "r") + (center[0] < 0 ? "l" : "r");
 }
 
-async function simplifyPart(mesh, target, hold) {
+async function simplifyPart(mesh, target, hold, locks) {
   const count = mesh.indices.length / 3;
-  if (hold || count <= target) return { mesh, detail: "Simplify skipped. The part is at or under its share of the target." };
+  const locked = locks && locks.some((value) => value) ? locks : null;
+  if (hold || count <= target) return { mesh, detail: "Simplify skipped. The part is at or under its share of the target." + (locked ? " Border vertices stay locked." : "") };
   const targetIndex = Math.max(3, target * 3);
   const [indices] = MeshoptSimplifier.simplifyWithAttributes(
     mesh.indices,
@@ -587,13 +655,13 @@ async function simplifyPart(mesh, target, hold) {
     mesh.uvs,
     2,
     [1, 1],
-    null,
+    locked,
     Math.min(mesh.indices.length, targetIndex),
     0.002,
     ["ErrorAbsolute"]
   );
   const next = { ...mesh, indices: indices instanceof Uint32Array ? indices : new Uint32Array(indices) };
-  return { mesh: compact(next), detail: "Simplified with UV attributes. Error limit 2 mm. Borders were not present to unlock." };
+  return { mesh: compact(next), detail: "Simplified with UV attributes. Error limit 2 mm." + (locked ? " Wheel-border vertices were locked on the curve." : " No wheel border was locked.") };
 }
 
 function compact(mesh) {
@@ -616,7 +684,8 @@ function compact(mesh) {
   return { positions: new Float32Array(positions), uvs: new Float32Array(uvs), normals: new Float32Array(normals), indices };
 }
 
-function recomputeNormals(mesh) {
+function recomputeNormals(mesh, cylinders) {
+  const keep = cylinders && cylinders.length ? new Float32Array(mesh.normals) : null;
   const acc = new Float32Array(mesh.positions.length);
   for (let face = 0; face < mesh.indices.length; face += 3) {
     const a = vertex(mesh, mesh.indices[face]);
@@ -642,44 +711,145 @@ function recomputeNormals(mesh) {
     mesh.normals[i + 1] = acc[i + 1] / length;
     mesh.normals[i + 2] = acc[i + 2] / length;
   }
+  if (!keep) return;
+  for (let i = 0; i < mesh.positions.length / 3; i++) {
+    const p = [mesh.positions[i * 3], mesh.positions[i * 3 + 1], mesh.positions[i * 3 + 2]];
+    const onRing = cylinders.some((cyl) => {
+      if (Math.abs(p[0] - cyl.cx) > cyl.half) return false;
+      return Math.abs(Math.hypot(p[1] - cyl.cy, p[2] - cyl.cz) - cyl.radius) <= 0.001;
+    });
+    if (!onRing) continue;
+    mesh.normals[i * 3] = keep[i * 3];
+    mesh.normals[i * 3 + 1] = keep[i * 3 + 1];
+    mesh.normals[i * 3 + 2] = keep[i * 3 + 2];
+  }
 }
 
-function resizeImages(loaded, max, log, checks) {
+async function resizeImages(loaded, max, log, checks) {
   const outputs = [];
   let failed = false;
   for (const image of loaded.images || []) {
-    if (image.mime !== "image/png") {
-      outputs.push(image);
-      failed = true;
-      log.push(image.name + " was kept. Its pixel size was not measured, so it was not resized.");
-      continue;
-    }
     try {
-      const decoded = decodePng(image.bytes);
+      const decoded = await decodeRaster(image.bytes, image.mime);
       if (decoded.width <= max && decoded.height <= max) {
         outputs.push(image);
-        log.push(image.name + " is " + decoded.width + " px. It was not resized.");
+        log.push(image.name + " is " + decoded.width + " px (" + (image.mime || "image") + "). It was not resized. Channels were kept.");
         continue;
       }
       const scale = max / Math.max(decoded.width, decoded.height);
       const width = Math.max(1, Math.round(decoded.width * scale));
       const height = Math.max(1, Math.round(decoded.height * scale));
       const rgba = boxFilter(decoded.rgba, decoded.width, decoded.height, width, height);
-      outputs.push({ ...image, bytes: encodePng(width, height, rgba) });
-      log.push(image.name + " was resized from " + decoded.width + "x" + decoded.height + " to " + width + "x" + height + ". The pixels were only downsampled.");
+      outputs.push({ ...image, mime: "image/png", bytes: encodePng(width, height, rgba) });
+      log.push(image.name + " was resized from " + decoded.width + "x" + decoded.height + " to " + width + "x" + height + ". Only the size changed. The channels were not recolored.");
     } catch (error) {
       outputs.push(image);
       failed = true;
-      log.push(image.name + " was kept. The PNG could not be read, so it was not resized.");
+      log.push(image.name + " was kept. It could not be measured: " + (error instanceof Error ? error.message : "decode failed") + ".");
     }
   }
   checks.push({
     id: "texture",
     pass: !failed,
     detail: failed ? "A texture could not be measured against the cap." : "Textures are within " + max + " px or were only downsampled.",
-    action: failed ? "Provide a PNG, or resize the texture outside this step." : ""
+    action: failed ? "The image could not be decoded, so it was not resized." : ""
   });
   return { outputs };
+}
+
+function cylinderBleed(parts, cylinders) {
+  const count = exportedBleed(parts, cylinders);
+  return {
+    id: "bleed",
+    pass: count === 0,
+    detail: count + " exported triangles cross a wheel cylinder by more than 1 mm after simplify.",
+    action: count ? "The wheel border left the curve. It was not unlocked to pass." : ""
+  };
+}
+
+function reviewPngs(parts, maskPack) {
+  const files = [];
+  if (maskPack && maskPack.reviewPng) files.push({ name: "review-mask-4x.png", data: maskPack.reviewPng });
+  for (const view of ["side", "front", "top"]) {
+    files.push({ name: "review-" + view + ".png", data: encodePng(160, 160, paintView(parts, view)) });
+  }
+  return files;
+}
+
+function paintView(parts, view) {
+  const rgba = new Uint8Array(160 * 160 * 4);
+  rgba.fill(7);
+  for (let i = 0; i < rgba.length; i += 4) {
+    rgba[i] = 7;
+    rgba[i + 1] = 16;
+    rgba[i + 2] = 31;
+    rgba[i + 3] = 255;
+  }
+  const points = [];
+  for (const part of parts) {
+    const color = part.wheel ? [0, 212, 184] : [212, 168, 67];
+    for (let face = 0; face < part.mesh.indices.length; face += 3) {
+      const tri = [];
+      for (let corner = 0; corner < 3; corner++) {
+        const id = part.mesh.indices[face + corner];
+        const x = part.mesh.positions[id * 3];
+        const y = part.mesh.positions[id * 3 + 1];
+        const z = part.mesh.positions[id * 3 + 2];
+        const p = view === "front" ? [x, y] : view === "top" ? [x, z] : [z, y];
+        tri.push(p);
+        points.push(p);
+      }
+      tri.color = color;
+      points.push(tri);
+    }
+  }
+  const flat = points.filter((point) => point.length === 2);
+  if (!flat.length) return rgba;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const point of flat) {
+    if (point[0] < minX) minX = point[0];
+    if (point[1] < minY) minY = point[1];
+    if (point[0] > maxX) maxX = point[0];
+    if (point[1] > maxY) maxY = point[1];
+  }
+  const scale = 140 / Math.max(maxX - minX, maxY - minY, 1e-6);
+  for (const item of points) {
+    if (item.length === 2) continue;
+    const color = item.color;
+    const projected = item.map((point) => [
+      10 + (point[0] - minX) * scale,
+      150 - (point[1] - minY) * scale
+    ]);
+    fillTri(rgba, 160, projected, color);
+  }
+  return rgba;
+}
+
+function fillTri(rgba, size, tri, color) {
+  const minX = Math.max(0, Math.floor(Math.min(tri[0][0], tri[1][0], tri[2][0])));
+  const maxX = Math.min(size - 1, Math.ceil(Math.max(tri[0][0], tri[1][0], tri[2][0])));
+  const minY = Math.max(0, Math.floor(Math.min(tri[0][1], tri[1][1], tri[2][1])));
+  const maxY = Math.min(size - 1, Math.ceil(Math.max(tri[0][1], tri[1][1], tri[2][1])));
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const area = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      const whole = area(tri[0], tri[1], tri[2]);
+      if (Math.abs(whole) < 1e-6) continue;
+      const p = [x + 0.5, y + 0.5];
+      const w0 = area(p, tri[1], tri[2]) / whole;
+      const w1 = area(tri[0], p, tri[2]) / whole;
+      const w2 = 1 - w0 - w1;
+      if (w0 < -0.01 || w1 < -0.01 || w2 < -0.01) continue;
+      const index = (y * size + x) * 4;
+      rgba[index] = color[0];
+      rgba[index + 1] = color[1];
+      rgba[index + 2] = color[2];
+      rgba[index + 3] = 255;
+    }
+  }
 }
 
 function packParts(parts, materialName, images, frontConfirmed, maskPack) {
