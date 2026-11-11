@@ -1,10 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { loadVehicle, packGlb, readGlb, sha256Hex } from '../src/asset/finish/glb.js';
 import { atlasPng, crossingCarGlb, singleAtlasCarGlb, solidCarGlb } from '../src/asset/finish/fixture.js';
-import { encodePng } from '../src/asset/finish/png.js';
+import { decodePng, encodePng } from '../src/asset/finish/png.js';
 import { unzipStore } from '../src/asset/finish/zip.js';
 import { resolveProfile } from '../src/asset/finish/profiles.js';
-import { growFaces, seamBlocks } from '../src/asset/finish/select.js';
+import { faceTopology, growFaces, seamBlocks, wheelSurfaceBlocks } from '../src/asset/finish/select.js';
 import { runFinish } from '../src/asset/finish/pipeline.js';
 
 async function run(bytes, profile, options) {
@@ -12,7 +13,7 @@ async function run(bytes, profile, options) {
   return { loaded, result: await runFinish(loaded, profile, options) };
 }
 
-function pushBox(dst, min, max) {
+function pushBox(dst, min, max, uv) {
   const [x0, y0, z0] = min;
   const [x1, y1, z1] = max;
   const verts = [
@@ -25,11 +26,14 @@ function pushBox(dst, min, max) {
     [0, 4, 7], [0, 7, 3], [1, 2, 6], [1, 6, 5]
   ];
   const start = dst.p.length / 3;
-  for (const vert of verts) {
+  const cornerUv = uv
+    ? [[uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]], [uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]]]
+    : null;
+  verts.forEach((vert, index) => {
     dst.p.push(...vert);
-    dst.u.push(0.2, 0.2);
+    dst.u.push(cornerUv ? cornerUv[index][0] : 0.2, cornerUv ? cornerUv[index][1] : 0.2);
     dst.n.push(0, 1, 0);
-  }
+  });
   for (const face of faces) dst.i.push(start + face[0], start + face[1], start + face[2]);
 }
 
@@ -88,12 +92,12 @@ function windowCarGlb() {
   }
   return meshGlb((dst) => {
     const body = dst.p.length / 3;
-    pushBox(dst, [-0.35, 0, -1], [0.35, 1, 1]);
+    pushBox(dst, [-0.35, 0, -1], [0.35, 1, 1], [0.05, 0.2, 0.48, 0.75]);
     glassBand(dst, body + 3, -0.35, 1, 1.28);
-    pushBox(dst, [-0.72, 0.02, 0.55], [-0.48, 0.26, 0.82]);
-    pushBox(dst, [0.48, 0.02, 0.55], [0.72, 0.26, 0.82]);
-    pushBox(dst, [-0.72, 0.02, -0.82], [-0.48, 0.26, -0.55]);
-    pushBox(dst, [0.48, 0.02, -0.82], [0.72, 0.26, -0.55]);
+    pushBox(dst, [-0.72, 0.02, 0.55], [-0.48, 0.26, 0.82], [0.78, 0.05, 0.95, 0.22]);
+    pushBox(dst, [0.48, 0.02, 0.55], [0.72, 0.26, 0.82], [0.78, 0.05, 0.95, 0.22]);
+    pushBox(dst, [-0.72, 0.02, -0.82], [-0.48, 0.26, -0.55], [0.78, 0.05, 0.95, 0.22]);
+    pushBox(dst, [0.48, 0.02, -0.82], [0.72, 0.26, -0.55], [0.78, 0.05, 0.95, 0.22]);
   }, encodePng(32, 32, rgba));
 }
 
@@ -101,7 +105,7 @@ function glassBand(dst, a, x, y0, y1) {
   const start = dst.p.length / 3;
   const x2 = x - 0.04;
   dst.p.push(x2, y0, -1, x2, y0, 1, x2, y1, 1, x2, y1, -1, x2, (y0 + y1) / 2, 0);
-  dst.u.push(0.7, 0.35, 0.9, 0.35, 0.9, 0.7, 0.7, 0.7, 0.8, 0.5);
+  dst.u.push(0.48, 0.35, 0.7, 0.35, 0.7, 0.72, 0.48, 0.72, 0.59, 0.52);
   dst.n.push(-1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0);
   dst.i.push(a, start, start + 1, start, start + 1, start + 4, start + 1, start + 2, start + 4, start + 2, start + 3, start + 4, start + 3, start, start + 4);
 }
@@ -299,25 +303,36 @@ describe('finish pipeline', () => {
     expect(square.result.summary).toMatch(/Forward is ambiguous/);
   });
 
-  it('issues READY only when the declared car checks pass', async () => {
+  it('measures a 1 to 2 px glass edge on a continuous atlas and counts the pad conflict', async () => {
     const { result } = await run(windowCarGlb(), resolveProfile('CAR'), { frontConfirmed: true });
-    expect(result.banner).toBe('READY');
-    expect(result.ready).toBe(true);
-    expect(result.summary).toMatch(/not a gameplay/);
-    expect(result.summary).toMatch(/does not read the mask/);
+    const edge = result.checks.find((check) => check.id === 'mask-edge');
+    const clean = result.checks.find((check) => check.id === 'mask-clean');
+    const area = result.checks.find((check) => check.id === 'mask-area');
+    expect(edge.pass).toBe(true);
+    expect(edge.detail).toMatch(/1 to [12] px/);
+    expect(area.pass).toBe(true);
+    expect(area.detail).toMatch(/Side view glass is/);
+    expect(clean.pass).toBe(false);
+    expect(clean.detail).toMatch(/[1-9][0-9]* pad conflicts/);
+    expect(result.banner).toBe('NOT READY');
+    expect(result.summary).toMatch(/declared checks failed/);
     const { json } = readGlb(result.bytes);
     expect(json.materials[0].extras.kitMask).toBe(true);
     expect(json.materials[0].emissiveFactor).toEqual([0, 0, 0]);
-    expect(json.materials[0].emissiveTexture).toBeTruthy();
     const files = unzipStore(result.zip);
-    const names = files.map((file) => file.name);
-    expect(names).toContain('validation.txt');
-    expect(names).toContain('mapping.json');
-    expect(names).toContain('model.glb');
-    expect(names).toContain('review-mask-4x.png');
-    expect(names).toContain('review-side.png');
+    const review = decodePng(files.find((file) => file.name === 'review-mask-4x.png').data);
+    expect(review.width).toBe(640);
+    let teal = 0;
+    let gold = 0;
+    for (let i = 0; i < review.rgba.length; i += 4) {
+      if (review.rgba[i + 1] > 180 && review.rgba[i] < 40) teal += 1;
+      if (review.rgba[i] > 180 && review.rgba[i + 1] > 140 && review.rgba[i + 2] < 90) gold += 1;
+    }
+    expect(teal).toBeGreaterThan(1000);
+    expect(gold).toBeGreaterThan(1000);
     const note = new TextDecoder().decode(files.find((file) => file.name === 'validation.txt').data);
-    expect(note.startsWith('READY')).toBe(true);
+    expect(note).toMatch(/boundary edges/);
+    expect(note).toMatch(/Street Empire src\/kit.js does not read/);
   });
 
   it('cuts a large triangle through a specified wheel cylinder and keeps the exported border', async () => {
@@ -348,7 +363,9 @@ describe('finish pipeline', () => {
     const car = await run(denseWindowCar(), resolveProfile('CAR'), { frontConfirmed: true });
     expect(car.result.before.triangles).toBeGreaterThan(40000);
     expect(car.result.before.minY).toBeGreaterThan(0.05);
-    expect(car.result.banner).toBe('READY');
+    expect(car.result.checks.find((check) => check.id === 'budget').pass).toBe(true);
+    expect(car.result.checks.find((check) => check.id === 'mask-edge').pass).toBe(false);
+    expect(car.result.banner).toBe('NOT READY');
     expect(car.result.after.triangles).toBeLessThanOrEqual(40000);
     expect(car.result.after.size[2]).toBeGreaterThan(4.4);
     expect(car.result.after.size[2]).toBeLessThan(4.6);
@@ -410,5 +427,44 @@ describe('finish pipeline', () => {
     }
     const colorBlocks = seamBlocks(world, splitUv, rgba, 4, 4);
     expect(colorBlocks.size).toBe(1);
+  });
+
+  it('stops grow on a wheel surface before any part is assigned', () => {
+    const world = [];
+    const push = (a, b, c) => world.push(...a, ...b, ...c);
+    push([-0.4, 0.85, -0.3], [0.2, 0.85, -0.3], [0.0, 1.15, 0.2]);
+    push([0.2, 0.85, -0.3], [0.55, 0.08, 0.62], [0.88, 0.08, 0.62]);
+    push([0.55, 0.08, 0.62], [0.88, 0.08, 0.62], [0.72, 0.28, 0.95]);
+    push([0.55, 0.08, 0.62], [0.72, 0.28, 0.95], [0.55, 0.28, 0.95]);
+    push([0.88, 0.08, 0.62], [0.88, 0.28, 0.95], [0.72, 0.28, 0.95]);
+    const corners = new Float32Array(world);
+    const topology = faceTopology(corners);
+    const blocks = wheelSurfaceBlocks(corners);
+    const partIds = new Array(5).fill('shell');
+    expect(seamBlocks(corners, null, null, 0, 0, partIds).size).toBe(0);
+    expect(blocks.size).toBeGreaterThan(0);
+    const open = growFaces(topology, new Float32Array(15), [1], Infinity);
+    const grown = growFaces(topology, new Float32Array(15), [1], Infinity, blocks);
+    expect(open.has(2)).toBe(true);
+    expect(grown.has(1)).toBe(true);
+    expect(grown.has(2)).toBe(false);
+  });
+
+  it('keeps the named wheels of the installed taxi atlas', async () => {
+    const bytes = readFileSync('fixtures/vehicle/taxi-v1.glb');
+    const { result } = await run(bytes, resolveProfile('CAR'), { frontConfirmed: true });
+    expect(result.before.triangles).toBeGreaterThan(25000);
+    const text = result.log.join('\n');
+    expect(text).toMatch(/Named wheel meshes stayed separate/);
+    expect(text).toMatch(/1024/);
+    expect(result.checks.find((check) => check.id === 'wheels').pass).toBe(true);
+    expect(result.checks.find((check) => check.id === 'bleed').pass).toBe(false);
+    expect(result.checks.find((check) => check.id === 'mask-area').detail).toMatch(/Side view glass is/);
+    expect(result.checks.find((check) => check.id === 'mask-edge').pass).toBe(false);
+    expect(result.checks.find((check) => check.id === 'mask-edge').detail).toMatch(/1 to/);
+    expect(result.checks.find((check) => check.id === 'manifold').pass).toBe(false);
+    expect(result.checks.find((check) => check.id === 'open-edges').detail).toMatch(/not a closed-shell certificate/);
+    expect(text).toMatch(/does not read that mask/);
+    expect(result.banner).toBe('NOT READY');
   });
 });

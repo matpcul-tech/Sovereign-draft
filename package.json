@@ -48,6 +48,7 @@
     "@anthropic-ai/sdk": "^0.71.0",
     "@jsquash/webp": "^1.5.0",
     "fix-webm-duration": "^1.0.6",
+    "pako": "^2.1.0",
     "three": "^0.185.1",
     "three-bvh-csg": "^0.0.18"
   },

@@ -17,7 +17,8 @@ import {
   clearActiveFinish
 } from "./finish/profiles.js";
 import { runFinish } from "./finish/pipeline.js";
-import { editMask, reviewSheet } from "./finish/mask.js";
+import { editMask, maskClass, reviewSheet } from "./finish/mask.js";
+import { applyGlassOverlay, clearGlassOverlay } from "./finish/overlay.js";
 import { encodePng } from "./finish/png.js";
 import { zipStore } from "./finish/zip.js";
 
@@ -38,6 +39,9 @@ let finishExport = null;
 let finishZip = null;
 let finishFiles = null;
 let finishMask = null;
+let finishScene = null;
+let maskTool = "";
+let maskHit = null;
 let doc = {
   kind: "asset",
   recipe: "sedan",
@@ -181,7 +185,7 @@ function renderFinish() {
     sourceEl.textContent = "";
     sourceEl.classList.remove("bad");
   }
-  note.textContent = profileSummary(profile) + " A budget fail is an exported triangle count above the ceiling. Crossing the target is not that fail. Run finish logs the fixes. READY means every declared check passed. It is not a gameplay or phone test. Street Empire does not read the mask.";
+  note.textContent = profileSummary(profile) + " A budget fail is an exported triangle count above the ceiling. Crossing the target is not that fail. READY means every declared check passed. Boundary edges are counted and are not a closed-shell certificate. It is not a gameplay or phone test. Street Empire does not read the mask.";
 }
 
 function openFinish() {
@@ -215,8 +219,10 @@ async function onFinishFile(event) {
       materialNames: (loaded.json.materials || []).map((material) => material.name || ""),
       imageCount: (loaded.images || []).length
     };
-    disposeVehicle(loaded.scene);
-    status(guess.reason + " Source bytes were not modified.");
+    if (finishScene) disposeVehicle(finishScene);
+    finishScene = loaded.scene;
+    if (api) api.showVehicle(finishScene);
+    status(guess.reason + " Source bytes were not modified. The model is on screen. Street Empire does not read the mask.");
   } catch (error) {
     finishFile = {
       fileName: file.name || "model.glb",
@@ -246,6 +252,29 @@ function phoneReview(mask, size) {
   return reviewSheet(mask, size);
 }
 
+function floodClass(mask, size, x, y, limit) {
+  const start = (y * size + x) * 4;
+  const kind = maskClass(mask[start], mask[start + 1], mask[start + 2]);
+  const out = [];
+  const stack = [[x, y]];
+  const seen = new Set([x + "," + y]);
+  while (stack.length && out.length < limit) {
+    const [cx, cy] = stack.pop();
+    out.push({ x: cx, y: cy });
+    const next = [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]];
+    for (const [nx, ny] of next) {
+      if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+      const key = nx + "," + ny;
+      if (seen.has(key)) continue;
+      const index = (ny * size + nx) * 4;
+      if (maskClass(mask[index], mask[index + 1], mask[index + 2]) !== kind) continue;
+      seen.add(key);
+      stack.push([nx, ny]);
+    }
+  }
+  return out;
+}
+
 function downloadBytes(bytes, name, type) {
   const blob = new Blob([bytes], { type });
   const url = URL.createObjectURL(blob);
@@ -272,7 +301,11 @@ async function runFinishNow() {
     const result = await runFinish(loaded, profile, {
       frontConfirmed: !!host.querySelector("#finishfront").checked
     });
-    disposeVehicle(loaded.scene);
+    if (finishScene && finishScene !== loaded.scene) disposeVehicle(finishScene);
+    finishScene = loaded.scene;
+    if (api) api.showVehicle(finishScene);
+    if (result.mask) applyGlassOverlay(finishScene, result.mask.rgba, result.mask.size);
+    else clearGlassOverlay(finishScene);
     finishExport = result.bytes;
     finishZip = result.zip;
     finishFiles = result.files || null;
@@ -565,6 +598,11 @@ function ensure() {
   api.setPointerHooks({
     onPick(hit) {
       if (vehicle && vehicle.isOpen()) vehicle.onPick(hit);
+      else if (finishOpen() && hit && hit.uv && finishMask) {
+        maskHit = { x: hit.uv.x, y: hit.uv.y };
+        if (maskTool) paintMask(maskTool, maskTool === "brush" ? 2 : 16);
+        else status("Tap Add glass, Remove glass, or Edge brush, then tap the model. The teal overlay uses the mask. Street Empire does not read it.");
+      }
       else if (hit && hit.object.userData.pivotMarker) {
         status("Pivot " + hit.object.userData.pivotName + ". This marker only names the pivot.");
       }
@@ -617,26 +655,52 @@ function ensure() {
     downloadBytes(finishZip, "finish.zip", "application/zip");
   });
   const paintMask = (op, radius) => {
+    maskTool = op;
     if (!finishMask) {
       toast("Run finish on a car that has a base image first.");
       return;
     }
     const size = finishMask.size;
-    const pixels = [];
-    const y = Math.floor(size * 0.5);
-    for (let x = Math.floor(size * 0.46); x <= Math.floor(size * 0.54); x++) pixels.push({ x, y });
-    finishMask.rgba = editMask(finishMask.rgba, size, size, { op: op === "brush" ? "add" : op, pixels, radius: radius || 0 });
+    let pixels = [];
+    let usedRadius = radius || 0;
+    if (maskHit) {
+      const x = Math.max(0, Math.min(size - 1, Math.round(maskHit.x * (size - 1))));
+      const y = Math.max(0, Math.min(size - 1, Math.round((1 - maskHit.y) * (size - 1))));
+      if (op === "remove") {
+        const index = (y * size + x) * 4;
+        if (maskClass(finishMask.rgba[index], finishMask.rgba[index + 1], finishMask.rgba[index + 2]) !== "glass") {
+          toast("Tap the teal glass on the model to remove that region.");
+          return;
+        }
+        pixels = floodClass(finishMask.rgba, size, x, y, 20000);
+        usedRadius = 0;
+      } else {
+        pixels = [{ x, y }];
+        usedRadius = op === "brush" ? 2 : 16;
+      }
+    } else {
+      const y = Math.floor(size * 0.5);
+      for (let x = Math.floor(size * 0.46); x <= Math.floor(size * 0.54); x++) pixels.push({ x, y });
+    }
+    finishMask.rgba = editMask(finishMask.rgba, size, size, { op: op === "brush" ? "add" : op, pixels, radius: usedRadius });
     const sheet = phoneReview(finishMask.rgba, size);
     const reviewPng = encodePng(sheet.width, sheet.height, sheet.rgba);
     const review = host.querySelector("#finishreview");
     review.hidden = false;
     review.src = URL.createObjectURL(new Blob([reviewPng], { type: "image/png" }));
+    if (finishScene) applyGlassOverlay(finishScene, finishMask.rgba, size);
     const maskPng = encodePng(size, size, finishMask.rgba);
-    if (finishExport) finishExport = replaceNamedImage(finishExport, "mask", maskPng, "image/png");
+    if (finishExport) {
+      try {
+        finishExport = replaceNamedImage(finishExport, "mask", maskPng, "image/png");
+      } catch (error) {
+        toast(error instanceof Error ? error.message : "The mask image was not replaced.");
+      }
+    }
     if (finishFiles) {
-      const note = new TextEncoder().encode("\nMask edit after the verdict. The previous READY or NOT READY line is stale until finish is run again. The download uses this mask.\n");
+      const note = new TextEncoder().encode("\nMask edit after the verdict. The previous READY or NOT READY line is stale until finish is run again. The download uses this mask. Street Empire does not read it.\n");
       finishFiles = finishFiles.map((file) => {
-        if (file.name === "model.glb") return { name: file.name, data: finishExport };
+        if (file.name === "model.glb" && finishExport) return { name: file.name, data: finishExport };
         if (file.name === "review-mask-4x.png") return { name: file.name, data: reviewPng };
         if (file.name === "validation.txt") return { name: file.name, data: concatBytes(file.data, note) };
         return file;
@@ -646,10 +710,10 @@ function ensure() {
     const banner = host.querySelector("#finishbanner");
     banner.classList.add("bad");
     banner.classList.remove("ready");
-    banner.textContent = "NOT READY. The mask was edited after the check. Run finish again before treating the verdict as current. The download already contains this mask.";
-    toast(op === "remove" ? "Removed a glass region. The teal overlay and the download use it." : op === "brush" ? "Edge brush painted a 2 px glass stroke on the teal overlay." : "Added a glass region. The teal overlay and the download use it.");
+    banner.textContent = "NOT READY. The mask was edited on the model after the check. Run finish again before treating the verdict as current. The teal overlay and the download use this mask. Street Empire does not read it.";
+    toast(op === "remove" ? "Removed a glass region on the model." : op === "brush" ? "Edge brush painted a 2 px glass stroke on the model." : "Added a glass region on the model.");
   };
-  host.querySelector("#finishadd").addEventListener("click", () => paintMask("add", 0));
+  host.querySelector("#finishadd").addEventListener("click", () => paintMask("add", 16));
   host.querySelector("#finishremove").addEventListener("click", () => paintMask("remove", 0));
   host.querySelector("#finishbrush").addEventListener("click", () => paintMask("brush", 2));
   host.querySelector("#finishrules").textContent = PENDING_RULES.implemented
