@@ -1,6 +1,6 @@
 import { encodePng } from "./png.js";
 import { zipStore } from "./zip.js";
-import { countAssigned, serializeEdit } from "./edit.js";
+import { appliedMapping, countAssigned } from "./edit.js";
 
 const COLORS = {
   paint: [28, 61, 102, 255],
@@ -153,6 +153,8 @@ export function validationNotes(loaded, edit, checks) {
     "",
     "What this does not do",
     "It does not rebuild topology, fill an interior, or separate parts you did not select.",
+    "A ground or scale change keeps the source meshes and compression, and moves the scene roots. It is not a drop-in.",
+    "Face, paint, tint, and pivot edits rewrite the file. Shared meshes are copied. meshopt, quantization, and WebP are dropped, so the file gets larger.",
     "A tint of an existing material recolors every face that already uses it. That is not face separation.",
     "Failed checks are unfinished work. This package does not award a status.",
     "",
@@ -174,12 +176,12 @@ export function validationNotes(loaded, edit, checks) {
   return lines.join("\n");
 }
 
-export function finishZip(loaded, edit, glbBytes, checks) {
+export function finishZip(loaded, edit, result) {
   const base = (loaded.fileName || "vehicle").replace(/\.glb$/i, "");
-  const mapping = new TextEncoder().encode(JSON.stringify(serializeEdit(loaded, edit), null, 2));
-  const notes = new TextEncoder().encode(validationNotes(loaded, edit, checks));
+  const mapping = new TextEncoder().encode(JSON.stringify(appliedMapping(loaded, edit, result), null, 2));
+  const notes = new TextEncoder().encode(validationNotes(loaded, edit, result.checks));
   const files = [
-    { name: base + "-finish.glb", data: glbBytes },
+    { name: base + "-finish.glb", data: result.bytes },
     { name: "mapping.json", data: mapping },
     { name: "validation.txt", data: notes },
     ...reviewSheets(loaded, edit)

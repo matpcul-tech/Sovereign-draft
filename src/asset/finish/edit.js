@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { MATERIAL_ROLES, STRUCTURES, structureById } from "./parts.js";
-import { packGlb, sceneToDoc } from "./glb.js";
-import { boundsOf } from "./inspect.js";
+import { packGlb, patchSourceGlb, sceneToDoc, sourceCensus } from "./glb.js";
+import { boundsOf, formatMeters } from "./inspect.js";
 
 export function emptyEdit() {
   return {
@@ -514,7 +514,12 @@ export function innerOf(rig) {
 }
 
 function fmt(value) {
-  return Number(value).toFixed(3);
+  return formatMeters(value);
+}
+
+export function hasStructuralEdits(edit) {
+  const used = (bucket) => Object.values(bucket || {}).some((group) => Object.values(group).some((list) => list && list.length));
+  return used(edit.structure) || used(edit.material) || !!(edit.tint && edit.tint.name) || Object.keys(edit.pivots || {}).length > 0;
 }
 
 function hashBytes(bytes) {
@@ -734,16 +739,141 @@ export function validateExport(loaded, edit, doc, stats) {
   return checks;
 }
 
+function materialDocFromSource(loaded) {
+  const json = loaded.json;
+  const imageOf = (textureIndex) => {
+    const texture = json.textures && json.textures[textureIndex];
+    if (!texture) return null;
+    const source = texture.source != null
+      ? texture.source
+      : texture.extensions && texture.extensions.EXT_texture_webp && texture.extensions.EXT_texture_webp.source;
+    if (source == null) return null;
+    const image = loaded.images[source];
+    return image ? { name: image.name, mime: image.mime, bytes: image.bytes } : null;
+  };
+  return {
+    materials: (json.materials || []).map((material) => {
+      const pbr = material.pbrMetallicRoughness || {};
+      return {
+        name: material.name,
+        baseColorFactor: pbr.baseColorFactor || [1, 1, 1, 1],
+        baseColorImage: pbr.baseColorTexture ? imageOf(pbr.baseColorTexture.index) : null,
+        metallicRoughnessImage: pbr.metallicRoughnessTexture ? imageOf(pbr.metallicRoughnessTexture.index) : null,
+        emissiveImage: material.emissiveTexture ? imageOf(material.emissiveTexture.index) : null
+      };
+    })
+  };
+}
+
+function compatibilityReport(loaded, edit, bytes, mode) {
+  const source = sourceCensus(loaded.json, loaded.bytes.length);
+  const exportedJson = readPackedJson(bytes);
+  const exported = sourceCensus(exportedJson, bytes.length);
+  const dropped = source.extensionsRequired.filter((name) => !exported.extensionsRequired.includes(name));
+  const sameRoots = source.roots.join("|") === exported.roots.join("|");
+  const structural = hasStructuralEdits(edit);
+  let summary;
+  if (mode === "identical") {
+    summary = "Export bytes match the source. No root, mesh, or compression change.";
+  } else if (mode === "patched") {
+    summary = "Not a drop-in. Scene roots stay " + source.roots.join(", ") + ". " +
+      (edit.scale !== 1 ? "Root scale is now " + Number(edit.scale).toFixed(3) + ". " : "") +
+      (edit.ground ? "A Y offset was added to those root translations. " : "") +
+      "Mesh sharing and " + (source.extensionsRequired.join(", ") || "the original extensions") + " stay. Source " +
+      source.bytes.toLocaleString() + " bytes, export " + exported.bytes.toLocaleString() + " bytes.";
+  } else {
+    summary = "Not a drop-in. The file was rewritten. Source " + source.meshes + " glTF meshes and " + source.primitives +
+      " primitives (" + source.sharedMeshes + " shared). Export " + exported.meshes + " meshes and " + exported.primitives +
+      " primitives (" + exported.sharedMeshes + " shared). Multi-material nodes are split and shared wheel meshes are copied. " +
+      (dropped.length ? "Removed " + dropped.join(", ") + ". " : "") +
+      "Source " + source.bytes.toLocaleString() + " bytes, export " + exported.bytes.toLocaleString() + " bytes. This is not a smaller mobile file.";
+  }
+  return {
+    dropIn: mode === "identical",
+    mode,
+    summary,
+    structural,
+    sameRoots,
+    source,
+    export: exported,
+    dropped
+  };
+}
+
+function readPackedJson(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const jsonLength = view.getUint32(12, true);
+  return JSON.parse(new TextDecoder().decode(bytes.subarray(20, 20 + jsonLength)));
+}
+
 export function exportVehicle(loaded, edit, images = null) {
   const rig = buildVehicle(loaded, edit);
-  const target = edit.scale !== 1 || edit.ground ? rig : innerOf(rig);
-  if (edit.scale !== 1 || edit.ground) target.userData.exportRoot = true;
-  const doc = sceneToDoc(target, images || loaded.images, { sceneName: loaded.scene.name || "vehicle" });
-  const bytes = packGlb(doc);
   const stats = measureRig(rig);
+  const structural = hasStructuralEdits(edit);
+  const scale = edit.scale && edit.scale !== 1 ? edit.scale : 1;
+  const groundOffsetY = edit.ground ? -(boundsOf(loaded.surfaces).min[1] * scale) : 0;
+  let bytes = null;
+  let doc = null;
+  let mode = "rebuilt";
+  if (!structural) {
+    if (scale === 1 && !edit.ground) {
+      bytes = loaded.bytes;
+      doc = materialDocFromSource(loaded);
+      mode = "identical";
+    } else {
+      const patched = patchSourceGlb(loaded.bytes, { scale, groundOffsetY });
+      if (patched) {
+        bytes = patched.bytes;
+        doc = materialDocFromSource(loaded);
+        mode = "patched";
+      }
+    }
+  }
+  if (!bytes) {
+    const target = scale !== 1 || edit.ground ? rig : innerOf(rig);
+    if (scale !== 1 || edit.ground) target.userData.exportRoot = true;
+    doc = sceneToDoc(target, images || loaded.images, { sceneName: loaded.scene.name || "vehicle" });
+    bytes = packGlb(doc);
+    mode = "rebuilt";
+  }
+  const compatibility = compatibilityReport(loaded, edit, bytes, mode);
   const checks = validateExport(loaded, edit, doc, stats);
+  checks.push({
+    id: "compatibility",
+    pass: compatibility.dropIn,
+    detail: compatibility.summary
+  });
+  checks.push({
+    id: "compression",
+    pass: compatibility.dropped.length === 0 && compatibility.export.bytes <= compatibility.source.bytes * 1.25,
+    detail: compatibility.dropped.length
+      ? "Removed " + compatibility.dropped.join(", ") + ". Source " + compatibility.source.bytes.toLocaleString() + " bytes, export " + compatibility.export.bytes.toLocaleString() + " bytes."
+      : "Source compression remains. Source " + compatibility.source.bytes.toLocaleString() + " bytes, export " + compatibility.export.bytes.toLocaleString() + " bytes."
+  });
   disposeVehicle(rig);
-  return { bytes, doc, stats, checks };
+  return { bytes, doc, stats, checks, compatibility, groundOffsetY };
+}
+
+export function appliedMapping(loaded, edit, result) {
+  const mapping = {
+    kind: "sovereign-vehicle-finish",
+    version: 2,
+    sha256: loaded.sha256,
+    fileName: loaded.fileName,
+    applied: {},
+    compatibility: result.compatibility
+  };
+  if (edit.ground) mapping.applied.groundOffsetY = result.groundOffsetY;
+  if (edit.scale && edit.scale !== 1) mapping.applied.scale = edit.scale;
+  const paintFaces = countAssigned(edit, "material", "paint");
+  if (paintFaces) mapping.applied.paint = { hex: edit.paint.hex, roughness: edit.paint.roughness, metalness: edit.paint.metalness, faces: paintFaces };
+  if (edit.tint && edit.tint.name) mapping.applied.tint = edit.tint;
+  if (hasStructuralEdits(edit)) {
+    if (Object.keys(edit.structure || {}).length) mapping.applied.structure = edit.structure;
+    if (Object.keys(edit.material || {}).length) mapping.applied.material = edit.material;
+    if (Object.keys(edit.pivots || {}).length) mapping.applied.pivots = edit.pivots;
+  }
+  return mapping;
 }
 
 export function disposeVehicle(root) {

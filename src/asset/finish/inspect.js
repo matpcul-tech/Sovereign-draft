@@ -19,9 +19,16 @@ export function boundsOf(surfaces) {
   return { min, max, size: [max[0] - min[0], max[1] - min[1], max[2] - min[2]] };
 }
 
+export function formatMeters(value) {
+  if (!Number.isFinite(value)) return "n/a";
+  const abs = Math.abs(value);
+  if (abs < 5e-7) return "0.000";
+  if (abs < 0.001) return value.toFixed(6);
+  return value.toFixed(3);
+}
+
 function fmt(value) {
-  const shown = Math.abs(value) < 5e-4 ? 0 : value;
-  return Number(shown).toFixed(3);
+  return formatMeters(value);
 }
 
 export function inspectVehicle(loaded) {

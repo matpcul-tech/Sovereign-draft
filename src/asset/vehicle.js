@@ -141,7 +141,7 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
       <button type="button" id="vehsample">Fused sample</button>
       <input id="vehfile" type="file" accept=".glb,model/gltf-binary" hidden>
     </div>
-    <p id="vehlead">Import a Meshy GLB or open the fused sample. The source file stays unchanged until you export.</p>
+    <p id="vehlead">Import a Meshy GLB or open the fused sample. The source file stays unchanged until you export. Export is not a drop-in. Ground and scale keep the source meshes and compression. Face, paint, tint, and pivot edits rewrite the file, copy shared meshes, and drop meshopt and WebP, so the file gets larger.</p>
     <p id="vehsummary"></p>
     <ul id="vehissues"></ul>
     <div class="vehrow">
@@ -302,8 +302,11 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
 
   function fillReport(live) {
     if (!info || !session) return;
+    const census = session.loaded.census;
     const lines = [
-      info.triangles.toLocaleString() + " tris, " + info.meshes + " meshes, " + info.materials.length + " materials, " + info.textures.length + " textures."
+      info.triangles.toLocaleString() + " tris, " +
+      (census ? census.meshes + " glTF meshes, " + census.primitives + " primitives, " + census.sharedMeshes + " shared, " : "") +
+      info.meshes + " drawable pieces, " + info.materials.length + " materials, " + info.textures.length + " textures."
     ];
     lines.push(info.materials.map((material) => material.name + " " + material.triangles.toLocaleString()).join(" | "));
     lines.push(info.textures.map((texture) => texture.name + " " + texture.mime + " " + texture.bytes.toLocaleString() + " bytes").join(" | "));
@@ -573,7 +576,7 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
       const result = exportVehicle(session.loaded, session.edit, images);
       const base = (session.loaded.fileName || "vehicle").replace(/\.glb$/i, "");
       if (zip) {
-        const packed = finishZip(session.loaded, session.edit, result.bytes, result.checks);
+        const packed = finishZip(session.loaded, session.edit, result);
         download(packed, base + "-finish.zip", "application/zip");
       } else {
         download(result.bytes, base + "-finish.glb", "model/gltf-binary");

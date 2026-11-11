@@ -4,13 +4,14 @@ import * as THREE from 'three';
 import { lookupCommand } from '../src/core/command.js';
 import { parseLine } from '../src/asset/grammar.js';
 import { growFaces } from '../src/asset/finish/select.js';
-import { loadVehicle, readGlb, sha256Hex } from '../src/asset/finish/glb.js';
+import { loadVehicle, readGlb, sha256Hex, sourceCensus } from '../src/asset/finish/glb.js';
 import { RANGES, fusedShellGlb } from '../src/asset/finish/fixture.js';
 import { decodePng } from '../src/asset/finish/png.js';
 import { unzipStore } from '../src/asset/finish/zip.js';
 import { finishZip } from '../src/asset/finish/review.js';
-import { describeView, inspectVehicle } from '../src/asset/finish/inspect.js';
+import { describeView, formatMeters, inspectVehicle } from '../src/asset/finish/inspect.js';
 import {
+  appliedMapping,
   applyPreview,
   assignFaces,
   buildVehicle,
@@ -202,7 +203,7 @@ describe('vehicle finish', () => {
     expect(failed).not.toContain('door_fl');
     expect(failed).not.toContain('wheel_fl-spin');
 
-    const zip = unzipStore(finishZip(loaded, session.edit, exported.bytes, exported.checks));
+    const zip = unzipStore(finishZip(loaded, session.edit, exported));
     const names = zip.map((file) => file.name);
     expect(names).toContain('mapping.json');
     expect(names).toContain('validation.txt');
@@ -285,6 +286,11 @@ describe('vehicle finish', () => {
     const atlasBefore = info.materials.find((item) => item.name === 'sedan_atlas').triangles;
     const atlasAfter = edited.stats.materials.find((item) => item.name === 'sedan_atlas').triangles;
     expect(paintTris).toBe(6);
+    expect(edited.compatibility.dropIn).toBe(false);
+    expect(edited.compatibility.summary).toContain('Not a drop-in');
+    expect(edited.compatibility.export.meshes).toBeGreaterThan(edited.compatibility.source.meshes);
+    expect(edited.bytes.length).toBeGreaterThan(source.length * 2);
+    expect(edited.checks.find((check) => check.id === 'compression').pass).toBe(false);
     expect(atlasAfter).toBe(atlasBefore - 6);
     const reloaded = await loadVehicle(edited.bytes, 'sedan-paint.glb');
     const names = new Set();
@@ -334,5 +340,47 @@ describe('vehicle finish', () => {
     expect(Math.hypot(rightOpen.x - rightClosed.x, rightOpen.z - rightClosed.z)).toBeLessThan(0.02);
     disposeVehicle(closed);
     disposeVehicle(opened);
+  }, 30000);
+
+  it('keeps ground and scale on the source meshes and omits unused paint', async () => {
+    const source = new Uint8Array(readFileSync('fixtures/vehicle/sedan-review.glb'));
+    const loaded = await loadVehicle(source, 'sedan-review.glb');
+    expect(loaded.census.meshes).toBe(10);
+    expect(loaded.census.primitives).toBe(20);
+    expect(loaded.census.sharedMeshes).toBe(2);
+    const edit = emptyEdit();
+    edit.ground = true;
+    const grounded = exportVehicle(loaded, edit);
+    const packed = readGlb(grounded.bytes);
+    expect(packed.json.nodes.some((node) => node.name === 'vehicle_root')).toBe(false);
+    expect(sourceCensus(packed.json).roots).toEqual(loaded.census.roots);
+    expect(sourceCensus(packed.json).meshes).toBe(10);
+    expect(sourceCensus(packed.json).primitives).toBe(20);
+    expect(sourceCensus(packed.json).sharedMeshes).toBe(2);
+    expect(packed.json.extensionsRequired).toEqual(expect.arrayContaining(['EXT_meshopt_compression', 'EXT_texture_webp']));
+    expect(grounded.bytes.length).toBeLessThan(source.length + 8000);
+    const mapping = appliedMapping(loaded, edit, grounded);
+    expect(mapping.applied.paint).toBeUndefined();
+    expect(mapping.applied.groundOffsetY).toBeGreaterThan(0);
+    expect(mapping.compatibility.dropIn).toBe(false);
+    expect(mapping.compatibility.summary).toContain('Not a drop-in');
+    const again = await loadVehicle(grounded.bytes, 'ground.glb');
+    expect(Math.abs(inspectVehicle(again).bounds.min[1])).toBeLessThan(0.002);
+    const distance = grounded.stats.wheels.wheel_fl.distance;
+    const detail = grounded.checks.find((check) => check.id === 'wheel_fl-spin').detail;
+    expect(detail).toContain(formatMeters(distance));
+    expect(formatMeters(0.000156)).toBe('0.000156');
+    if (distance >= 5e-7 && distance < 0.001) expect(detail).not.toMatch(/0\.000 m/);
+
+    const scaled = emptyEdit();
+    scaled.scale = 4.5 / inspectVehicle(loaded).bounds.size[2];
+    scaled.ground = true;
+    const both = exportVehicle(loaded, scaled);
+    expect(sourceCensus(readGlb(both.bytes).json).meshes).toBe(10);
+    expect(both.bytes.length).toBeLessThan(source.length + 8000);
+    const scaledView = inspectVehicle(await loadVehicle(both.bytes, 'scaled.glb'));
+    expect(scaledView.bounds.size[2]).toBeGreaterThan(4.4);
+    expect(scaledView.bounds.size[2]).toBeLessThan(4.6);
+    expect(Math.abs(scaledView.bounds.min[1])).toBeLessThan(0.01);
   }, 30000);
 });

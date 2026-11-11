@@ -75,6 +75,7 @@ await page.waitForFunction(() => {
 }, null, { timeout: 15000 });
 const sedanSummary = await page.locator("#vehsummary").innerText();
 check(/47[,.]?821/.test(sedanSummary), "imported sedan summary: " + sedanSummary);
+check(/10 glTF meshes, 20 primitives/.test(sedanSummary), "mesh count is glTF meshes, not split draw calls: " + sedanSummary);
 const issues = await page.locator("#vehissues").innerText();
 check(issues.includes("0.956"), "scale warning shown: " + issues.slice(0, 240));
 check(issues.includes("WebP") || issues.includes("meshopt"), "compression warning shown");

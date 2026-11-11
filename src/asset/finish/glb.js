@@ -171,6 +171,50 @@ function padChunk(bytes, fill) {
   return out;
 }
 
+export function sourceCensus(json, byteLength = 0) {
+  const meshes = json.meshes || [];
+  let primitives = 0;
+  const users = new Map();
+  for (const node of json.nodes || []) {
+    if (node.mesh != null) users.set(node.mesh, (users.get(node.mesh) || 0) + 1);
+  }
+  for (const mesh of meshes) primitives += (mesh.primitives || []).length;
+  const scene = (json.scenes || [])[json.scene || 0] || { nodes: [] };
+  return {
+    meshes: meshes.length,
+    primitives,
+    sharedMeshes: [...users.values()].filter((count) => count > 1).length,
+    roots: (scene.nodes || []).map((index) => (json.nodes[index] && json.nodes[index].name) || String(index)),
+    extensionsRequired: json.extensionsRequired || [],
+    extensionsUsed: json.extensionsUsed || [],
+    bytes: byteLength
+  };
+}
+
+export function patchSourceGlb(bytes, { scale = 1, groundOffsetY = 0 } = {}) {
+  const { json, bin } = readGlb(bytes);
+  const copy = structuredClone(json);
+  const scene = copy.scenes[copy.scene || 0];
+  const roots = scene.nodes || [];
+  for (const index of roots) {
+    const node = copy.nodes[index];
+    if (node.matrix) return null;
+  }
+  for (const index of roots) {
+    const node = copy.nodes[index];
+    const translation = node.translation ? node.translation.slice() : [0, 0, 0];
+    translation[0] *= scale;
+    translation[1] = translation[1] * scale + groundOffsetY;
+    translation[2] *= scale;
+    node.translation = translation;
+    if (scale !== 1) {
+      const nodeScale = node.scale ? node.scale.slice() : [1, 1, 1];
+      node.scale = nodeScale.map((value) => value * scale);
+    }
+  }
+  return { bytes: glbFromParts(copy, bin), json: copy };
+}
+
 function glbFromParts(json, bin) {
   const jsonBytes = padChunk(new TextEncoder().encode(JSON.stringify(json)), 0x20);
   const binBytes = padChunk(bin, 0);
@@ -235,6 +279,7 @@ export async function loadVehicle(bytes, fileName = "vehicle.glb") {
   tagMaterials(gltf.scene, json);
   gltf.scene.userData.vehicleInner = true;
   const surfaces = extractSurfaces(gltf.scene);
+  const census = sourceCensus(json, source.length);
   return {
     bytes: source,
     sha256: await sha256Hex(source),
@@ -242,7 +287,8 @@ export async function loadVehicle(bytes, fileName = "vehicle.glb") {
     json,
     images,
     scene: gltf.scene,
-    surfaces
+    surfaces,
+    census
   };
 }
 
