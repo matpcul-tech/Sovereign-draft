@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { loadVehicle, readGlb, sha256Hex } from '../src/asset/finish/glb.js';
-import { singleAtlasCarGlb, solidCarGlb } from '../src/asset/finish/fixture.js';
+import { loadVehicle, packGlb, readGlb, sha256Hex } from '../src/asset/finish/glb.js';
+import { atlasPng, singleAtlasCarGlb, solidCarGlb } from '../src/asset/finish/fixture.js';
 import { resolveProfile } from '../src/asset/finish/profiles.js';
 import { growFaces, seamBlocks } from '../src/asset/finish/select.js';
 import { runFinish } from '../src/asset/finish/pipeline.js';
@@ -8,6 +8,72 @@ import { runFinish } from '../src/asset/finish/pipeline.js';
 async function run(bytes, profile, options) {
   const loaded = await loadVehicle(bytes, 'car.glb');
   return { loaded, result: await runFinish(loaded, profile, options) };
+}
+
+function pushBox(dst, min, max) {
+  const [x0, y0, z0] = min;
+  const [x1, y1, z1] = max;
+  const verts = [
+    [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+    [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]
+  ];
+  const faces = [
+    [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
+    [0, 1, 5], [0, 5, 4], [3, 6, 2], [3, 7, 6],
+    [0, 4, 7], [0, 7, 3], [1, 2, 6], [1, 6, 5]
+  ];
+  const start = dst.p.length / 3;
+  for (const vert of verts) {
+    dst.p.push(...vert);
+    dst.u.push(0.2, 0.2);
+    dst.n.push(0, 1, 0);
+  }
+  for (const face of faces) dst.i.push(start + face[0], start + face[1], start + face[2]);
+}
+
+function meshGlb(fill) {
+  const dst = { p: [], u: [], n: [], i: [] };
+  fill(dst);
+  return packGlb({
+    sceneName: 'piece',
+    roots: [0],
+    materials: [{
+      name: 'atlas',
+      baseColorFactor: [1, 1, 1, 1],
+      metallicFactor: 0,
+      roughnessFactor: 1,
+      baseColorImage: { name: 'atlas', mime: 'image/png', bytes: atlasPng() }
+    }],
+    meshes: [{
+      name: 'shell',
+      primitives: [{
+        material: 0,
+        position: new Float32Array(dst.p),
+        normal: new Float32Array(dst.n),
+        uv: new Float32Array(dst.u),
+        indices: new Uint32Array(dst.i)
+      }]
+    }],
+    nodes: [{ name: 'shell', mesh: 0 }]
+  });
+}
+
+function figureGlb(armsOut) {
+  return meshGlb((dst) => {
+    pushBox(dst, [-0.15, 0.25, -0.1], [0.15, 1.05, 0.1]);
+    pushBox(dst, [-0.22, 1.05, -0.12], [0.22, 1.7, 0.12]);
+    pushBox(dst, [-0.12, 1.7, -0.1], [0.12, 2.15, 0.1]);
+    if (armsOut) {
+      pushBox(dst, [-1.05, 1.42, -0.08], [-0.22, 1.58, 0.08]);
+      pushBox(dst, [0.22, 1.42, -0.08], [1.05, 1.58, 0.08]);
+    } else {
+      pushBox(dst, [-0.18, 0.7, -0.08], [0.18, 1.45, 0.08]);
+    }
+  });
+}
+
+function blockGlb(min, max) {
+  return meshGlb((dst) => pushBox(dst, min, max));
 }
 
 describe('finish pipeline', () => {
@@ -68,6 +134,31 @@ describe('finish pipeline', () => {
     expect(result.bytes).toBeNull();
     expect(result.summary).toMatch(/4 materials/);
     expect(result.summary).toMatch(/not baked/);
+  });
+
+  it('accepts a T pose and rejects a narrow character without rigging', async () => {
+    const posed = await run(figureGlb(true), resolveProfile('CHARACTER'), { frontConfirmed: true });
+    expect(posed.result.checks.find((check) => check.id === 'pose').pass).toBe(true);
+    expect(posed.result.after.size[1]).toBeGreaterThan(1.75);
+    expect(posed.result.after.size[1]).toBeLessThan(1.85);
+    expect(Math.abs(posed.result.after.minY)).toBeLessThan(0.001);
+    const { json } = readGlb(posed.result.bytes);
+    expect(json.skins).toBeUndefined();
+    const narrow = await run(figureGlb(false), resolveProfile('CHARACTER'), { frontConfirmed: true });
+    expect(narrow.result.banner).toBe('NOT READY');
+    expect(narrow.result.checks.find((check) => check.id === 'pose').pass).toBe(false);
+    expect(narrow.result.checks.find((check) => check.id === 'pose').action).toMatch(/does not rig/);
+  });
+
+  it('grounds a long building and refuses a square footprint', async () => {
+    const raised = await run(blockGlb([-3, 0.4, -2], [3, 4.4, 2]), resolveProfile('BUILDING'), { frontConfirmed: true });
+    expect(raised.result.checks.find((check) => check.id === 'base').pass).toBe(true);
+    expect(raised.result.after.size[1]).toBeGreaterThan(3.9);
+    expect(raised.result.after.size[1]).toBeLessThan(4.1);
+    expect(Math.abs(raised.result.after.minY)).toBeLessThan(0.001);
+    const square = await run(blockGlb([-2, 0, -2], [2, 4, 2]), resolveProfile('BUILDING'), { frontConfirmed: true });
+    expect(square.result.banner).toBe('NOT READY');
+    expect(square.result.summary).toMatch(/Forward is ambiguous/);
   });
 
   it('stops grow on a UV seam and a sampled color edge', () => {
