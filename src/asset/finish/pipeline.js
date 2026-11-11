@@ -4,7 +4,7 @@ import { encodePng } from "./png.js";
 import { decodeRaster } from "./raster.js";
 import { buildCarMask } from "./mask.js";
 import { zipStore } from "./zip.js";
-import { cutSpecifiedWheels, exportedBleed } from "./clip.js";
+import { cutSpecifiedWheels, exportedBleed, meshBleed } from "./clip.js";
 import { faceTopology } from "./select.js";
 import { packGlb, sha256Hex, sourceCensus } from "./glb.js";
 
@@ -12,6 +12,10 @@ const WELD = 2000;
 
 export async function runFinish(loaded, profile, options = {}) {
   const sourceSha = loaded.sha256 || await sha256Hex(loaded.bytes);
+  let sourceNonManifold = 0;
+  for (const surface of loaded.surfaces || []) {
+    if (surface.topology) sourceNonManifold += surface.topology.nonManifold || 0;
+  }
   const before = measureFile(loaded);
   const log = [];
   const checks = [];
@@ -87,15 +91,19 @@ export async function runFinish(loaded, profile, options = {}) {
     log.push(base.detail);
   }
 
-  const welded = weldMesh(mesh);
+  const fineWeld = mesh.labels && mesh.labels.some((label) => String(label).indexOf("wheel_") === 0);
+  const welded = weldMesh(mesh, fineWeld ? 1000000 : WELD);
   mesh = welded.mesh;
-  log.push("Welded " + welded.merged + " vertices within 0.5 mm. UV seams and creases stayed split.");
+  log.push(fineWeld
+    ? "Welded " + welded.merged + " exact duplicate vertices. Named wheels were not pulled across a 0.5 mm gap."
+    : "Welded " + welded.merged + " vertices within 0.5 mm. UV seams and creases stayed split.");
   if (mesh.labels && mesh.labels.some((label) => String(label).indexOf("wheel_") === 0)) {
     log.push("Named wheel meshes stayed separate from the body. The weld did not join those parts.");
   }
 
   let parts;
   let wheelCylinders = [];
+  let namedWheels = false;
   if (profile.id === "CAR") {
     const split = splitByLabel(mesh) || splitWheels(mesh);
     log.push(split.detail);
@@ -103,18 +111,31 @@ export async function runFinish(loaded, profile, options = {}) {
       checks.push({ id: "wheels", pass: false, detail: split.detail, action: "Hand the shell to VEHICLE and split the four wheels by hand. This finish will not invent a cut." });
       return finishResult({ sourceSha, before, log, checks, banner: "NOT READY", summary: split.detail });
     }
-    const cut = cutSpecifiedWheels(split.parts);
-    parts = cut.parts;
-    wheelCylinders = cut.cylinders;
-    log.push(cut.cuts
-      ? "Cut " + cut.cuts + " body triangles on the specified wheel cylinders. New vertices interpolate UV and normals. The shared loop stays within 1 mm."
-      : "No body triangle crossed a wheel cylinder, so no new cut was required.");
-    checks.push({
-      id: "border",
-      pass: cut.paired !== false,
-      detail: cut.cuts ? "Shared border points from the cut are on both the body and the wheel within 1 mm. Paired: " + (cut.paired ? "yes" : "no") + "." : "No shared cut was required.",
-      action: cut.paired === false ? "The cut did not copy the same border onto both sides." : ""
-    });
+    if (split.named) {
+      namedWheels = true;
+      parts = split.parts;
+      wheelCylinders = [];
+      log.push("The wheels are already separate meshes. The body was not clipped to a bounding cylinder.");
+      checks.push({
+        id: "border",
+        pass: true,
+        detail: "No shared cut was required. Named wheels stay on their own meshes.",
+        action: ""
+      });
+    } else {
+      const cut = cutSpecifiedWheels(split.parts);
+      parts = cut.parts;
+      wheelCylinders = cut.cylinders;
+      log.push(cut.cuts
+        ? "Cut " + cut.cuts + " body triangles on the specified wheel cylinders. New vertices interpolate UV and normals. The shared loop stays within 1 mm."
+        : "No body triangle crossed a wheel cylinder, so no new cut was required.");
+      checks.push({
+        id: "border",
+        pass: cut.paired !== false,
+        detail: cut.cuts ? "Shared border points from the cut are on both the body and the wheel within 1 mm. Paired: " + (cut.paired ? "yes" : "no") + "." : "No shared cut was required.",
+        action: cut.paired === false ? "The cut did not copy the same border onto both sides." : ""
+      });
+    }
     const axles = split.parts.filter((part) => part.wheel).map((part) => part.name + " " + part.center.map((value) => value.toFixed(3)).join(" ")).join("; ");
     checks.push({ id: "wheels", pass: true, detail: "Four wheel islands were named. No cylinder was guessed.", action: "" });
     checks.push({ id: "axle", pass: true, detail: "Wheel origins are the island centers. " + axles, action: "" });
@@ -146,7 +167,9 @@ export async function runFinish(loaded, profile, options = {}) {
     detail: "Exported triangles " + triangles + ". Target " + profile.triangleTarget + ". Ceiling " + profile.triangleCeiling + ".",
     action: budget ? "The count is over the ceiling. Borders were not unlocked." : ""
   });
-  checks.push(wheelCylinders.length ? cylinderBleed(parts, wheelCylinders) : wheelBleed(parts));
+  checks.push(namedWheels
+    ? meshBleedCheck(parts)
+    : (wheelCylinders.length ? cylinderBleed(parts, wheelCylinders) : wheelBleed(parts)));
   checks.push({
     id: "drawcalls",
     pass: drawCallCheck(parts.length, profile).pass,
@@ -226,8 +249,8 @@ export async function runFinish(loaded, profile, options = {}) {
   checks.push({
     id: "manifold",
     pass: bad.nonManifold === 0,
-    detail: bad.nonManifold + " edges are shared by more than two triangles.",
-    action: bad.nonManifold ? "Repair the non-manifold edges in VEHICLE. This finish did not call them clean." : ""
+    detail: bad.nonManifold + " edges are shared by more than two triangles. The source had " + sourceNonManifold + ". The rewrite " + (bad.nonManifold > sourceNonManifold ? "increased this count." : "did not increase this count."),
+    action: bad.nonManifold ? "These edges were not repaired. An inherited non-manifold edge stays a failure." : ""
   });
   checks.push({
     id: "open-edges",
@@ -578,7 +601,7 @@ function dropBadFaces(mesh) {
   return { zero, duplicate };
 }
 
-function weldMesh(mesh) {
+function weldMesh(mesh, scale) {
   const map = new Map();
   const positions = [];
   const uvs = [];
@@ -587,7 +610,7 @@ function weldMesh(mesh) {
   const remap = new Uint32Array(mesh.positions.length / 3);
   let merged = 0;
   for (let i = 0; i < remap.length; i++) {
-    const key = weldKey(mesh, i);
+    const key = weldKey(mesh, i, scale);
     if (map.has(key)) {
       remap[i] = map.get(key);
       merged += 1;
@@ -639,7 +662,17 @@ function splitByLabel(mesh) {
     const box = measureMesh(partMesh);
     return { name, mesh: partMesh, wheel: name !== "body", center: centerOf(box) };
   });
-  return { ok: true, parts, detail: "Used the named body and four wheel meshes. They were not welded together, and no extra piece was dropped." };
+  return { ok: true, named: true, parts, detail: "Used the named body and four wheel meshes. They were not welded together, and no extra piece was dropped." };
+}
+
+function meshBleedCheck(parts) {
+  const count = meshBleed(parts);
+  return {
+    id: "bleed",
+    pass: count === 0,
+    detail: count + " exported body triangles intersect a wheel mesh.",
+    action: count ? "Named wheels were not recut with a bounding cylinder." : ""
+  };
 }
 
 function splitWheels(mesh) {
@@ -1045,13 +1078,14 @@ function vertex(mesh, id) {
   return [mesh.positions[id * 3], mesh.positions[id * 3 + 1], mesh.positions[id * 3 + 2]];
 }
 
-function quantKey(mesh, id) {
-  return Math.round(mesh.positions[id * 3] * WELD) + "," + Math.round(mesh.positions[id * 3 + 1] * WELD) + "," + Math.round(mesh.positions[id * 3 + 2] * WELD);
+function quantKey(mesh, id, scale) {
+  const step = scale || WELD;
+  return Math.round(mesh.positions[id * 3] * step) + "," + Math.round(mesh.positions[id * 3 + 1] * step) + "," + Math.round(mesh.positions[id * 3 + 2] * step);
 }
 
-function weldKey(mesh, id) {
+function weldKey(mesh, id, scale) {
   const label = mesh.labels ? mesh.labels[id] : "shell";
-  return quantKey(mesh, id) + "/" + Math.round(mesh.uvs[id * 2] * 4096) + "," + Math.round(mesh.uvs[id * 2 + 1] * 4096) + "/" + label;
+  return quantKey(mesh, id, scale) + "/" + Math.round(mesh.uvs[id * 2] * 4096) + "," + Math.round(mesh.uvs[id * 2 + 1] * 4096) + "/" + label;
 }
 
 function rotateY(mesh, angle) {

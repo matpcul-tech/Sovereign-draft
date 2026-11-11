@@ -321,6 +321,86 @@ export function cutSpecifiedWheels(parts) {
   return { parts: next, cuts, cylinders, paired, boundary };
 }
 
+export function meshBleed(parts) {
+  const body = parts.find((part) => !part.wheel);
+  const wheels = parts.filter((part) => part.wheel);
+  if (!body || !wheels.length) return 0;
+  let count = 0;
+  const bodyTris = meshTriangles(body.mesh).map((tri) => ({ tri, box: triBox(tri) }));
+  for (const wheel of wheels) {
+    const wheelTris = meshTriangles(wheel.mesh).map((tri) => ({ tri, box: triBox(tri) }));
+    for (const item of bodyTris) {
+      let hit = false;
+      for (const other of wheelTris) {
+        if (!boxHit(item.box, other.box)) continue;
+        if (trianglesHit(item.tri, other.tri)) {
+          hit = true;
+          break;
+        }
+      }
+      if (hit) count += 1;
+    }
+  }
+  return count;
+}
+
+function triBox(tri) {
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (const vert of tri) {
+    for (let axis = 0; axis < 3; axis++) {
+      if (vert.p[axis] < min[axis]) min[axis] = vert.p[axis];
+      if (vert.p[axis] > max[axis]) max[axis] = vert.p[axis];
+    }
+  }
+  return { min, max };
+}
+
+function boxHit(a, b) {
+  for (let axis = 0; axis < 3; axis++) {
+    if (a.min[axis] > b.max[axis] || b.min[axis] > a.max[axis]) return false;
+  }
+  return true;
+}
+
+function trianglesHit(a, b) {
+  return segHitsTri(a[0].p, a[1].p, b) || segHitsTri(a[1].p, a[2].p, b) || segHitsTri(a[2].p, a[0].p, b)
+    || segHitsTri(b[0].p, b[1].p, a) || segHitsTri(b[1].p, b[2].p, a) || segHitsTri(b[2].p, b[0].p, a);
+}
+
+function deepInside(p, tri) {
+  const edges = [[tri[0].p, tri[1].p], [tri[1].p, tri[2].p], [tri[2].p, tri[0].p]];
+  for (const edge of edges) {
+    const ab = sub(edge[1], edge[0]);
+    const denom = dot(ab, ab) || 1;
+    const t = Math.max(0, Math.min(1, dot(sub(p, edge[0]), ab) / denom));
+    const q = [edge[0][0] + ab[0] * t, edge[0][1] + ab[1] * t, edge[0][2] + ab[2] * t];
+    if (Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) <= 0.001) return false;
+  }
+  return true;
+}
+
+function segHitsTri(a, b, tri) {
+  const dir = sub(b, a);
+  const ab = sub(tri[1].p, tri[0].p);
+  const ac = sub(tri[2].p, tri[0].p);
+  const n = cross(ab, ac);
+  const denom = dot(n, dir);
+  if (Math.abs(denom) < 1e-12) return false;
+  const t = dot(n, sub(tri[0].p, a)) / denom;
+  if (t <= 0 || t >= 1) return false;
+  const p = [a[0] + dir[0] * t, a[1] + dir[1] * t, a[2] + dir[2] * t];
+  return pointInTri(p, tri) && deepInside(p, tri);
+}
+
+function pointInTri(p, tri) {
+  return side(p, tri[0].p, tri[1].p, tri[2].p) && side(p, tri[1].p, tri[0].p, tri[2].p) && side(p, tri[2].p, tri[0].p, tri[1].p);
+}
+
+function side(p, a, b, c) {
+  return dot(cross(sub(b, a), sub(p, a)), cross(sub(b, a), sub(c, a))) >= 0;
+}
+
 export function exportedBleed(parts, cylinders) {
   let count = 0;
   for (const part of parts) {
