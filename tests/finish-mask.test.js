@@ -78,11 +78,13 @@ describe('car window mask', () => {
     put(thin, 6, 5, 0, GLASS);
     expect(aaWidths(thin, 6, 1).pass).toBe(true);
     expect(aaWidths(thin, 6, 1).max).toBe(1);
-    const wide = fill(10, 1, PAINT);
-    for (let x = 2; x < 8; x++) put(wide, 10, x, 0, [128, 128, 0, 255]);
-    for (let x = 8; x < 10; x++) put(wide, 10, x, 0, GLASS);
-    expect(aaWidths(wide, 10, 1).pass).toBe(false);
-    expect(aaWidths(wide, 10, 1).max).toBe(6);
+    const wide = fill(10, 8, PAINT);
+    for (let y = 0; y < 8; y++) {
+      for (let x = 2; x < 8; x++) put(wide, 10, x, y, [128, 128, 0, 255]);
+      for (let x = 8; x < 10; x++) put(wide, 10, x, y, GLASS);
+    }
+    expect(aaWidths(wide, 10, 8).pass).toBe(false);
+    expect(aaWidths(wide, 10, 8).max).toBe(6);
   });
 
   it('counts side-view glass, belt line, and paint fringe', () => {

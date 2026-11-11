@@ -157,39 +157,31 @@ export function aaWidths(mask, width, height) {
     const index = (y * width + x) * 4;
     return maskClass(mask[index], mask[index + 1], mask[index + 2]);
   }
-  function thickness(x, y, dx, dy) {
-    let back = 0;
-    let cx = x;
-    let cy = y;
+  function run(x, y, dx, dy) {
+    let count = 1;
+    let cx = x - dx;
+    let cy = y - dy;
     while (at(cx, cy) === "edge") {
-      back += 1;
+      count += 1;
       cx -= dx;
       cy -= dy;
-      if (back > 16) break;
+      if (count > 16) break;
     }
-    const before = at(cx, cy);
-    let fore = 0;
     cx = x + dx;
     cy = y + dy;
     while (at(cx, cy) === "edge") {
-      fore += 1;
+      count += 1;
       cx += dx;
       cy += dy;
-      if (fore > 16) break;
+      if (count > 16) break;
     }
-    const after = at(cx, cy);
-    if (!before || !after || before === "edge" || after === "edge" || before === after) return 0;
-    if (before === "gutter" || after === "gutter" || before === "other" || after === "other") return 0;
-    return back + fore;
+    return count;
   }
   const widths = [];
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       if (at(x, y) !== "edge") continue;
-      const across = thickness(x, y, 1, 0);
-      const down = thickness(x, y, 0, 1);
-      const band = across && down ? Math.min(across, down) : (across || down);
-      if (band) widths.push(band);
+      widths.push(Math.min(run(x, y, 1, 0), run(x, y, 0, 1)));
     }
   }
   const max = widths.reduce((hi, value) => Math.max(hi, value), 0);
@@ -284,6 +276,7 @@ export function cleanExportedBase(base, mask, width, height) {
   const out = new Uint8Array(base);
   const log = { glassFlattened: 0, fringeRemoved: 0, padded: 0, conflicts: 0, unchanged: 0 };
   const tone = MASK.glassTone;
+  const dominant = dominantPaint(base, mask, width, height);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const index = (y * width + x) * 4;
@@ -303,7 +296,9 @@ export function cleanExportedBase(base, mask, width, height) {
       if (maskClass(mask[index], mask[index + 1], mask[index + 2]) !== "paint") continue;
       if (!nearGlass(mask, width, height, x, y, MASK.fringePx)) continue;
       if (!isGlassTone(out[index], out[index + 1], out[index + 2])) continue;
-      const donor = donorPaint(out, mask, width, height, x, y);
+      let donor = donorPaint(out, mask, width, height, x, y);
+      if (!donor || isGlassTone(donor[0], donor[1], donor[2])) donor = dominant;
+      if (!donor || isGlassTone(donor[0], donor[1], donor[2])) continue;
       if (!donor) continue;
       out[index] = donor[0];
       out[index + 1] = donor[1];
@@ -317,6 +312,23 @@ export function cleanExportedBase(base, mask, width, height) {
   log.conflicts = pad.conflicts;
   for (let i = 0; i < base.length; i++) if (out[i] === base[i]) log.unchanged += 1;
   return { base: out, log, ready: pad.conflicts === 0, conflicts: pad.conflicts };
+}
+
+function dominantPaint(base, mask, width, height) {
+  let best = null;
+  let bestScore = -1;
+  const step = Math.max(1, Math.floor((width * height) / 20000));
+  for (let i = 0; i < width * height; i += step) {
+    const index = i * 4;
+    if (isGlassTone(base[index], base[index + 1], base[index + 2])) continue;
+    const { s, v } = hsv(base[index], base[index + 1], base[index + 2]);
+    const score = s > 0.18 ? v : 0;
+    if (score > bestScore) {
+      bestScore = score;
+      best = [base[index], base[index + 1], base[index + 2], 255];
+    }
+  }
+  return best;
 }
 
 function donorPaint(base, mask, width, height, x, y) {
@@ -527,7 +539,7 @@ export function buildCarMask(parts, rgba, width, height) {
     const tri = faceVerts(body.mesh, face);
     const center = average(tri.map((vert) => vert.p));
     const uv = average(tri.map((vert) => vert.uv));
-    if (tri.some((vert) => vert.p[1] < belt) || inAnyWheel(center, wheels)) continue;
+    if (tri.some((vert) => vert.p[1] < belt) || inAnyWheel(center, wheels) || facesUp(tri)) continue;
     above += 1;
     const color = texel(rgba, width, height, uv);
     if (!isGlassTone(color[0], color[1], color[2])) continue;
@@ -572,6 +584,8 @@ export function buildCarMask(parts, rgba, width, height) {
     islandBase += maxIsland + 1;
   }
   const chart = chartPadReport(mask, owners, MASK.size, overlaps.size);
+  antialiasMask(mask, MASK.size);
+  thinEdge(mask, MASK.size);
   antialiasMask(mask, MASK.size);
   const fitted = fitMask(mask, MASK.size, width, height);
   const cleaned = cleanExportedBase(rgba, fitted, width, height);
@@ -631,6 +645,18 @@ function faceVerts(mesh, face) {
     });
   }
   return out;
+}
+
+function facesUp(tri) {
+  const ab = [tri[1].p[0] - tri[0].p[0], tri[1].p[1] - tri[0].p[1], tri[1].p[2] - tri[0].p[2]];
+  const ac = [tri[2].p[0] - tri[0].p[0], tri[2].p[1] - tri[0].p[1], tri[2].p[2] - tri[0].p[2]];
+  const n = [
+    ab[1] * ac[2] - ab[2] * ac[1],
+    ab[2] * ac[0] - ab[0] * ac[2],
+    ab[0] * ac[1] - ab[1] * ac[0]
+  ];
+  const length = Math.hypot(n[0], n[1], n[2]) || 1;
+  return Math.abs(n[1] / length) > 0.65;
 }
 
 function average(values) {
@@ -862,15 +888,62 @@ function bary(p, tri) {
   return w0 >= -0.02 && w1 >= -0.02 && w2 >= -0.02;
 }
 
+function thinEdge(mask, size) {
+  const src = mask.slice();
+  const at = (x, y) => {
+    if (x < 0 || y < 0 || x >= size || y >= size) return "";
+    const index = (y * size + x) * 4;
+    return maskClass(src[index], src[index + 1], src[index + 2]);
+  };
+  const run = (x, y, dx, dy) => {
+    let count = 1;
+    let cx = x - dx;
+    let cy = y - dy;
+    while (at(cx, cy) === "edge") {
+      count += 1;
+      cx -= dx;
+      cy -= dy;
+      if (count > 16) break;
+    }
+    cx = x + dx;
+    cy = y + dy;
+    while (at(cx, cy) === "edge") {
+      count += 1;
+      cx += dx;
+      cy += dy;
+      if (count > 16) break;
+    }
+    return count;
+  };
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (at(x, y) !== "edge") continue;
+      if (Math.min(run(x, y, 1, 0), run(x, y, 0, 1)) <= 2) continue;
+      const index = (y * size + x) * 4;
+      mask[index] = 0;
+      mask[index + 1] = 255;
+      mask[index + 2] = 0;
+      mask[index + 3] = 255;
+    }
+  }
+}
+
 function antialiasMask(mask, size) {
   const src = mask.slice();
+  const kindAt = (index) => maskClass(src[index], src[index + 1], src[index + 2]);
   for (let y = 1; y < size - 1; y++) {
     for (let x = 1; x < size - 1; x++) {
       const index = (y * size + x) * 4;
-      if (maskClass(src[index], src[index + 1], src[index + 2]) !== "paint") continue;
-      const neighbors = [index - 4, index + 4, index - size * 4, index + size * 4];
-      const glassNear = neighbors.some((at) => at >= 0 && maskClass(src[at], src[at + 1], src[at + 2]) === "glass");
-      if (!glassNear) continue;
+      if (kindAt(index) !== "paint") continue;
+      const left = index - 4;
+      const right = index + 4;
+      const up = index - size * 4;
+      const down = index + size * 4;
+      const boundary = (kindAt(left) === "glass" && kindAt(right) === "paint")
+        || (kindAt(right) === "glass" && kindAt(left) === "paint")
+        || (kindAt(up) === "glass" && kindAt(down) === "paint")
+        || (kindAt(down) === "glass" && kindAt(up) === "paint");
+      if (!boundary) continue;
       mask[index] = 128;
       mask[index + 1] = 128;
       mask[index + 2] = 0;

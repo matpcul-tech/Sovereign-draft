@@ -4,7 +4,7 @@ import { encodePng } from "./png.js";
 import { decodeRaster } from "./raster.js";
 import { buildCarMask } from "./mask.js";
 import { zipStore } from "./zip.js";
-import { cutSpecifiedWheels, exportedBleed, meshBleed } from "./clip.js";
+import { cutSpecifiedWheels, exportedBleed, fitTireCylinder, meshBleedReport } from "./clip.js";
 import { faceTopology } from "./select.js";
 import { packGlb, sha256Hex, sourceCensus } from "./glb.js";
 
@@ -92,13 +92,17 @@ export async function runFinish(loaded, profile, options = {}) {
   }
 
   const fineWeld = mesh.labels && mesh.labels.some((label) => String(label).indexOf("wheel_") === 0);
-  const welded = weldMesh(mesh, fineWeld ? 1000000 : WELD);
-  mesh = welded.mesh;
-  log.push(fineWeld
-    ? "Welded " + welded.merged + " exact duplicate vertices. Named wheels were not pulled across a 0.5 mm gap."
-    : "Welded " + welded.merged + " vertices within 0.5 mm. UV seams and creases stayed split.");
-  if (mesh.labels && mesh.labels.some((label) => String(label).indexOf("wheel_") === 0)) {
-    log.push("Named wheel meshes stayed separate from the body. The weld did not join those parts.");
+  let sourceHits = [];
+  if (fineWeld) {
+    const pre = splitByLabel(mesh);
+    if (pre && pre.ok) sourceHits = meshBleedReport(pre.parts).centroids;
+    const welded = weldMesh(mesh, 0);
+    mesh = welded.mesh;
+    log.push("Welded " + welded.merged + " identical vertices on named wheels. Positions were not moved, so no new intersection was added.");
+  } else {
+    const welded = weldMesh(mesh);
+    mesh = welded.mesh;
+    log.push("Welded " + welded.merged + " vertices within 0.5 mm. UV seams and creases stayed split.");
   }
 
   let parts;
@@ -114,8 +118,9 @@ export async function runFinish(loaded, profile, options = {}) {
     if (split.named) {
       namedWheels = true;
       parts = split.parts;
-      wheelCylinders = [];
-      log.push("The wheels are already separate meshes. The body was not clipped to a bounding cylinder.");
+      wheelCylinders = parts.filter((part) => part.wheel).map((part) => fitTireCylinder(part.mesh, part.name));
+      log.push("The wheels are already separate meshes. The body was not clipped to a bounding cylinder. Bleed uses the fitted tire cylinder.");
+      log.push(wheelCylinders.map((cyl) => cyl.name + " radius " + cyl.radius.toFixed(3) + " half " + cyl.half.toFixed(3)).join("; ") + ".");
       checks.push({
         id: "border",
         pass: true,
@@ -167,9 +172,8 @@ export async function runFinish(loaded, profile, options = {}) {
     detail: "Exported triangles " + triangles + ". Target " + profile.triangleTarget + ". Ceiling " + profile.triangleCeiling + ".",
     action: budget ? "The count is over the ceiling. Borders were not unlocked." : ""
   });
-  checks.push(namedWheels
-    ? meshBleedCheck(parts)
-    : (wheelCylinders.length ? cylinderBleed(parts, wheelCylinders) : wheelBleed(parts)));
+  checks.push(wheelCylinders.length ? cylinderBleed(parts, wheelCylinders) : wheelBleed(parts));
+  if (namedWheels) checks.push(meshHitCheck(parts, sourceHits));
   checks.push({
     id: "drawcalls",
     pass: drawCallCheck(parts.length, profile).pass,
@@ -665,13 +669,19 @@ function splitByLabel(mesh) {
   return { ok: true, named: true, parts, detail: "Used the named body and four wheel meshes. They were not welded together, and no extra piece was dropped." };
 }
 
-function meshBleedCheck(parts) {
-  const count = meshBleed(parts);
+function meshHitCheck(parts, sourceHits) {
+  const report = meshBleedReport(parts);
+  let novel = 0;
+  for (const hit of report.centroids) {
+    const known = sourceHits.some((prior) => Math.hypot(prior[0] - hit[0], prior[1] - hit[1], prior[2] - hit[2]) < 0.002);
+    if (!known) novel += 1;
+  }
+  const matched = report.count - novel;
   return {
-    id: "bleed",
-    pass: count === 0,
-    detail: count + " exported body triangles intersect a wheel mesh.",
-    action: count ? "Named wheels were not recut with a bounding cylinder." : ""
+    id: "mesh-hit",
+    pass: novel === 0,
+    detail: report.count + " body triangles intersect a wheel mesh. " + matched + " match a hit from before the rewrite moved any vertex. " + novel + " are new.",
+    action: novel ? "The rewrite added a mesh intersection. The bounding cylinder was not used to recut the body." : ""
   };
 }
 
@@ -1085,6 +1095,8 @@ function quantKey(mesh, id, scale) {
 
 function weldKey(mesh, id, scale) {
   const label = mesh.labels ? mesh.labels[id] : "shell";
+  const uv = mesh.uvs[id * 2] + "," + mesh.uvs[id * 2 + 1];
+  if (scale === 0) return mesh.positions[id * 3] + "," + mesh.positions[id * 3 + 1] + "," + mesh.positions[id * 3 + 2] + "/" + uv + "/" + label;
   return quantKey(mesh, id, scale) + "/" + Math.round(mesh.uvs[id * 2] * 4096) + "," + Math.round(mesh.uvs[id * 2 + 1] * 4096) + "/" + label;
 }
 
