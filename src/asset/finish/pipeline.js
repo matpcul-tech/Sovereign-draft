@@ -2,9 +2,9 @@ import { MeshoptSimplifier } from "three/addons/libs/meshopt_simplifier.module.j
 import { GAME_TINT, carSourceCheck, drawCallCheck } from "./profiles.js";
 import { encodePng } from "./png.js";
 import { decodeRaster } from "./raster.js";
-import { buildCarMask } from "./mask.js";
+import { buildCarMask, maskClass } from "./mask.js";
 import { zipStore } from "./zip.js";
-import { cutSpecifiedWheels, exportedBleed, fitTireCylinder, meshBleedReport } from "./clip.js";
+import { cutManualBody, cutSpecifiedWheels, exportedBleed, fitTireCylinder, meshBleedReport } from "./clip.js";
 import { faceTopology } from "./select.js";
 import { packGlb, sha256Hex, sourceCensus } from "./glb.js";
 
@@ -111,8 +111,17 @@ export async function runFinish(loaded, profile, options = {}) {
   if (profile.id === "CAR") {
     const split = splitByLabel(mesh) || splitWheels(mesh);
     log.push(split.detail);
+    if (!split.ok && options.manualCylinders && options.manualCylinders.length === 4) {
+      const manual = cutManualBody(mesh, options.manualCylinders);
+      log.push(manual.detail);
+      if (!manual.ok) {
+        checks.push({ id: "wheels", pass: false, detail: manual.detail, action: "Place four boundaries that meet the shell, or hand it to VEHICLE. This finish will not invent a wheel." });
+        return finishResult({ sourceSha, before, log, checks, banner: "NOT READY", summary: manual.detail });
+      }
+      split = manual;
+    }
     if (!split.ok) {
-      checks.push({ id: "wheels", pass: false, detail: split.detail, action: "Hand the shell to VEHICLE and split the four wheels by hand. This finish will not invent a cut." });
+      checks.push({ id: "wheels", pass: false, detail: split.detail, action: "Hand the shell to VEHICLE, or place four wheel boundaries in FINISH. This finish will not invent a cut." });
       return finishResult({ sourceSha, before, log, checks, banner: "NOT READY", summary: split.detail });
     }
     if (split.named) {
@@ -129,7 +138,7 @@ export async function runFinish(loaded, profile, options = {}) {
       });
     } else {
       const fitted = split.separated ? split.parts.filter((part) => part.wheel).map((part) => fitTireCylinder(part.mesh, part.name)) : null;
-      const cut = cutSpecifiedWheels(split.parts);
+      const cut = cutSpecifiedWheels(split.parts, fitted ? { cylinders: fitted, keepInsideOnBody: true } : {});
       const bleedAfter = split.separated ? exportedBleed(cut.parts, cut.cylinders) : 0;
       const keepCut = !split.separated || bleedAfter === 0;
       parts = keepCut ? cut.parts : split.parts;
@@ -149,7 +158,11 @@ export async function runFinish(loaded, profile, options = {}) {
         pass: !keepCut || cut.paired !== false,
         detail: !keepCut
           ? "The measured cut was not kept. No new border was written."
-          : (cut.cuts ? "Shared border points from the cut are on both the body and the wheel within 1 mm. Paired: " + (cut.paired ? "yes" : "no") + "." : "No shared cut was required."),
+          : (cut.cuts
+            ? (cut.wheelUnchanged
+              ? "The cut border is on the body and within 1 mm of the cylinder. The existing wheel meshes were not rebuilt. Paired: " + (cut.paired ? "yes" : "no") + "."
+              : "Shared border points from the cut are on both the body and the wheel within 1 mm. Paired: " + (cut.paired ? "yes" : "no") + ".")
+            : "No shared cut was required."),
         action: !keepCut ? "Specify the wheel boundary by hand. The automatic cylinder cut did not clear the 1 mm bleed." : (cut.paired === false ? "The cut did not copy the same border onto both sides." : "")
       });
     }
@@ -223,9 +236,22 @@ export async function runFinish(loaded, profile, options = {}) {
         if (!built.ok) checks.push({ id: "mask", pass: false, detail: built.detail, action: built.action || "" });
         else {
           maskPack = built;
+          const originalImage = (loaded.images || []).find((image) => image.bytes && image.bytes.length);
+          const full = originalImage ? await decodeRaster(originalImage.bytes, originalImage.mime) : null;
+          const filtered = full && (full.width !== decoded.width || full.height !== decoded.height)
+            ? boxFilter(full.rgba, full.width, full.height, decoded.width, decoded.height)
+            : (full ? full.rgba : decoded.rgba);
+          const audit = channelAudit(filtered, decoded.rgba, built.baseRgba, built.maskRgba, decoded.width, decoded.height);
           sourceImage.bytes = encodePng(decoded.width, decoded.height, built.baseRgba);
           sourceImage.mime = "image/png";
           checks.push(...built.checks);
+          checks.push({
+            id: "channels",
+            pass: audit.resizeDelta === 0 && audit.stray === 0,
+            detail: "Resized pixels match the box filter within " + audit.resizeDelta + " levels. Cleanup changed " + audit.changed + " pixels. " + audit.stray + " of those sit outside glass, the 4 px fringe, and the 8 px island pad.",
+            action: audit.stray ? "A pixel was recolored outside the mask cleanup. The original channels stay the reference." : ""
+          });
+          log.push("Resized pixels match the box filter within " + audit.resizeDelta + " levels. Cleanup changed " + audit.changed + " pixels and left " + audit.stray + " outside the declared cleanup.");
           log.push("A 1024 mask was stored on emissiveTexture with factor 0, 0, 0 and extras.kitMask. Street Empire src/kit.js does not read that mask.");
         }
       } catch (error) {
@@ -1174,6 +1200,49 @@ function rotateY(mesh, angle) {
     mesh.positions[i] = c * x + s * z;
     mesh.positions[i + 2] = -s * x + c * z;
   }
+}
+
+function channelAudit(filtered, resized, cleaned, mask, width, height) {
+  let resizeDelta = 0;
+  let changed = 0;
+  let stray = 0;
+  const maskSize = Math.round(Math.sqrt(mask.length / 4));
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const index = (y * width + x) * 4;
+      for (let channel = 0; channel < 3; channel++) {
+        resizeDelta = Math.max(resizeDelta, Math.abs(filtered[index + channel] - resized[index + channel]));
+      }
+      if (resized[index] === cleaned[index] && resized[index + 1] === cleaned[index + 1] && resized[index + 2] === cleaned[index + 2]) continue;
+      changed += 1;
+      const mx = Math.min(maskSize - 1, Math.floor((x + 0.5) * maskSize / width));
+      const my = Math.min(maskSize - 1, Math.floor((y + 0.5) * maskSize / height));
+      if (cleanupPixel(mask, maskSize, mx, my)) continue;
+      stray += 1;
+    }
+  }
+  return { resizeDelta, changed, stray };
+}
+
+function cleanupPixel(mask, size, x, y) {
+  const kindAt = (px, py) => {
+    if (px < 0 || py < 0 || px >= size || py >= size) return "";
+    const index = (py * size + px) * 4;
+    return maskClass(mask[index], mask[index + 1], mask[index + 2]);
+  };
+  const kind = kindAt(x, y);
+  if (kind === "glass" || kind === "edge") return true;
+  for (let yy = y - 8; yy <= y + 8; yy++) {
+    for (let xx = x - 8; xx <= x + 8; xx++) {
+      const dist = Math.max(Math.abs(xx - x), Math.abs(yy - y));
+      if (!dist) continue;
+      const other = kindAt(xx, yy);
+      if (!other || other === kind) continue;
+      if (other === "glass" && dist <= 4) return true;
+      if (dist <= 8) return true;
+    }
+  }
+  return false;
 }
 
 function boxFilter(src, sw, sh, dw, dh) {

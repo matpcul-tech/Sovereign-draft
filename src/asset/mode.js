@@ -221,6 +221,7 @@ async function onFinishFile(event) {
     };
     if (finishScene) disposeVehicle(finishScene);
     finishScene = loaded.scene;
+    globalThis.__finishScene = finishScene;
     if (api) api.showVehicle(finishScene);
     status(guess.reason + " Source bytes were not modified. The model is on screen. Street Empire does not read the mask.");
   } catch (error) {
@@ -299,10 +300,12 @@ async function runFinishNow() {
   try {
     const loaded = await loadVehicle(finishFile.bytes, finishFile.fileName || "model.glb");
     const result = await runFinish(loaded, profile, {
-      frontConfirmed: !!host.querySelector("#finishfront").checked
+      frontConfirmed: !!host.querySelector("#finishfront").checked,
+      manualCylinders: readManualCylinders()
     });
     if (finishScene && finishScene !== loaded.scene) disposeVehicle(finishScene);
     finishScene = loaded.scene;
+    globalThis.__finishScene = finishScene;
     if (api) api.showVehicle(finishScene);
     if (result.mask) applyGlassOverlay(finishScene, result.mask.rgba, result.mask.size);
     else clearGlassOverlay(finishScene);
@@ -515,6 +518,31 @@ async function artist(brief, scope) {
   }
 }
 
+function readManualCylinders() {
+  const box = host && host.querySelector("#finishcylinders");
+  if (!box || box.hidden) return null;
+  const rows = box.value.split("\n").map((line) => line.trim()).filter(Boolean);
+  if (rows.length !== 4) return null;
+  const cylinders = [];
+  for (const line of rows) {
+    const part = line.split(/\s+/);
+    if (part.length < 5) return null;
+    cylinders.push({
+      name: part[0],
+      cx: Number(part[1]),
+      cy: Number(part[2]),
+      cz: Number(part[3]),
+      radius: Number(part[4]),
+      half: part[5] ? Number(part[5]) : Number(part[4]) * 0.35,
+      ax: 1,
+      ay: 0,
+      az: 0
+    });
+  }
+  if (cylinders.some((cyl) => !cyl.name || !Number.isFinite(cyl.radius) || cyl.radius <= 0)) return null;
+  return cylinders;
+}
+
 function ensure() {
   if (host) return;
   host = document.createElement("div");
@@ -545,6 +573,7 @@ function ensure() {
         <label><input id="finishfront" type="checkbox"> +Z end is the front</label>
         <button type="button" id="finishsave">Save profile</button>
         <button type="button" id="finishrun">Run finish</button>
+        <button type="button" id="finishboundary">Place wheel boundaries</button>
         <button type="button" id="finishdownload" hidden>Download GLB</button>
         <button type="button" id="finishzip" hidden>Download ZIP</button>
       </div>
@@ -555,6 +584,7 @@ function ensure() {
         <button type="button" id="finishremove">Remove glass</button>
         <button type="button" id="finishbrush">Edge brush</button>
       </div>
+      <textarea id="finishcylinders" hidden placeholder="wheel_fl x y z radius half&#10;wheel_fr x y z radius half&#10;wheel_rl x y z radius half&#10;wheel_rr x y z radius half"></textarea>
       <pre id="finishlog"></pre>
       <p id="finishrules"></p>
     </section>
@@ -578,6 +608,7 @@ function ensure() {
   document.body.appendChild(host);
   const view = host.querySelector("#assetview");
   api = mount(view, (stats) => {
+    globalThis.__assetApi = api;
     const label = vehicle && vehicle.isOpen() && vehicle.label() || doc.name || "asset";
     const name = host && host.querySelector("#assetname");
     if (name && vehicle && vehicle.isOpen() && vehicle.label()) name.textContent = vehicle.label();
@@ -646,6 +677,14 @@ function ensure() {
   });
   host.querySelector("#finishsave").addEventListener("click", saveFinish);
   host.querySelector("#finishrun").addEventListener("click", () => { void runFinishNow(); });
+  host.querySelector("#finishboundary").addEventListener("click", () => {
+    const box = host.querySelector("#finishcylinders");
+    box.hidden = !box.hidden;
+    if (!box.hidden && !box.value) {
+      box.value = "wheel_fl -0.7 0.31 1.2 0.32 0.12\nwheel_fr 0.7 0.31 1.2 0.32 0.12\nwheel_rl -0.7 0.31 -1.2 0.32 0.12\nwheel_rr 0.7 0.31 -1.2 0.32 0.12";
+    }
+    status(box.hidden ? "Automatic wheel islands stay in use." : "Four boundary rows are visible. Edit them, then run finish. An empty or incomplete list does not invent a wheel.");
+  });
   host.querySelector("#finishdownload").addEventListener("click", () => {
     if (!finishExport) return;
     downloadBytes(finishExport, "finish.glb", "model/gltf-binary");

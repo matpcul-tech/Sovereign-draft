@@ -204,14 +204,25 @@ export function sideViewGlassCheck(samples, beltY) {
   const below = glass.filter((sample) => sample.y < beltY);
   const ratio = car.length ? glass.length / car.length : 0;
   const areaPass = ratio >= MASK.glassAreaMin && ratio <= MASK.glassAreaMax;
-  const pass = car.length > 0 && areaPass && below.length === 0;
+  const cells = new Set(glass.map((sample) => sample.iy + "," + sample.iz));
+  let interior = 0;
+  for (const sample of glass) {
+    const y = sample.iy;
+    const z = sample.iz;
+    if (y == null || z == null) continue;
+    if (cells.has((y - 1) + "," + z) && cells.has((y + 1) + "," + z) && cells.has(y + "," + (z - 1)) && cells.has(y + "," + (z + 1))) interior += 1;
+  }
+  const gridded = glass.some((sample) => sample.iy != null);
+  const filled = !gridded || interior > 0;
+  const pass = car.length > 0 && areaPass && below.length === 0 && filled;
   return {
     pass,
     carPixels: car.length,
     glassPixels: glass.length,
     ratio,
     belowBelt: below.length,
-    detail: "Side view glass is " + glass.length + " of " + car.length + " car pixels (" + (ratio * 100).toFixed(1) + " percent). " + below.length + " glass pixels sit below the belt line."
+    interior,
+    detail: "Side view glass is " + glass.length + " of " + car.length + " car pixels (" + (ratio * 100).toFixed(1) + " percent). " + below.length + " glass pixels sit below the belt line. " + interior + " glass pixels have glass on all four sides."
   };
 }
 
@@ -594,7 +605,7 @@ export function buildCarMask(parts, rgba, width, height) {
   const area = sideViewGlassCheck(side, belt);
   const hues = cleanedBaseCheck(cleaned.base, fitted, width, height, [40, 90, 180]);
   const checks = [
-    { id: "mask-area", pass: area.pass, detail: area.detail, action: area.pass ? "" : "The side-view glass area is outside 8 to 30 percent, or glass sits below the belt." },
+    { id: "mask-area", pass: area.pass, detail: area.detail, action: area.pass ? "" : (area.interior === 0 ? "The side-view glass has no interior pixel. A fringe is not a window." : "The side-view glass area is outside 8 to 30 percent, or glass sits below the belt.") },
     { id: "mask-edge", pass: edge.pass, detail: edge.detail, action: edge.pass ? "" : "Measure a glass and paint boundary of 1 to 2 px. A wider blur is rejected, and a mask with no shared boundary is not a pass." },
     { id: "mask-clean", pass: hues.pass && chart.unique === 0, detail: hues.detail + " " + chart.detail, action: hues.pass && chart.unique === 0 ? "" : "UVs were not moved. A true overlap of two islands stays NOT READY." }
   ];
@@ -999,7 +1010,7 @@ function sideSamples(mesh, glass) {
         break;
       }
       if (!hit) continue;
-      samples.push({ onCar: true, kind: hit.glass ? "glass" : "paint", y: py });
+      samples.push({ onCar: true, kind: hit.glass ? "glass" : "paint", y: py, iy: y, iz: z });
     }
   }
   return samples;

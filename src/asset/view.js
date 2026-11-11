@@ -5,6 +5,13 @@ import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
 import { SimplifyModifier } from "three/addons/modifiers/SimplifyModifier.js";
 import { buildAsset } from "./build.js";
 import { buildLevel } from "./level.js";
+function hasTextureMap(root) {
+  let found = false;
+  root.traverse((obj) => {
+    if (obj.isMesh && obj.material && obj.material.map) found = true;
+  });
+  return found;
+}
 function countTriangles(root) {
   let triangles = 0;
   root.traverse((obj) => {
@@ -69,6 +76,7 @@ function mount(el, onStats) {
   camera.position.set(6, 2.6, 7);
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  const roomEnvironment = scene.environment;
   const hemi = new THREE.HemisphereLight(12965098, 727088, 0.55);
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(16774372, 3.1);
@@ -296,13 +304,50 @@ function mount(el, onStats) {
       while (gizmos.children.length) gizmos.children[0].removeFromParent();
       onStats(measure(root));
       fitRig(root);
+      const review = hasTextureMap(root);
+      sun.intensity = review ? 0.9 : 3.1;
+      hemi.intensity = review ? 0.18 : 0.55;
+      rim.intensity = review ? 0.08 : 0.8;
+      scene.environment = review ? null : roomEnvironment;
+      renderer.toneMapping = review ? THREE.LinearToneMapping : THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = review ? 1 : 1.05;
+      if (review) {
+        root.traverse((obj) => {
+          if (!obj.isMesh || !obj.material || !obj.material.map) return;
+          obj.material.map.colorSpace = THREE.SRGBColorSpace;
+          obj.material.map.needsUpdate = true;
+          obj.material.needsUpdate = true;
+        });
+      }
       frameObject(root);
-      const offset = camera.position.clone().sub(controls.target).multiplyScalar(0.72);
-      camera.position.copy(controls.target).add(offset);
+      controls.update();
+    },
+    look(preset) {
+      const target = external || holder;
+      const box = new THREE.Box3().setFromObject(target);
+      if (box.isEmpty()) return;
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const radius = Math.max(size.x, size.y, size.z) * 0.55;
+      const dist = radius / Math.sin(THREE.MathUtils.degToRad(camera.fov) * 0.5);
+      const alongLength = size.z >= size.x;
+      const dir = preset === "side"
+        ? (alongLength ? new THREE.Vector3(1, 0.12, 0) : new THREE.Vector3(0, 0.12, 1))
+        : preset === "front"
+          ? (alongLength ? new THREE.Vector3(0.35, 0.42, 1) : new THREE.Vector3(1, 0.42, 0.35))
+          : new THREE.Vector3(0.72, 0.38, 0.9);
+      camera.position.copy(center).add(dir.normalize().multiplyScalar(dist));
+      controls.target.copy(center);
       controls.update();
     },
     clearVehicle() {
       external = null;
+      sun.intensity = 3.1;
+      hemi.intensity = 0.55;
+      rim.intensity = 0.8;
+      scene.environment = roomEnvironment;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
       holder.clear();
       if (doc) {
         key = "";

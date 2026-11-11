@@ -47,7 +47,54 @@ export function resampleCircle(cyl) {
   return { ok: check.ok, points, count: chosen.count, sag: chosen.sag, vertex: check.vertex, chord: check.chord };
 }
 
-export function clipTriangle(tri, cyl) {
+export function clipTriangle(tri, cyl, depth = 0) {
+  const hit = clipTriangleRaw(tri, cyl);
+  if (hit.ok || depth >= 8) return hit;
+  const dists = tri.map((vert) => radial(vert.p, cyl) - cyl.radius);
+  if (!(dists.some((value) => value < -MM) && dists.some((value) => value > MM))) return hit;
+  const inside = [];
+  const outside = [];
+  const boundary = [];
+  for (const kid of splitLongest(tri)) {
+    const next = clipTriangle(kid, cyl, depth + 1);
+    if (!next.ok) {
+      const kidDist = kid.map((vert) => radial(vert.p, cyl) - cyl.radius);
+      const kidCross = kidDist.some((value) => value < -MM) && kidDist.some((value) => value > MM);
+      if (kidCross) return hit;
+      if (kidDist.some((value) => value < -MM)) inside.push([kid]);
+      else outside.push([kid]);
+      continue;
+    }
+    if (next.inside) inside.push(...next.inside);
+    if (next.outside) outside.push(...next.outside);
+    if (next.boundary) boundary.push(...next.boundary);
+  }
+  if (!inside.length) return hit;
+  return { ok: true, kind: "split", inside, outside, boundary };
+}
+
+function splitLongest(tri) {
+  let edge = 0;
+  let best = -1;
+  for (let i = 0; i < 3; i++) {
+    const len = hypot(sub(tri[(i + 1) % 3].p, tri[i].p));
+    if (len > best) {
+      best = len;
+      edge = i;
+    }
+  }
+  const a = tri[edge];
+  const b = tri[(edge + 1) % 3];
+  const c = tri[(edge + 2) % 3];
+  const mid = {
+    p: a.p.map((value, index) => (value + b.p[index]) * 0.5),
+    uv: a.uv.map((value, index) => (value + b.uv[index]) * 0.5),
+    n: a.n.map((value, index) => (value + b.n[index]) * 0.5)
+  };
+  return [[a, mid, c], [mid, b, c]];
+}
+
+function clipTriangleRaw(tri, cyl) {
   const hits = [];
   for (let edge = 0; edge < 3; edge++) {
     const a = tri[edge];
@@ -110,30 +157,135 @@ function clipTwoHits(tri, cyl, hits) {
   ));
   const chosen = segmentCountForRadius(cyl.radius);
   if (!chosen.ok) return { ok: false, reason: "The wheel radius cannot be held within 1 mm." };
-  const step = (Math.PI * 2) / chosen.count;
-  let arc = walkArc(angles[0], angles[1], step);
-  let samples = arc.map((angle) => pointAt(cyl, basis, angle, axial(hits[0].v.p, cyl)));
-  if (!samples.every((point) => insideTri(point, tri, MM * 4))) {
-    arc = walkArc(angles[1], angles[0], step);
-    samples = arc.map((angle) => pointAt(cyl, basis, angle, axial(hits[0].v.p, cyl)));
+  const plane = planeOf(tri);
+  const forward = sectionSamples(tri, cyl, basis, plane, angles[0], angles[1], hits[0], hits[1], chosen.count);
+  const back = sectionSamples(tri, cyl, basis, plane, angles[1], angles[0], hits[1], hits[0], chosen.count);
+  let samples = forward || back;
+  const chordCheck = chordOnCurve(hits[0].v.p, hits[1].v.p, cyl);
+  if (!samples && chordCheck.ok) samples = [{ vert: hits[0].v }, { vert: hits[1].v }];
+  if (!samples) return { ok: false, reason: "The cylinder arc left the triangle. The cut was not guessed." };
+  const boundary = samples.map((sample) => sample.vert);
+  for (const vert of boundary) {
+    const snapped = projectOntoCylinder(vert.p, cyl);
+    vert.p[0] = snapped[0];
+    vert.p[1] = snapped[1];
+    vert.p[2] = snapped[2];
   }
-  if (!samples.length || !samples.every((point) => insideTri(point, tri, MM * 4))) {
-    return { ok: false, reason: "The cylinder arc left the triangle. The cut was not guessed." };
-  }
-  const boundary = samples.map((p) => ({ p, uv: baryUv(p, tri), n: tri[0].n.slice() }));
-  const check = loopOnCurve(samples, cyl);
+  const points = boundary.map((vert) => vert.p);
+  const check = points.length >= 3 ? loopOnCurve(points, cyl) : chordOnCurve(points[0], points[1], cyl);
   if (!check.ok) return { ok: false, reason: "The cut chord leaves the cylinder by more than 1 mm." };
-  const insideVerts = tri.filter((vert) => radial(vert.p, cyl) - cyl.radius < MM);
-  const polygon = boundary.concat(insideVerts);
+  const insideOnly = tri.filter((vert) => radial(vert.p, cyl) - cyl.radius < -MM);
+  const outsideOnly = tri.filter((vert) => radial(vert.p, cyl) - cyl.radius > MM);
   return {
     ok: true,
     kind: "arc",
-    inside: fan(polygon),
-    outside: fan(tri.filter((vert) => radial(vert.p, cyl) - cyl.radius > -MM).concat(boundary.slice().reverse())),
+    inside: sideFan(insideOnly, boundary),
+    outside: sideFan(outsideOnly, boundary.slice().reverse()),
     cap: [],
-    boundary: samples,
+    boundary: samples.map((sample) => sample.vert.p),
     count: chosen.count
   };
+}
+
+function sideFan(origins, boundary) {
+  if (boundary.length < 2) return [];
+  if (!origins.length) return fan(boundary);
+  if (origins.length === 1) {
+    const origin = origins[0];
+    const tris = [];
+    for (let i = 0; i < boundary.length - 1; i++) tris.push([origin, boundary[i], boundary[i + 1]]);
+    return tris.filter((face) => area(face) > 1e-12);
+  }
+  const end = boundary[boundary.length - 1].p;
+  const ranked = origins.slice().sort((a, b) => hypot(sub(a.p, end)) - hypot(sub(b.p, end)));
+  return earClip(boundary.concat(ranked));
+}
+
+function earClip(poly) {
+  const verts = poly.slice();
+  const tris = [];
+  let guard = verts.length * verts.length;
+  while (verts.length > 3 && guard-- > 0) {
+    let clipped = false;
+    for (let i = 0; i < verts.length; i++) {
+      const prev = verts[(i + verts.length - 1) % verts.length];
+      const curr = verts[i];
+      const next = verts[(i + 1) % verts.length];
+      if (area([prev, curr, next]) < 1e-10) continue;
+      let blocked = false;
+      for (const other of verts) {
+        if (other === prev || other === curr || other === next) continue;
+        if (insideTri(other.p, [prev, curr, next], 1e-6)) {
+          blocked = true;
+          break;
+        }
+      }
+      if (blocked) continue;
+      tris.push([prev, curr, next]);
+      verts.splice(i, 1);
+      clipped = true;
+      break;
+    }
+    if (!clipped) break;
+  }
+  if (verts.length === 3 && area(verts) > 1e-12) tris.push(verts.slice());
+  return tris;
+}
+
+function projectOntoCylinder(point, cyl) {
+  const axis = [cyl.ax, cyl.ay, cyl.az];
+  const center = [cyl.cx, cyl.cy, cyl.cz];
+  const offset = sub(point, center);
+  const along = dot(offset, axis);
+  const radialVec = sub(offset, scale(axis, along));
+  const dist = hypot(radialVec) || 1;
+  const radial = scale(radialVec, cyl.radius / dist);
+  return add(add(center, scale(axis, along)), radial);
+}
+
+function chordOnCurve(a, b, cyl) {
+  const vertex = Math.max(Math.abs(radial(a, cyl) - cyl.radius), Math.abs(radial(b, cyl) - cyl.radius));
+  const mid = a.map((value, index) => (value + b[index]) * 0.5);
+  const chord = Math.abs(radial(mid, cyl) - cyl.radius);
+  return { ok: vertex <= MM && chord <= MM, vertex, chord };
+}
+
+function sectionSamples(tri, cyl, basis, plane, from, to, startHit, endHit, count, tolerance = MM * 4) {
+  let step = (Math.PI * 2) / count;
+  for (let refine = 0; refine < 6; refine++) {
+    const angles = walkArc(from, to, step);
+    const samples = [];
+    let inside = true;
+    for (let i = 0; i < angles.length; i++) {
+      const along = alongOnPlane(cyl, plane, basis, angles[i]);
+      const used = along == null ? axial(startHit.v.p, cyl) : along;
+      const p = pointAt(cyl, basis, angles[i], used);
+      const vert = i === 0 ? startHit.v : i === angles.length - 1 ? endHit.v : { p, uv: baryUv(p, tri), n: tri[0].n.slice() };
+      const point = i === 0 || i === angles.length - 1 ? vert.p : p;
+      if (!insideTri(point, tri, tolerance)) {
+        inside = false;
+        break;
+      }
+      samples.push({ vert });
+    }
+    if (inside && samples.length >= 2 && loopOnCurve(samples.map((sample) => sample.vert.p), cyl).ok) return samples;
+    if (!inside) return null;
+    step *= 0.5;
+  }
+  return null;
+}
+
+function alongOnPlane(cyl, plane, basis, angle) {
+  const axis = [cyl.ax, cyl.ay, cyl.az];
+  const center = [cyl.cx, cyl.cy, cyl.cz];
+  const radial = [
+    cyl.radius * (Math.cos(angle) * basis.u[0] + Math.sin(angle) * basis.v[0]),
+    cyl.radius * (Math.cos(angle) * basis.u[1] + Math.sin(angle) * basis.v[1]),
+    cyl.radius * (Math.cos(angle) * basis.u[2] + Math.sin(angle) * basis.v[2])
+  ];
+  const denom = dot(axis, plane.n);
+  if (Math.abs(denom) < 1e-6) return null;
+  return -(dot(plane.n, sub(center, plane.p)) + dot(plane.n, radial)) / denom;
 }
 
 function outsideOfDisk(tri, boundary) {
@@ -274,11 +426,54 @@ function area(tri) {
   return hypot(cross(sub(tri[1].p, tri[0].p), sub(tri[2].p, tri[0].p))) * 0.5;
 }
 
-export function cutSpecifiedWheels(parts) {
+export function cutManualBody(mesh, cylinders) {
+  if (!cylinders || cylinders.length !== 4) return { ok: false, detail: "Four placed boundaries are required. No wheel was invented." };
+  let tris = meshTriangles(mesh);
+  const wheels = cylinders.map((cyl) => ({ cyl, tris: [] }));
+  for (const wheel of wheels) {
+    const keep = [];
+    for (const tri of tris) {
+      const hit = clipTriangle(tri, wheel.cyl);
+      if (!hit.ok || !hit.inside || !hit.inside.length) {
+        keep.push(tri);
+        continue;
+      }
+      wheel.tris.push(...hit.inside);
+      if (hit.outside && hit.outside.length) keep.push(...hit.outside);
+    }
+    tris = keep;
+  }
+  if (wheels.some((wheel) => wheel.tris.length < 4)) {
+    return { ok: false, detail: "A placed boundary did not cut a wheel out of the shell. No wheel was invented." };
+  }
+  const body = trianglesToMesh(tris);
+  const parts = [{ name: "body", mesh: body, wheel: false }];
+  for (const wheel of wheels) {
+    const partMesh = trianglesToMesh(wheel.tris);
+    let cx = 0;
+    let cy = 0;
+    let cz = 0;
+    const count = partMesh.positions.length / 3 || 1;
+    for (let i = 0; i < partMesh.positions.length; i += 3) {
+      cx += partMesh.positions[i];
+      cy += partMesh.positions[i + 1];
+      cz += partMesh.positions[i + 2];
+    }
+    parts.push({
+      name: wheel.cyl.name,
+      mesh: partMesh,
+      wheel: true,
+      center: [cx / count, cy / count, cz / count]
+    });
+  }
+  return { ok: true, separated: true, manual: true, parts, detail: "Cut four wheels on the boundaries placed in FINISH. No wheel was invented from a guess." };
+}
+
+export function cutSpecifiedWheels(parts, options = {}) {
   const body = parts.find((part) => !part.wheel);
   const wheels = parts.filter((part) => part.wheel);
   if (!body || wheels.length !== 4) return { parts, cuts: 0, cylinders: [], paired: true };
-  const cylinders = wheels.map(cylinderFromPart);
+  const cylinders = options && options.cylinders ? options.cylinders : wheels.map(cylinderFromPart);
   let tris = meshTriangles(body.mesh);
   const extra = new Map(wheels.map((part) => [part.name, []]));
   let cuts = 0;
@@ -297,7 +492,10 @@ export function cutSpecifiedWheels(parts) {
       }
       cuts += 1;
       if (hit.outside && hit.outside.length) keep.push(...hit.outside);
-      extra.get(cyl.name).push(...hit.inside);
+      if (hit.inside && hit.inside.length) {
+        if (options.keepInsideOnBody) keep.push(...hit.inside);
+        else extra.get(cyl.name).push(...hit.inside);
+      }
       if (hit.boundary) boundary.push(...hit.boundary);
     }
     tris = keep;
@@ -315,10 +513,13 @@ export function cutSpecifiedWheels(parts) {
   }
   const paired = boundary.every((point) => {
     const onBody = hasPoint(next[0].mesh, point);
-    const onWheel = next.slice(1).some((part) => hasPoint(part.mesh, point));
-    return onBody && onWheel;
+    if (!onBody) return false;
+    if (options.keepInsideOnBody) {
+      return cylinders.some((cyl) => Math.abs(radial(point, cyl) - cyl.radius) <= 0.001);
+    }
+    return next.slice(1).some((part) => hasPoint(part.mesh, point));
   });
-  return { parts: next, cuts, cylinders, paired, boundary };
+  return { parts: next, cuts, cylinders, paired, boundary, wheelUnchanged: !!options.keepInsideOnBody };
 }
 
 export function meshBleed(parts) {
@@ -379,15 +580,22 @@ export function fitTireCylinder(mesh, name) {
     sy += p[1];
     sz += p[2];
   }
+  const cy = sy / use.length;
+  const cz = sz / use.length;
+  let fitted = 0;
+  for (const p of verts) {
+    const dist = Math.hypot(p[1] - cy, p[2] - cz);
+    if (dist > fitted) fitted = dist;
+  }
   return {
     name,
     cx: (minX + maxX) / 2,
-    cy: sy / use.length,
-    cz: sz / use.length,
+    cy,
+    cz,
     ax: 1,
     ay: 0,
     az: 0,
-    radius,
+    radius: fitted || radius,
     half: (maxX - minX) / 2 + 0.001
   };
 }
