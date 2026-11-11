@@ -78,7 +78,7 @@ await page.waitForFunction(() => {
 }, null, { timeout: 20000 });
 const banner = await page.locator("#finishbanner").innerText();
 const log = await page.locator("#finishlog").innerText();
-check(banner.startsWith("LOGGED"), "run banner: " + banner);
+check(banner.startsWith("NOT READY"), "plain car has no cabin glass: " + banner);
 check(!/Street Empire-ready|game ready/i.test(banner + log), "no game-ready claim");
 check(/Before/.test(log) && /After/.test(log), "before and after: " + log.split("\n").slice(0, 2).join(" | "));
 check(/wheel/i.test(log), "wheel split is in the log");

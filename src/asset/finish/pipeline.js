@@ -1,6 +1,8 @@
 import { MeshoptSimplifier } from "three/addons/libs/meshopt_simplifier.module.js";
-import { GAME_TINT, carSourceCheck } from "./profiles.js";
+import { GAME_TINT, carSourceCheck, drawCallCheck } from "./profiles.js";
 import { decodePng, encodePng } from "./png.js";
+import { buildCarMask } from "./mask.js";
+import { zipStore } from "./zip.js";
 import { packGlb, sha256Hex, sourceCensus } from "./glb.js";
 
 const WELD = 2000;
@@ -124,13 +126,38 @@ export async function runFinish(loaded, profile, options = {}) {
     detail: "Exported triangles " + triangles + ". Target " + profile.triangleTarget + ". Ceiling " + profile.triangleCeiling + ".",
     action: budget ? "The count is over the ceiling. Borders were not unlocked." : ""
   });
-  if (parts.some((part) => part.wheel)) {
-    checks.push({ id: "bleed", pass: true, detail: "Wheel islands do not share a cut boundary. A crossing triangle count was not invented.", action: "" });
-  }
+  checks.push(wheelBleed(parts));
+  checks.push({
+    id: "drawcalls",
+    pass: drawCallCheck(parts.length, profile).pass,
+    detail: drawCallCheck(parts.length, profile).detail,
+    action: drawCallCheck(parts.length, profile).pass ? "" : "Fewer draw calls are required. Do not split paint from glass to get there."
+  });
 
   const images = resizeImages(loaded, profile.maxTexture, log, checks);
+  let maskPack = null;
+  if (profile.id === "CAR") {
+    const png = (images.outputs || []).find((image) => image.mime === "image/png" && image.bytes && image.bytes.length);
+    if (!png) {
+      checks.push({ id: "mask", pass: false, detail: "No PNG base image was measured, so no mask was built.", action: "Use one PNG base color. A new atlas was not baked." });
+    } else {
+      try {
+        const decoded = decodePng(png.bytes);
+        const built = buildCarMask(parts, decoded.rgba, decoded.width, decoded.height);
+        if (!built.ok) checks.push({ id: "mask", pass: false, detail: built.detail, action: built.action || "" });
+        else {
+          maskPack = built;
+          png.bytes = encodePng(decoded.width, decoded.height, built.baseRgba);
+          checks.push(...built.checks);
+          log.push("A 1024 mask was stored on emissiveTexture with factor 0, 0, 0 and extras.kitMask. Street Empire does not read that mask.");
+        }
+      } catch (error) {
+        checks.push({ id: "mask", pass: false, detail: "The base PNG could not be masked.", action: "Replace the base image with an 8-bit RGBA PNG." });
+      }
+    }
+  }
   const materialName = safeMaterialName(names[0] || "atlas");
-  const bytes = packParts(parts, materialName, images.outputs, !!options.frontConfirmed);
+  const bytes = packParts(parts, materialName, images.outputs, !!options.frontConfirmed, maskPack);
   const afterSha = await sha256Hex(bytes);
   const after = {
     triangles,
@@ -158,13 +185,45 @@ export async function runFinish(loaded, profile, options = {}) {
   });
   checks.push({
     id: "material",
-    pass: !GAME_TINT.test(materialName),
+    pass: !GAME_TINT.test(materialName) && names.length <= 1,
     detail: "One material, " + materialName + ". No new atlas was baked.",
     action: ""
   });
+  checks.push({
+    id: "bytes",
+    pass: bytes.length <= profile.byteCap,
+    detail: "File is " + bytes.length + " bytes. Cap is " + profile.byteCap + " bytes.",
+    action: bytes.length <= profile.byteCap ? "" : "The file is over the cap. Do not unlock a border to shrink it."
+  });
+  const bad = outputDefects(parts);
+  checks.push({
+    id: "triangles",
+    pass: bad.zero === 0 && bad.duplicate === 0,
+    detail: bad.zero + " zero-area triangles and " + bad.duplicate + " repeated triangles remain.",
+    action: bad.zero || bad.duplicate ? "Remove the remaining bad triangles." : ""
+  });
+  if (profile.id === "CAR") {
+    const missing = ["body", "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"].filter((name) => !parts.some((part) => part.name === name));
+    checks.push({
+      id: "names",
+      pass: !missing.length,
+      detail: missing.length ? "Missing " + missing.join(", ") + "." : "Nodes are body and the four wheels.",
+      action: missing.length ? "The four wheel islands were not named." : ""
+    });
+  }
   const failed = checks.some((check) => !check.pass);
+  const banner = failed ? "NOT READY" : "READY";
+  const summary = failed
+    ? "One or more declared checks failed."
+    : "Every declared check passed. This is not a gameplay or phone test. Street Empire does not read the mask.";
   log.push("Source SHA " + sourceSha.slice(0, 12) + " was not modified. Output SHA " + afterSha.slice(0, 12) + ".");
-  log.push("This is not a READY verdict. Street Empire does not read a window mask from this file.");
+  log.push(summary);
+  const validation = [banner, summary, ""].concat(checks.map((check) => (check.pass ? "PASS  " : "FAIL  ") + check.detail + (check.action ? "  " + check.action : ""))).concat([""]).concat(log).join("\n");
+  const files = [
+    { name: "model.glb", data: bytes },
+    { name: "validation.txt", data: new TextEncoder().encode(validation) }
+  ];
+  if (maskPack) files.push({ name: "review-mask.png", data: maskPack.reviewPng });
   return finishResult({
     sourceSha,
     before,
@@ -172,15 +231,16 @@ export async function runFinish(loaded, profile, options = {}) {
     log,
     checks,
     bytes,
-    banner: failed ? "NOT READY" : "LOGGED",
-    summary: failed ? "One or more logged checks failed. No READY verdict was issued." : "Fixes were logged. No READY verdict was issued."
+    zip: zipStore(files),
+    banner,
+    summary
   });
 }
 
 function finishResult(result) {
   return {
-    ready: false,
-    issuedReady: false,
+    ready: result.banner === "READY",
+    issuedReady: result.banner === "READY",
     banner: result.banner,
     summary: result.summary,
     log: result.log,
@@ -188,8 +248,46 @@ function finishResult(result) {
     before: result.before,
     after: result.after || null,
     bytes: result.bytes || null,
+    zip: result.zip || null,
     sourceSha: result.sourceSha
   };
+}
+
+function wheelBleed(parts) {
+  const body = parts.find((part) => !part.wheel);
+  if (!body || !parts.some((part) => part.wheel)) {
+    return { id: "bleed", pass: true, detail: "No wheel boundary to measure.", action: "" };
+  }
+  const keys = new Set();
+  for (let i = 0; i < body.mesh.positions.length; i += 3) {
+    keys.add(Math.round(body.mesh.positions[i] * WELD) + "," + Math.round(body.mesh.positions[i + 1] * WELD) + "," + Math.round(body.mesh.positions[i + 2] * WELD));
+  }
+  let shared = 0;
+  for (const part of parts) {
+    if (!part.wheel) continue;
+    for (let i = 0; i < part.mesh.positions.length; i += 3) {
+      const key = Math.round(part.mesh.positions[i] * WELD) + "," + Math.round(part.mesh.positions[i + 1] * WELD) + "," + Math.round(part.mesh.positions[i + 2] * WELD);
+      if (keys.has(key)) shared += 1;
+    }
+  }
+  return {
+    id: "bleed",
+    pass: shared === 0,
+    detail: shared + " wheel vertices sit on the body within 0.5 mm.",
+    action: shared ? "The wheel boundary meets the body. Do not call that split clean." : ""
+  };
+}
+
+function outputDefects(parts) {
+  let zero = 0;
+  let duplicate = 0;
+  for (const part of parts) {
+    const copy = { ...part.mesh, indices: part.mesh.indices.slice() };
+    const dropped = dropBadFaces(copy);
+    zero += dropped.zero;
+    duplicate += dropped.duplicate;
+  }
+  return { zero, duplicate };
 }
 
 function measureFile(loaded) {
@@ -582,7 +680,7 @@ function resizeImages(loaded, max, log, checks) {
   return { outputs };
 }
 
-function packParts(parts, materialName, images, frontConfirmed) {
+function packParts(parts, materialName, images, frontConfirmed, maskPack) {
   const base = images[0] || null;
   const meshes = [];
   const nodes = [];
@@ -617,7 +715,10 @@ function packParts(parts, materialName, images, frontConfirmed) {
       baseColorFactor: [1, 1, 1, 1],
       metallicFactor: 0,
       roughnessFactor: 1,
-      baseColorImage: base ? { name: base.name || "base", mime: base.mime, bytes: base.bytes } : undefined
+      baseColorImage: base ? { name: base.name || "base", mime: base.mime, bytes: base.bytes } : undefined,
+      emissiveImage: maskPack ? { name: "mask", mime: "image/png", bytes: maskPack.maskPng } : undefined,
+      emissiveFactor: maskPack ? [0, 0, 0] : undefined,
+      extras: maskPack ? { kitMask: true } : undefined
     }],
     meshes,
     nodes

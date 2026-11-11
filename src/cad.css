@@ -379,6 +379,7 @@ body:has(#assetmode) #toast{top:64px;bottom:auto}
 #finishpanel p.bad{color:var(--gold)}
 #finishpanel #finishlog{white-space:pre-wrap;font-size:11px;line-height:1.35;color:var(--ink-dim);margin:8px 0}
 #finishpanel #finishbanner{color:var(--ink)}
+#finishpanel #finishbanner.ready{color:var(--teal)}
 #finishpanel input[type="checkbox"]{width:18px;height:18px}
 #finishpanel button,#finishpanel select,#finishpanel input[type="number"],#finishpanel input[type="text"]{min-height:44px;border-radius:10px;border:1px solid var(--line);background:#07101f;color:var(--ink);padding:0 12px;font:inherit;font-size:13px}
 #finishpanel button.on{border-color:var(--teal);color:var(--teal)}
