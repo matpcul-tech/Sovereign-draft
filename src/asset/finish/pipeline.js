@@ -90,11 +90,14 @@ export async function runFinish(loaded, profile, options = {}) {
   const welded = weldMesh(mesh);
   mesh = welded.mesh;
   log.push("Welded " + welded.merged + " vertices within 0.5 mm. UV seams and creases stayed split.");
+  if (mesh.labels && mesh.labels.some((label) => String(label).indexOf("wheel_") === 0)) {
+    log.push("Named wheel meshes stayed separate from the body. The weld did not join those parts.");
+  }
 
   let parts;
   let wheelCylinders = [];
   if (profile.id === "CAR") {
-    const split = splitWheels(mesh);
+    const split = splitByLabel(mesh) || splitWheels(mesh);
     log.push(split.detail);
     if (!split.ok) {
       checks.push({ id: "wheels", pass: false, detail: split.detail, action: "Hand the shell to VEHICLE and split the four wheels by hand. This finish will not invent a cut." });
@@ -223,8 +226,14 @@ export async function runFinish(loaded, profile, options = {}) {
   checks.push({
     id: "manifold",
     pass: bad.nonManifold === 0,
-    detail: bad.nonManifold + " edges are shared by more than two triangles. Open tears that are not this kind of edge are not certified as closed.",
+    detail: bad.nonManifold + " edges are shared by more than two triangles.",
     action: bad.nonManifold ? "Repair the non-manifold edges in VEHICLE. This finish did not call them clean." : ""
+  });
+  checks.push({
+    id: "open-edges",
+    pass: true,
+    detail: bad.boundary + " boundary edges have one triangle. They were not filled. An open tear and an intentional opening are not distinguished, so this count is not a closed-shell certificate.",
+    action: ""
   });
   if (profile.id === "CAR") {
     const missing = ["body", "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"].filter((name) => !parts.some((part) => part.name === name));
@@ -239,7 +248,7 @@ export async function runFinish(loaded, profile, options = {}) {
   const banner = failed ? "NOT READY" : "READY";
   const summary = failed
     ? "One or more declared checks failed."
-    : "Every declared check passed. This is not a gameplay or phone test. Street Empire does not read the mask.";
+    : "Every declared check passed. Boundary edges were counted and were not filled. That count is not a closed-shell certificate. This is not a gameplay or phone test. Street Empire does not read the mask.";
   log.push("Source SHA " + sourceSha.slice(0, 12) + " was not modified. Output SHA " + afterSha.slice(0, 12) + ".");
   log.push(summary);
   const validation = [banner, summary, ""].concat(checks.map((check) => (check.pass ? "PASS  " : "FAIL  ") + check.detail + (check.action ? "  " + check.action : ""))).concat([""]).concat(log).join("\n");
@@ -342,21 +351,27 @@ function wheelBleed(parts) {
 function outputDefects(parts) {
   let zero = 0;
   let duplicate = 0;
-  const corners = [];
   for (const part of parts) {
     const copy = { ...part.mesh, indices: part.mesh.indices.slice() };
     const dropped = dropBadFaces(copy);
     zero += dropped.zero;
     duplicate += dropped.duplicate;
+  }
+  let nonManifold = 0;
+  let boundary = 0;
+  for (const part of parts) {
+    const partCorners = [];
     for (let face = 0; face < part.mesh.indices.length; face += 3) {
       for (let corner = 0; corner < 3; corner++) {
         const id = part.mesh.indices[face + corner];
-        corners.push(part.mesh.positions[id * 3], part.mesh.positions[id * 3 + 1], part.mesh.positions[id * 3 + 2]);
+        partCorners.push(part.mesh.positions[id * 3], part.mesh.positions[id * 3 + 1], part.mesh.positions[id * 3 + 2]);
       }
     }
+    const topology = faceTopology(new Float32Array(partCorners));
+    nonManifold += topology.nonManifold;
+    boundary += topology.boundary || 0;
   }
-  const topology = faceTopology(new Float32Array(corners));
-  return { zero, duplicate, nonManifold: topology.nonManifold };
+  return { zero, duplicate, nonManifold, boundary };
 }
 
 function measureFile(loaded) {
@@ -376,8 +391,10 @@ function soupFrom(surfaces) {
   const positions = new Float32Array(corners * 3);
   const uvs = new Float32Array(corners * 2);
   const normals = new Float32Array(corners * 3);
+  const labels = new Array(corners);
   let corner = 0;
   for (const surface of surfaces) {
+    const label = partLabel(surface.name);
     for (let face = 0; face < surface.faceCount; face++) {
       for (let c = 0; c < 3; c++) {
         const at = corner * 3;
@@ -391,13 +408,21 @@ function soupFrom(surfaces) {
         normals[at] = surface.normals[face * 3];
         normals[at + 1] = surface.normals[face * 3 + 1];
         normals[at + 2] = surface.normals[face * 3 + 2];
+        labels[corner] = label;
         corner += 1;
       }
     }
   }
   const indices = new Uint32Array(corners);
   for (let i = 0; i < corners; i++) indices[i] = i;
-  return { positions, uvs, normals, indices };
+  return { positions, uvs, normals, indices, labels };
+}
+
+function partLabel(name) {
+  const clean = String(name || "").toLowerCase().replace(/_mesh$/, "");
+  if (/^wheel_(fl|fr|rl|rr)$/.test(clean)) return clean;
+  if (clean === "body") return "body";
+  return "shell";
 }
 
 function hasMorph(json) {
@@ -558,6 +583,7 @@ function weldMesh(mesh) {
   const positions = [];
   const uvs = [];
   const normals = [];
+  const labels = [];
   const remap = new Uint32Array(mesh.positions.length / 3);
   let merged = 0;
   for (let i = 0; i < remap.length; i++) {
@@ -573,6 +599,7 @@ function weldMesh(mesh) {
     positions.push(mesh.positions[i * 3], mesh.positions[i * 3 + 1], mesh.positions[i * 3 + 2]);
     uvs.push(mesh.uvs[i * 2], mesh.uvs[i * 2 + 1]);
     normals.push(mesh.normals[i * 3], mesh.normals[i * 3 + 1], mesh.normals[i * 3 + 2]);
+    labels.push(mesh.labels ? mesh.labels[i] : "shell");
   }
   const indices = [];
   for (let face = 0; face < mesh.indices.length; face += 3) {
@@ -588,9 +615,31 @@ function weldMesh(mesh) {
       positions: new Float32Array(positions),
       uvs: new Float32Array(uvs),
       normals: new Float32Array(normals),
-      indices: new Uint32Array(indices)
+      indices: new Uint32Array(indices),
+      labels
     }
   };
+}
+
+function splitByLabel(mesh) {
+  if (!mesh.labels) return null;
+  const names = ["body", "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"];
+  const present = new Set(mesh.labels);
+  if (!names.every((name) => present.has(name))) return null;
+  for (const label of present) if (!names.includes(label)) return null;
+  const groups = new Map(names.map((name) => [name, []]));
+  for (let face = 0; face < mesh.indices.length / 3; face++) {
+    const label = mesh.labels[mesh.indices[face * 3]];
+    if (!groups.has(label)) return null;
+    groups.get(label).push(face);
+  }
+  if ([...groups.values()].some((faces) => !faces.length)) return null;
+  const parts = names.map((name) => {
+    const partMesh = facesToMesh(mesh, groups.get(name));
+    const box = measureMesh(partMesh);
+    return { name, mesh: partMesh, wheel: name !== "body", center: centerOf(box) };
+  });
+  return { ok: true, parts, detail: "Used the named body and four wheel meshes. They were not welded together, and no extra piece was dropped." };
 }
 
 function splitWheels(mesh) {
@@ -672,16 +721,20 @@ function compact(mesh) {
   const positions = [];
   const uvs = [];
   const normals = [];
+  const labels = [];
   for (let i = 0; i < used.length; i++) {
     if (!used[i]) continue;
     remap[i] = positions.length / 3;
     positions.push(mesh.positions[i * 3], mesh.positions[i * 3 + 1], mesh.positions[i * 3 + 2]);
     uvs.push(mesh.uvs[i * 2], mesh.uvs[i * 2 + 1]);
     normals.push(mesh.normals[i * 3], mesh.normals[i * 3 + 1], mesh.normals[i * 3 + 2]);
+    if (mesh.labels) labels.push(mesh.labels[i]);
   }
   const indices = new Uint32Array(mesh.indices.length);
   for (let i = 0; i < mesh.indices.length; i++) indices[i] = remap[mesh.indices[i]];
-  return { positions: new Float32Array(positions), uvs: new Float32Array(uvs), normals: new Float32Array(normals), indices };
+  const out = { positions: new Float32Array(positions), uvs: new Float32Array(uvs), normals: new Float32Array(normals), indices };
+  if (labels.length) out.labels = labels;
+  return out;
 }
 
 function recomputeNormals(mesh, cylinders) {
@@ -997,7 +1050,8 @@ function quantKey(mesh, id) {
 }
 
 function weldKey(mesh, id) {
-  return quantKey(mesh, id) + "/" + Math.round(mesh.uvs[id * 2] * 4096) + "," + Math.round(mesh.uvs[id * 2 + 1] * 4096);
+  const label = mesh.labels ? mesh.labels[id] : "shell";
+  return quantKey(mesh, id) + "/" + Math.round(mesh.uvs[id * 2] * 4096) + "," + Math.round(mesh.uvs[id * 2 + 1] * 4096) + "/" + label;
 }
 
 function rotateY(mesh, angle) {

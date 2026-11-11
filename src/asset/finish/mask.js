@@ -51,7 +51,8 @@ export function maskClass(r, g, b) {
   if (g >= 250 && r <= 5 && b <= 5) return "paint";
   if (b >= 250 && r <= 5 && g <= 5) return "chrome";
   if (r <= 5 && g <= 5 && b <= 5) return "other";
-  return "edge";
+  if (r >= 110 && r <= 146 && g >= 110 && g <= 146 && b <= 20) return "edge";
+  return "gutter";
 }
 
 export function isGlassTone(r, g, b) {
@@ -333,7 +334,7 @@ function padIslands(base, mask, width, height) {
       if (seen[id]) continue;
       const index = id * 4;
       const kind = maskClass(mask[index], mask[index + 1], mask[index + 2]);
-      if (kind === "edge") continue;
+      if (kind === "edge" || kind === "gutter") continue;
       const stack = [id];
       seen[id] = 1;
       const pixels = [];
@@ -381,7 +382,8 @@ function padIslands(base, mask, width, height) {
             conflicts += 1;
             continue;
           }
-          if (owner[tid] === -1 && maskClass(mask[tid * 4], mask[tid * 4 + 1], mask[tid * 4 + 2]) === "edge") {
+          const target = maskClass(mask[tid * 4], mask[tid * 4 + 1], mask[tid * 4 + 2]);
+          if (owner[tid] === -1 && (target === "edge" || target === "gutter")) {
             claim[tid] = island;
           }
         }
@@ -537,7 +539,7 @@ export function buildCarMask(parts, rgba, width, height) {
       const color = part.wheel ? [0, 0, 0, 255] : glass.has(face) && part === body ? GLASS : PAINT;
       const us = tri.map((vert) => vert.uv[0]);
       const vs = tri.map((vert) => vert.uv[1]);
-      if (Math.max(...us) - Math.min(...us) > 0.25 || Math.max(...vs) - Math.min(...vs) > 0.25) continue;
+      if (Math.max(...us) - Math.min(...us) > 0.6 || Math.max(...vs) - Math.min(...vs) > 0.6) continue;
       splat(mask, MASK.size, tri, color);
     }
   }
@@ -550,7 +552,7 @@ export function buildCarMask(parts, rgba, width, height) {
   const hues = cleanedBaseCheck(cleaned.base, fitted, width, height, [40, 90, 180]);
   const checks = [
     { id: "mask-area", pass: area.pass, detail: area.detail, action: area.pass ? "" : "The side-view glass area is outside 8 to 30 percent, or glass sits below the belt." },
-    { id: "mask-edge", pass: edge.count === 0 || edge.pass, detail: edge.count === 0 ? "Glass and paint do not share a texel edge, so there is no blur wider than 2 px." : edge.detail, action: edge.count === 0 || edge.pass ? "" : "Keep the mask edge at 1 to 2 px." },
+    { id: "mask-edge", pass: edge.pass, detail: edge.detail, action: edge.pass ? "" : "Measure a glass and paint boundary of 1 to 2 px. A wider blur is rejected, and a mask with no shared boundary is not a pass." },
     { id: "mask-clean", pass: hues.pass && cleaned.ready, detail: hues.detail + " " + (cleaned.conflicts ? cleaned.conflicts + " pad conflicts." : "No pad conflict."), action: hues.pass && cleaned.ready ? "" : "Clean the glass and the paint fringe by hand. UVs were not moved." }
   ];
   const review = reviewSheet(mask, MASK.size);
@@ -707,9 +709,8 @@ function antialiasMask(mask, size) {
     for (let x = 1; x < size - 1; x++) {
       const index = (y * size + x) * 4;
       if (maskClass(src[index], src[index + 1], src[index + 2]) !== "paint") continue;
-      const left = ((y * size + x - 1) * 4);
-      const up = (((y - 1) * size + x) * 4);
-      const glassNear = maskClass(src[left], src[left + 1], src[left + 2]) === "glass" || maskClass(src[up], src[up + 1], src[up + 2]) === "glass";
+      const neighbors = [index - 4, index + 4, index - size * 4, index + size * 4];
+      const glassNear = neighbors.some((at) => at >= 0 && maskClass(src[at], src[at + 1], src[at + 2]) === "glass");
       if (!glassNear) continue;
       mask[index] = 128;
       mask[index + 1] = 128;

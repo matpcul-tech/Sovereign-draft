@@ -1,5 +1,5 @@
 import { MATERIAL_ROLES, STRUCTURES } from "./finish/parts.js";
-import { growFaces, seamBlocks } from "./finish/select.js";
+import { growFaces, seamBlocks, wheelSurfaceBlocks } from "./finish/select.js";
 import { describeView, inspectVehicle } from "./finish/inspect.js";
 import { loadVehicle } from "./finish/glb.js";
 import { fusedShellGlb } from "./finish/fixture.js";
@@ -566,6 +566,7 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
           }
         }
         blocks = seamBlocks(surface.world, surface.uvs, rgba, width, height, partIds);
+        for (const pair of wheelSurfaceBlocks(surface.world)) blocks.add(pair);
       }
       const grown = growFaces(surface.topology, surface.normals, faces, island ? Infinity : crease * Math.PI / 180, blocks);
       added += grown.size - faces.size;
@@ -575,7 +576,7 @@ export function mountVehicle({ host, getApi, status, toast: notify }) {
     show();
     notify(island
       ? (added ? "Island added " + added + " connected faces." : "The selection is already the whole island.")
-      : (added ? "Grow added " + added + " faces. It stops at a part boundary, a sampled texture edge, a UV island, or a crease." + colorNote : "No added faces. The next face is a part boundary, a texture edge, a UV island, or a crease."));
+      : (added ? "Grow added " + added + " faces. It stops at a wheel surface, an assigned part, a sampled texture edge, a UV island, or a crease." + colorNote : "No added faces. The next face is a wheel surface, an assigned part, a texture edge, a UV island, or a crease."));
   }
 
   function doorTarget() {

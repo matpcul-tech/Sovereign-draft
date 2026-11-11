@@ -55,7 +55,9 @@ export function faceTopology(corners) {
     }
   }
   let nonManifold = 0;
+  let boundary = 0;
   for (const list of edges.values()) {
+    if (list.length === 1) boundary += 1;
     if (list.length > 2) nonManifold += 1;
     if (list.length !== 2) continue;
     const [a, b] = list;
@@ -63,7 +65,99 @@ export function faceTopology(corners) {
     neighbors[a].push(b);
     neighbors[b].push(a);
   }
-  return { faceCount, neighbors, degenerate, duplicate, nonManifold };
+  return { faceCount, neighbors, degenerate, duplicate, nonManifold, boundary };
+}
+
+export function wheelSurfaceBlocks(world) {
+  const blocks = new Set();
+  const faceCount = world.length / 9;
+  if (faceCount < 4) return blocks;
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < world.length; i += 3) {
+    for (let axis = 0; axis < 3; axis++) {
+      if (world[i + axis] < min[axis]) min[axis] = world[i + axis];
+      if (world[i + axis] > max[axis]) max[axis] = world[i + axis];
+    }
+  }
+  const size = min.map((value, axis) => max[axis] - value);
+  const midX = (min[0] + max[0]) / 2;
+  const midZ = (min[2] + max[2]) / 2;
+  const low = min[1] + size[1] * 0.45;
+  const buckets = [[], [], [], []];
+  const seen = new Set();
+  for (let i = 0; i < world.length; i += 3) {
+    const x = world[i];
+    const y = world[i + 1];
+    const z = world[i + 2];
+    if (y > low) continue;
+    if (Math.abs(x - midX) < size[0] * 0.18) continue;
+    if (Math.abs(z - midZ) < size[2] * 0.18) continue;
+    const key = vertexKey(x, y, z);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    buckets[(x < midX ? 0 : 1) + (z < midZ ? 0 : 2)].push([x, y, z]);
+  }
+  const cylinders = [];
+  for (const points of buckets) {
+    if (points.length < 4) continue;
+    const pmin = [Infinity, Infinity, Infinity];
+    const pmax = [-Infinity, -Infinity, -Infinity];
+    for (const point of points) {
+      for (let axis = 0; axis < 3; axis++) {
+        if (point[axis] < pmin[axis]) pmin[axis] = point[axis];
+        if (point[axis] > pmax[axis]) pmax[axis] = point[axis];
+      }
+    }
+    const ey = pmax[1] - pmin[1];
+    const ez = pmax[2] - pmin[2];
+    const radius = Math.max(ey, ez) / 2;
+    if (radius < Math.max(size[1], 1e-6) * 0.04) continue;
+    if (ey > ez * 2.5 || ez > ey * 2.5) continue;
+    cylinders.push({
+      cx: (pmin[0] + pmax[0]) / 2,
+      cy: (pmin[1] + pmax[1]) / 2,
+      cz: (pmin[2] + pmax[2]) / 2,
+      half: (pmax[0] - pmin[0]) / 2 + radius * 0.2,
+      radius: radius * 1.08
+    });
+  }
+  if (!cylinders.length) return blocks;
+  const inside = new Uint8Array(faceCount);
+  for (let face = 0; face < faceCount; face++) {
+    const center = [0, 0, 0];
+    for (let corner = 0; corner < 3; corner++) {
+      center[0] += world[face * 9 + corner * 3];
+      center[1] += world[face * 9 + corner * 3 + 1];
+      center[2] += world[face * 9 + corner * 3 + 2];
+    }
+    center[0] /= 3;
+    center[1] /= 3;
+    center[2] /= 3;
+    for (const cyl of cylinders) {
+      if (Math.abs(center[0] - cyl.cx) > cyl.half) continue;
+      if (Math.hypot(center[1] - cyl.cy, center[2] - cyl.cz) <= cyl.radius) inside[face] = 1;
+    }
+  }
+  const edges = new Map();
+  for (let face = 0; face < faceCount; face++) {
+    for (let edge = 0; edge < 3; edge++) {
+      const a = edge;
+      const b = (edge + 1) % 3;
+      const key = edgeKey(
+        world[face * 9 + a * 3], world[face * 9 + a * 3 + 1], world[face * 9 + a * 3 + 2],
+        world[face * 9 + b * 3], world[face * 9 + b * 3 + 1], world[face * 9 + b * 3 + 2]
+      );
+      const list = edges.get(key);
+      if (list) list.push(face);
+      else edges.set(key, [face]);
+    }
+  }
+  for (const list of edges.values()) {
+    if (list.length !== 2) continue;
+    if (inside[list[0]] !== inside[list[1]]) blocks.add(pairKey(list[0], list[1]));
+  }
+  return blocks;
 }
 
 function angleBetween(normals, a, b) {
