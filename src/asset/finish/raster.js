@@ -1,5 +1,6 @@
 import { decodePng, encodePng } from "./png.js";
 import webpDecoder from "@jsquash/webp/codec/dec/webp_dec.js";
+import wasmUrl from "@jsquash/webp/codec/dec/webp_dec.wasm?url";
 
 let webpReady;
 async function webpModule() {
@@ -10,8 +11,11 @@ async function webpModule() {
       const { fileURLToPath } = await import("node:url");
       const path = fileURLToPath(new URL("../../../node_modules/@jsquash/webp/codec/dec/webp_dec.wasm", import.meta.url));
       wasmBinary = await readFile(path);
+    } else {
+      const response = await fetch(wasmUrl);
+      wasmBinary = new Uint8Array(await response.arrayBuffer());
     }
-    webpReady = webpDecoder(wasmBinary ? { wasmBinary } : {});
+    webpReady = webpDecoder({ wasmBinary });
   }
   return webpReady;
 }

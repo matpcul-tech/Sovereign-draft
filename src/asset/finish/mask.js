@@ -57,7 +57,7 @@ export function maskClass(r, g, b) {
 
 export function isGlassTone(r, g, b) {
   const { s, v } = hsv(r, g, b);
-  return s < 0.18 && v >= 0.05 && v <= 0.28;
+  return s < 0.22 && v <= 0.28;
 }
 
 export function isBodyHue(r, g, b, body) {
@@ -152,24 +152,44 @@ export function editMask(mask, width, height, edit) {
 }
 
 export function aaWidths(mask, width, height) {
-  const widths = [];
   function at(x, y) {
+    if (x < 0 || y < 0 || x >= width || y >= height) return "";
     const index = (y * width + x) * 4;
     return maskClass(mask[index], mask[index + 1], mask[index + 2]);
   }
+  function thickness(x, y, dx, dy) {
+    let back = 0;
+    let cx = x;
+    let cy = y;
+    while (at(cx, cy) === "edge") {
+      back += 1;
+      cx -= dx;
+      cy -= dy;
+      if (back > 16) break;
+    }
+    const before = at(cx, cy);
+    let fore = 0;
+    cx = x + dx;
+    cy = y + dy;
+    while (at(cx, cy) === "edge") {
+      fore += 1;
+      cx += dx;
+      cy += dy;
+      if (fore > 16) break;
+    }
+    const after = at(cx, cy);
+    if (!before || !after || before === "edge" || after === "edge" || before === after) return 0;
+    if (before === "gutter" || after === "gutter" || before === "other" || after === "other") return 0;
+    return back + fore;
+  }
+  const widths = [];
   for (let y = 0; y < height; y++) {
-    let x = 0;
-    while (x < width) {
-      const kind = at(x, y);
-      if (kind !== "edge") {
-        x += 1;
-        continue;
-      }
-      const start = x;
-      while (x < width && at(x, y) === "edge") x += 1;
-      const before = start > 0 ? at(start - 1, y) : "";
-      const after = x < width ? at(x, y) : "";
-      if (before && after && before !== after && before !== "edge" && after !== "edge") widths.push(x - start);
+    for (let x = 0; x < width; x++) {
+      if (at(x, y) !== "edge") continue;
+      const across = thickness(x, y, 1, 0);
+      const down = thickness(x, y, 0, 1);
+      const band = across && down ? Math.min(across, down) : (across || down);
+      if (band) widths.push(band);
     }
   }
   const max = widths.reduce((hi, value) => Math.max(hi, value), 0);
@@ -181,7 +201,7 @@ export function aaWidths(mask, width, height) {
     min,
     max,
     detail: pass
-      ? "Mask edges are " + min + " to " + max + " px."
+      ? "Mask edges are " + min + " to " + max + " px thick."
       : "Mask edge width is outside 1 to 2 px (" + (widths.length ? min + " to " + max : "no edge") + ")."
   };
 }
@@ -497,7 +517,7 @@ export function buildCarMask(parts, rgba, width, height) {
     return { ok: false, detail: "There is no body to mask.", action: "Keep a body mesh, then run finish again." };
   }
   const box = partBounds(body.mesh);
-  const belt = box.min[1] + (box.max[1] - box.min[1]) * 0.78;
+  const belt = cabinBelt(box, parts.filter((part) => part.wheel));
   const wheels = parts.filter((part) => part.wheel).map(wheelCylinder);
   const glassFaces = [];
   const faceCount = body.mesh.indices.length / 3;
@@ -507,7 +527,7 @@ export function buildCarMask(parts, rgba, width, height) {
     const tri = faceVerts(body.mesh, face);
     const center = average(tri.map((vert) => vert.p));
     const uv = average(tri.map((vert) => vert.uv));
-    if (center[1] < belt || inAnyWheel(center, wheels)) continue;
+    if (tri.some((vert) => vert.p[1] < belt) || inAnyWheel(center, wheels)) continue;
     above += 1;
     const color = texel(rgba, width, height, uv);
     if (!isGlassTone(color[0], color[1], color[2])) continue;
@@ -531,8 +551,13 @@ export function buildCarMask(parts, rgba, width, height) {
     mask[i + 2] = 30;
     mask[i + 3] = 0;
   }
+  const owners = new Int32Array(MASK.size * MASK.size);
+  owners.fill(-1);
+  const overlaps = new Set();
+  let islandBase = 0;
   const ordered = parts.filter((part) => part.wheel).concat(parts.filter((part) => !part.wheel));
   for (const part of ordered) {
+    const islands = uvIslandIds(part.mesh);
     const count = part.mesh.indices.length / 3;
     for (let face = 0; face < count; face++) {
       const tri = faceVerts(part.mesh, face);
@@ -540,9 +565,13 @@ export function buildCarMask(parts, rgba, width, height) {
       const us = tri.map((vert) => vert.uv[0]);
       const vs = tri.map((vert) => vert.uv[1]);
       if (Math.max(...us) - Math.min(...us) > 0.6 || Math.max(...vs) - Math.min(...vs) > 0.6) continue;
-      splat(mask, MASK.size, tri, color);
+      splat(mask, MASK.size, tri, color, owners, islands[face] + islandBase, overlaps);
     }
+    let maxIsland = 0;
+    for (const id of islands) if (id > maxIsland) maxIsland = id;
+    islandBase += maxIsland + 1;
   }
+  const chart = chartPadReport(mask, owners, MASK.size, overlaps.size);
   antialiasMask(mask, MASK.size);
   const fitted = fitMask(mask, MASK.size, width, height);
   const cleaned = cleanExportedBase(rgba, fitted, width, height);
@@ -553,7 +582,7 @@ export function buildCarMask(parts, rgba, width, height) {
   const checks = [
     { id: "mask-area", pass: area.pass, detail: area.detail, action: area.pass ? "" : "The side-view glass area is outside 8 to 30 percent, or glass sits below the belt." },
     { id: "mask-edge", pass: edge.pass, detail: edge.detail, action: edge.pass ? "" : "Measure a glass and paint boundary of 1 to 2 px. A wider blur is rejected, and a mask with no shared boundary is not a pass." },
-    { id: "mask-clean", pass: hues.pass && cleaned.ready, detail: hues.detail + " " + (cleaned.conflicts ? cleaned.conflicts + " pad conflicts." : "No pad conflict."), action: hues.pass && cleaned.ready ? "" : "Clean the glass and the paint fringe by hand. UVs were not moved." }
+    { id: "mask-clean", pass: hues.pass && chart.unique === 0, detail: hues.detail + " " + chart.detail, action: hues.pass && chart.unique === 0 ? "" : "UVs were not moved. A true overlap of two islands stays NOT READY." }
   ];
   const review = reviewSheet(mask, MASK.size);
   return {
@@ -567,6 +596,17 @@ export function buildCarMask(parts, rgba, width, height) {
     baseHeight: height,
     reviewPng: encodePng(review.width, review.height, review.rgba)
   };
+}
+
+function cabinBelt(box, wheels) {
+  const fallback = box.min[1] + (box.max[1] - box.min[1]) * 0.45;
+  let top = -Infinity;
+  for (const wheel of wheels || []) {
+    const bounds = partBounds(wheel.mesh);
+    if (bounds.max[1] > top) top = bounds.max[1];
+  }
+  if (!(top > box.min[1] && top < box.max[1])) return fallback;
+  return top;
 }
 
 function partBounds(mesh) {
@@ -663,7 +703,120 @@ function components(mesh, faces) {
   return out;
 }
 
-function splat(mask, size, tri, color) {
+function uvIslandIds(mesh) {
+  const count = mesh.indices.length / 3;
+  const parent = new Uint32Array(count);
+  for (let i = 0; i < count; i++) parent[i] = i;
+  const find = (id) => {
+    while (parent[id] !== id) id = parent[id];
+    return id;
+  };
+  const unite = (a, b) => {
+    const pa = find(a);
+    const pb = find(b);
+    if (pa !== pb) parent[pa] = pb;
+  };
+  const edges = new Map();
+  for (let face = 0; face < count; face++) {
+    for (let edge = 0; edge < 3; edge++) {
+      const ia = mesh.indices[face * 3 + edge];
+      const ib = mesh.indices[face * 3 + ((edge + 1) % 3)];
+      const ax = mesh.positions[ia * 3];
+      const ay = mesh.positions[ia * 3 + 1];
+      const az = mesh.positions[ia * 3 + 2];
+      const bx = mesh.positions[ib * 3];
+      const by = mesh.positions[ib * 3 + 1];
+      const bz = mesh.positions[ib * 3 + 2];
+      const key = quantEdge(ax, ay, az, bx, by, bz);
+      const rec = {
+        face,
+        u0: [mesh.uvs[ia * 2], mesh.uvs[ia * 2 + 1]],
+        u1: [mesh.uvs[ib * 2], mesh.uvs[ib * 2 + 1]]
+      };
+      const list = edges.get(key);
+      if (list) list.push(rec);
+      else edges.set(key, [rec]);
+    }
+  }
+  for (const list of edges.values()) {
+    if (list.length !== 2) continue;
+    if (uvSeam(list[0], list[1])) continue;
+    unite(list[0].face, list[1].face);
+  }
+  const map = new Map();
+  const ids = new Int32Array(count);
+  let next = 0;
+  for (let face = 0; face < count; face++) {
+    const root = find(face);
+    if (!map.has(root)) map.set(root, next++);
+    ids[face] = map.get(root);
+  }
+  return ids;
+}
+
+function quantEdge(ax, ay, az, bx, by, bz) {
+  const a = Math.round(ax * 2000) + "," + Math.round(ay * 2000) + "," + Math.round(az * 2000);
+  const b = Math.round(bx * 2000) + "," + Math.round(by * 2000) + "," + Math.round(bz * 2000);
+  return a < b ? a + "|" + b : b + "|" + a;
+}
+
+function uvSeam(a, b) {
+  const forward = Math.hypot(a.u0[0] - b.u0[0], a.u0[1] - b.u0[1]) + Math.hypot(a.u1[0] - b.u1[0], a.u1[1] - b.u1[1]);
+  const flipped = Math.hypot(a.u0[0] - b.u1[0], a.u0[1] - b.u1[1]) + Math.hypot(a.u1[0] - b.u0[0], a.u1[1] - b.u0[1]);
+  return Math.min(forward, flipped) > 1 / 256;
+}
+
+function chartPadReport(mask, owners, size, overlaps) {
+  const bad = new Uint8Array(size * size);
+  const pairs = new Set();
+  const kindAt = (id) => {
+    const index = id * 4;
+    return maskClass(mask[index], mask[index + 1], mask[index + 2]);
+  };
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const id = y * size + x;
+      const mine = owners[id];
+      if (mine < 0) continue;
+      let border = false;
+      const around = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]];
+      for (const point of around) {
+        if (point[0] < 0 || point[1] < 0 || point[0] >= size || point[1] >= size) {
+          border = true;
+          break;
+        }
+        if (owners[point[1] * size + point[0]] !== mine) {
+          border = true;
+          break;
+        }
+      }
+      if (!border) continue;
+      const kind = kindAt(id);
+      for (let yy = y - MASK.padPx; yy <= y + MASK.padPx; yy++) {
+        for (let xx = x - MASK.padPx; xx <= x + MASK.padPx; xx++) {
+          if (xx < 0 || yy < 0 || xx >= size || yy >= size) continue;
+          const dist = Math.max(Math.abs(xx - x), Math.abs(yy - y));
+          if (!dist || dist > MASK.padPx) continue;
+          const otherId = yy * size + xx;
+          const other = owners[otherId];
+          if (other < 0 || other === mine) continue;
+          if (kindAt(otherId) === kind) continue;
+          bad[id] = 1;
+          bad[otherId] = 1;
+          pairs.add((mine < other ? mine : other) + ":" + (mine < other ? other : mine));
+        }
+      }
+    }
+  }
+  let unique = 0;
+  for (let i = 0; i < bad.length; i++) if (bad[i]) unique += 1;
+  const detail = unique
+    ? unique + " unique texels lie within 8 px of two UV islands of different classes (" + pairs.size + " island pairs). " + overlaps + " texels are written by two islands. Adjacent classes on one island are not a padding collision. UVs were not moved."
+    : "No UV island of one class is within 8 px of another class. Adjacent classes on one island are not a padding collision. " + overlaps + " texels are written by two islands.";
+  return { unique, pairs: pairs.size, overlaps, detail };
+}
+
+function splat(mask, size, tri, color, owners, island, overlaps) {
   const points = tri.map((vert) => [vert.uv[0] * (size - 1), (1 - vert.uv[1]) * (size - 1)]);
   const minX = Math.max(0, Math.floor(Math.min(points[0][0], points[1][0], points[2][0])));
   const maxX = Math.min(size - 1, Math.ceil(Math.max(points[0][0], points[1][0], points[2][0])));
@@ -674,10 +827,16 @@ function splat(mask, size, tri, color) {
     for (let x = minX; x <= maxX; x++) {
       if (!bary([x + 0.5, y + 0.5], points)) continue;
       const index = (y * size + x) * 4;
+      const previous = maskClass(mask[index], mask[index + 1], mask[index + 2]);
       mask[index] = color[0];
       mask[index + 1] = color[1];
       mask[index + 2] = color[2];
       mask[index + 3] = 255;
+      if (owners) {
+        const id = y * size + x;
+        if (owners[id] === -1) owners[id] = island;
+        else if (owners[id] !== island && overlaps && previous !== maskClass(color[0], color[1], color[2]) && previous !== "gutter" && previous !== "edge") overlaps.add(id);
+      }
       wrote += 1;
     }
   }
