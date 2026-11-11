@@ -71,6 +71,16 @@ export async function runFinish(loaded, profile, options = {}) {
 
   const placed = groundMesh(mesh);
   log.push("Center XZ is 0 and the lowest Y is 0. Moved by " + placed.map((value) => value.toFixed(3)).join(", ") + ".");
+  if (profile.id === "CHARACTER") {
+    const pose = poseCheck(mesh);
+    checks.push(pose);
+    log.push(pose.detail);
+  }
+  if (profile.id === "BUILDING") {
+    const base = baseCheck(mesh);
+    checks.push(base);
+    log.push(base.detail);
+  }
 
   const welded = weldMesh(mesh);
   mesh = welded.mesh;
@@ -81,11 +91,13 @@ export async function runFinish(loaded, profile, options = {}) {
     const split = splitWheels(mesh);
     log.push(split.detail);
     if (!split.ok) {
-      checks.push({ id: "wheels", pass: false, detail: split.detail, action: "Split the four wheels into separate islands in VEHICLE. This finish will not invent a cut." });
+      checks.push({ id: "wheels", pass: false, detail: split.detail, action: "Hand the shell to VEHICLE and split the four wheels by hand. This finish will not invent a cut." });
       return finishResult({ sourceSha, before, log, checks, banner: "NOT READY", summary: split.detail });
     }
     parts = split.parts;
+    const axles = split.parts.filter((part) => part.wheel).map((part) => part.name + " " + part.center.map((value) => value.toFixed(3)).join(" ")).join("; ");
     checks.push({ id: "wheels", pass: true, detail: "Four wheel islands were named. No cylinder was guessed.", action: "" });
+    checks.push({ id: "axle", pass: true, detail: "Wheel origins are the island centers. " + axles, action: "" });
   } else {
     parts = [{ name: "body", mesh, wheel: false }];
     log.push("No wheel split for " + profile.id + ".");
@@ -238,15 +250,21 @@ function orientMesh(mesh, profile, options) {
       action: "Confirm which axis is up, then run again."
     };
   }
+  if (profile.id === "CHARACTER") {
+    return {
+      ok: true,
+      detail: "Character up stays the glTF Y axis. The arm span was not turned onto Z."
+    };
+  }
   const horizontalGap = Math.abs(sx - sz) / Math.max(sx, sz, 1e-8);
-  if (profile.id === "CAR" && horizontalGap < 0.15) {
+  if ((profile.id === "CAR" || profile.id === "BUILDING") && horizontalGap < 0.15) {
     return {
       ok: false,
       detail: "Forward is ambiguous. The two horizontal lengths are similar, and no rotation was applied.",
       action: "Confirm which way is +Z, then run again."
     };
   }
-  if (profile.id === "CAR" && sx > sz * 1.15) {
+  if ((profile.id === "CAR" || profile.id === "BUILDING") && sx > sz * 1.15) {
     rotateY(mesh, Math.PI / 2);
     return {
       ok: true,
@@ -258,6 +276,53 @@ function orientMesh(mesh, profile, options) {
     detail: options.frontConfirmed
       ? "Up is the glTF Y axis and the long axis is Z. +Z was confirmed as the front."
       : "Up is the glTF Y axis and the long axis is already Z. Which end is the front was not confirmed."
+  };
+}
+
+function poseCheck(mesh) {
+  const box = measureMesh(mesh);
+  const height = box.size[1];
+  const span = box.size[0];
+  const depth = box.size[2];
+  const pass = height > 0.4 && span > height * 0.65 && span > depth * 1.5;
+  return {
+    id: "pose",
+    pass,
+    detail: pass
+      ? "Arm span " + span.toFixed(2) + " m reads as a T against height " + height.toFixed(2) + " m. No skeleton was added."
+      : "Arm span " + span.toFixed(2) + " m does not read as a T against height " + height.toFixed(2) + " m. No skeleton was added.",
+    action: pass ? "" : "Use a T pose. This finish does not rig a character."
+  };
+}
+
+function baseCheck(mesh) {
+  const box = measureMesh(mesh);
+  let count = 0;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  let maxY = 0;
+  for (let i = 0; i < mesh.positions.length; i += 3) {
+    const y = mesh.positions[i + 1];
+    if (y > 0.02) continue;
+    count += 1;
+    if (y > maxY) maxY = y;
+    if (mesh.positions[i] < minX) minX = mesh.positions[i];
+    if (mesh.positions[i] > maxX) maxX = mesh.positions[i];
+    if (mesh.positions[i + 2] < minZ) minZ = mesh.positions[i + 2];
+    if (mesh.positions[i + 2] > maxZ) maxZ = mesh.positions[i + 2];
+  }
+  const coverX = count && (maxX - minX) >= box.size[0] * 0.6;
+  const coverZ = count && (maxZ - minZ) >= box.size[2] * 0.6;
+  const pass = count >= 4 && maxY <= 0.01 && coverX && coverZ;
+  return {
+    id: "base",
+    pass,
+    detail: pass
+      ? "The footprint sits on a flat Y = 0 base (" + count + " low vertices)."
+      : "The low points do not cover a flat base on Y = 0.",
+    action: pass ? "" : "Level the base so the footprint sits on Y = 0."
   };
 }
 
