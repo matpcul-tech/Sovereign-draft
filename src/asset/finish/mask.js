@@ -1,4 +1,6 @@
-// CAR window mask metrics. The FINISH profile step does not run these.
+import { encodePng } from "./png.js";
+
+// CAR window mask metrics. Street Empire src/kit.js does not read this mask.
 // Street Empire src/kit.js (read 2026-11-11) repaints a one-texture car
 // from the base color hue in finishMaterial. It does not read
 // extras.kitMask or the emissive image. The mask is stored so a later
@@ -452,4 +454,273 @@ export function reviewImage(mask, width, height, scale = MASK.reviewScale) {
     }
   }
   return { width: outW, height: outH, rgba: out };
+}
+
+export function buildCarMask(parts, rgba, width, height) {
+  const body = parts.find((part) => !part.wheel);
+  if (!body) {
+    return { ok: false, detail: "There is no body to mask.", action: "Keep a body mesh, then run finish again." };
+  }
+  const box = partBounds(body.mesh);
+  const belt = box.min[1] + (box.max[1] - box.min[1]) * 0.78;
+  const wheels = parts.filter((part) => part.wheel).map(wheelCylinder);
+  const glassFaces = [];
+  const faceCount = body.mesh.indices.length / 3;
+  for (let face = 0; face < faceCount; face++) {
+    const tri = faceVerts(body.mesh, face);
+    const center = average(tri.map((vert) => vert.p));
+    const uv = average(tri.map((vert) => vert.uv));
+    if (center[1] < belt || inAnyWheel(center, wheels)) continue;
+    const color = texel(rgba, width, height, uv);
+    if (!isGlassTone(color[0], color[1], color[2])) continue;
+    glassFaces.push(face);
+  }
+  const regions = components(body.mesh, glassFaces);
+  const kept = regions.filter((region) => region.length >= MASK.minComponent);
+  if (!kept.length) {
+    return {
+      ok: false,
+      detail: "Cabin glass was not found from the upper body and the texture together. Color alone was not treated as glass.",
+      action: "Mark the window by hand. This finish will not guess a cabin."
+    };
+  }
+  const glass = new Set(kept.flat());
+  const mask = new Uint8Array(MASK.size * MASK.size * 4);
+  for (let i = 0; i < mask.length; i += 4) {
+    mask[i] = 10;
+    mask[i + 1] = 20;
+    mask[i + 2] = 30;
+    mask[i + 3] = 0;
+  }
+  for (const part of parts) {
+    const count = part.mesh.indices.length / 3;
+    for (let face = 0; face < count; face++) {
+      const tri = faceVerts(part.mesh, face);
+      const color = part.wheel ? [0, 0, 0, 255] : glass.has(face) && part === body ? GLASS : PAINT;
+      const us = tri.map((vert) => vert.uv[0]);
+      const vs = tri.map((vert) => vert.uv[1]);
+      if (Math.max(...us) - Math.min(...us) > 0.25 || Math.max(...vs) - Math.min(...vs) > 0.25) continue;
+      splat(mask, MASK.size, tri, color);
+    }
+  }
+  antialiasMask(mask, MASK.size);
+  const fitted = fitMask(mask, MASK.size, width, height);
+  const cleaned = cleanExportedBase(rgba, fitted, width, height);
+  const edge = aaWidths(mask, MASK.size, MASK.size);
+  const side = sideSamples(body.mesh, glass);
+  const area = sideViewGlassCheck(side, belt);
+  const hues = cleanedBaseCheck(cleaned.base, fitted, width, height, [40, 90, 180]);
+  const checks = [
+    { id: "mask-area", pass: area.pass, detail: area.detail, action: area.pass ? "" : "The side-view glass area is outside 8 to 30 percent, or glass sits below the belt." },
+    { id: "mask-edge", pass: edge.count === 0 || edge.pass, detail: edge.count === 0 ? "Glass and paint do not share a texel edge, so there is no blur wider than 2 px." : edge.detail, action: edge.count === 0 || edge.pass ? "" : "Keep the mask edge at 1 to 2 px." },
+    { id: "mask-clean", pass: hues.pass && cleaned.ready, detail: hues.detail + " " + (cleaned.conflicts ? cleaned.conflicts + " pad conflicts." : "No pad conflict."), action: hues.pass && cleaned.ready ? "" : "Clean the glass and the paint fringe by hand. UVs were not moved." }
+  ];
+  const review = reviewImage(mask, MASK.size, MASK.size, 1);
+  return {
+    ok: true,
+    checks,
+    maskPng: encodePng(MASK.size, MASK.size, mask),
+    baseRgba: cleaned.base,
+    baseWidth: width,
+    baseHeight: height,
+    reviewPng: encodePng(review.width, review.height, review.rgba)
+  };
+}
+
+function partBounds(mesh) {
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < mesh.positions.length; i += 3) {
+    for (let axis = 0; axis < 3; axis++) {
+      if (mesh.positions[i + axis] < min[axis]) min[axis] = mesh.positions[i + axis];
+      if (mesh.positions[i + axis] > max[axis]) max[axis] = mesh.positions[i + axis];
+    }
+  }
+  return { min, max };
+}
+
+function faceVerts(mesh, face) {
+  const out = [];
+  for (let corner = 0; corner < 3; corner++) {
+    const id = mesh.indices[face * 3 + corner];
+    out.push({
+      p: [mesh.positions[id * 3], mesh.positions[id * 3 + 1], mesh.positions[id * 3 + 2]],
+      uv: [mesh.uvs[id * 2] || 0, mesh.uvs[id * 2 + 1] || 0]
+    });
+  }
+  return out;
+}
+
+function average(values) {
+  const out = values[0].map(() => 0);
+  for (const value of values) for (let i = 0; i < out.length; i++) out[i] += value[i];
+  return out.map((value) => value / values.length);
+}
+
+function wheelCylinder(part) {
+  const box = partBounds(part.mesh);
+  return {
+    cx: part.center ? part.center[0] : (box.min[0] + box.max[0]) / 2,
+    cy: part.center ? part.center[1] : (box.min[1] + box.max[1]) / 2,
+    cz: part.center ? part.center[2] : (box.min[2] + box.max[2]) / 2,
+    half: (box.max[0] - box.min[0]) / 2 + 0.02,
+    radius: Math.max(box.max[1] - box.min[1], box.max[2] - box.min[2]) / 2 + 0.02
+  };
+}
+
+function inAnyWheel(point, wheels) {
+  return wheels.some((wheel) => Math.abs(point[0] - wheel.cx) <= wheel.half && Math.hypot(point[1] - wheel.cy, point[2] - wheel.cz) <= wheel.radius);
+}
+
+function texel(rgba, width, height, uv) {
+  const x = Math.min(width - 1, Math.max(0, Math.floor(uv[0] * width)));
+  const y = Math.min(height - 1, Math.max(0, Math.floor((1 - uv[1]) * height)));
+  const index = (y * width + x) * 4;
+  return [rgba[index], rgba[index + 1], rgba[index + 2]];
+}
+
+function components(mesh, faces) {
+  const set = new Set(faces);
+  const seen = new Set();
+  const out = [];
+  const neighbors = new Map();
+  const edge = new Map();
+  for (const face of faces) {
+    for (let corner = 0; corner < 3; corner++) {
+      const a = mesh.indices[face * 3 + corner];
+      const b = mesh.indices[face * 3 + ((corner + 1) % 3)];
+      const key = a < b ? a + ":" + b : b + ":" + a;
+      const list = edge.get(key) || [];
+      list.push(face);
+      edge.set(key, list);
+    }
+  }
+  for (const list of edge.values()) {
+    if (list.length !== 2) continue;
+    for (const face of list) {
+      if (!neighbors.has(face)) neighbors.set(face, []);
+      for (const other of list) if (other !== face) neighbors.get(face).push(other);
+    }
+  }
+  for (const face of faces) {
+    if (seen.has(face)) continue;
+    const stack = [face];
+    const region = [];
+    seen.add(face);
+    while (stack.length) {
+      const current = stack.pop();
+      region.push(current);
+      for (const next of neighbors.get(current) || []) {
+        if (!set.has(next) || seen.has(next)) continue;
+        seen.add(next);
+        stack.push(next);
+      }
+    }
+    out.push(region);
+  }
+  return out;
+}
+
+function splat(mask, size, tri, color) {
+  const points = tri.map((vert) => [vert.uv[0] * (size - 1), (1 - vert.uv[1]) * (size - 1)]);
+  const minX = Math.max(0, Math.floor(Math.min(points[0][0], points[1][0], points[2][0])));
+  const maxX = Math.min(size - 1, Math.ceil(Math.max(points[0][0], points[1][0], points[2][0])));
+  const minY = Math.max(0, Math.floor(Math.min(points[0][1], points[1][1], points[2][1])));
+  const maxY = Math.min(size - 1, Math.ceil(Math.max(points[0][1], points[1][1], points[2][1])));
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      if (!bary([x + 0.5, y + 0.5], points)) continue;
+      const index = (y * size + x) * 4;
+      mask[index] = color[0];
+      mask[index + 1] = color[1];
+      mask[index + 2] = color[2];
+      mask[index + 3] = 255;
+    }
+  }
+}
+
+function bary(p, tri) {
+  const area = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const whole = area(tri[0], tri[1], tri[2]);
+  if (Math.abs(whole) < 1e-8) return false;
+  const w0 = area(p, tri[1], tri[2]) / whole;
+  const w1 = area(tri[0], p, tri[2]) / whole;
+  const w2 = 1 - w0 - w1;
+  return w0 >= -0.02 && w1 >= -0.02 && w2 >= -0.02;
+}
+
+function antialiasMask(mask, size) {
+  const src = mask.slice();
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const index = (y * size + x) * 4;
+      if (maskClass(src[index], src[index + 1], src[index + 2]) !== "paint") continue;
+      const left = ((y * size + x - 1) * 4);
+      const up = (((y - 1) * size + x) * 4);
+      const glassNear = maskClass(src[left], src[left + 1], src[left + 2]) === "glass" || maskClass(src[up], src[up + 1], src[up + 2]) === "glass";
+      if (!glassNear) continue;
+      mask[index] = 128;
+      mask[index + 1] = 128;
+      mask[index + 2] = 0;
+      mask[index + 3] = 255;
+    }
+  }
+}
+
+function fitMask(mask, size, width, height) {
+  const out = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    const sy = Math.min(size - 1, Math.floor((y + 0.5) * size / height));
+    for (let x = 0; x < width; x++) {
+      const sx = Math.min(size - 1, Math.floor((x + 0.5) * size / width));
+      const from = (sy * size + sx) * 4;
+      const to = (y * width + x) * 4;
+      out[to] = mask[from];
+      out[to + 1] = mask[from + 1];
+      out[to + 2] = mask[from + 2];
+      out[to + 3] = mask[from + 3];
+    }
+  }
+  return out;
+}
+
+function sideSamples(mesh, glass) {
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  const tris = [];
+  const faceCount = mesh.indices.length / 3;
+  for (let face = 0; face < faceCount; face++) {
+    const tri = faceVerts(mesh, face);
+    tris.push({ tri, glass: glass.has(face) });
+    for (const vert of tri) {
+      if (vert.p[1] < minY) minY = vert.p[1];
+      if (vert.p[1] > maxY) maxY = vert.p[1];
+      if (vert.p[2] < minZ) minZ = vert.p[2];
+      if (vert.p[2] > maxZ) maxZ = vert.p[2];
+    }
+  }
+  const samples = [];
+  const grid = 48;
+  for (let y = 0; y < grid; y++) {
+    for (let z = 0; z < grid; z++) {
+      const py = minY + ((y + 0.5) / grid) * (maxY - minY || 1);
+      const pz = minZ + ((z + 0.5) / grid) * (maxZ - minZ || 1);
+      let hit = null;
+      for (const item of tris) {
+        if (!covers(item.tri, py, pz)) continue;
+        hit = item;
+        break;
+      }
+      if (!hit) continue;
+      samples.push({ onCar: true, kind: hit.glass ? "glass" : "paint", y: py });
+    }
+  }
+  return samples;
+}
+
+function covers(tri, y, z) {
+  const points = tri.map((vert) => [vert.p[2], vert.p[1]]);
+  return bary([z, y], points);
 }

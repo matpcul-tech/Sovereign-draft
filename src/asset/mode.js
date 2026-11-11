@@ -32,6 +32,7 @@ let busy = false;
 let finishKind = "CAR";
 let finishFile = null;
 let finishExport = null;
+let finishZip = null;
 let doc = {
   kind: "asset",
   recipe: "sedan",
@@ -255,9 +256,11 @@ async function runFinishNow() {
     });
     disposeVehicle(loaded.scene);
     finishExport = result.bytes;
+    finishZip = result.zip;
     const banner = host.querySelector("#finishbanner");
     banner.hidden = false;
     banner.classList.toggle("bad", result.banner === "NOT READY");
+    banner.classList.toggle("ready", result.banner === "READY");
     banner.textContent = result.banner + ". " + result.summary;
     const lines = [];
     if (result.before) {
@@ -271,6 +274,7 @@ async function runFinishNow() {
     lines.push(...result.log);
     host.querySelector("#finishlog").textContent = lines.join("\n");
     host.querySelector("#finishdownload").hidden = !result.bytes;
+    host.querySelector("#finishzip").hidden = !result.zip;
     status(result.banner + ". " + (result.after ? result.after.triangles + " tris." : "No file written."));
   } catch (error) {
     toast(error instanceof Error ? error.message : "Finish failed.");
@@ -480,7 +484,8 @@ function ensure() {
         <label><input id="finishfront" type="checkbox"> +Z end is the front</label>
         <button type="button" id="finishsave">Save profile</button>
         <button type="button" id="finishrun">Run finish</button>
-        <button type="button" id="finishdownload" hidden>Download logged GLB</button>
+        <button type="button" id="finishdownload" hidden>Download GLB</button>
+        <button type="button" id="finishzip" hidden>Download ZIP</button>
       </div>
       <p id="finishbanner" hidden></p>
       <pre id="finishlog"></pre>
@@ -571,7 +576,11 @@ function ensure() {
   host.querySelector("#finishrun").addEventListener("click", () => { void runFinishNow(); });
   host.querySelector("#finishdownload").addEventListener("click", () => {
     if (!finishExport) return;
-    downloadBytes(finishExport, "finish-logged.glb", "model/gltf-binary");
+    downloadBytes(finishExport, "finish.glb", "model/gltf-binary");
+  });
+  host.querySelector("#finishzip").addEventListener("click", () => {
+    if (!finishZip) return;
+    downloadBytes(finishZip, "finish.zip", "application/zip");
   });
   host.querySelector("#finishrules").textContent = PENDING_RULES.implemented
     ? ""

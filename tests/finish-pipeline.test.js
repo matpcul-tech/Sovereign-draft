@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { loadVehicle, packGlb, readGlb, sha256Hex } from '../src/asset/finish/glb.js';
 import { atlasPng, singleAtlasCarGlb, solidCarGlb } from '../src/asset/finish/fixture.js';
+import { encodePng } from '../src/asset/finish/png.js';
+import { unzipStore } from '../src/asset/finish/zip.js';
 import { resolveProfile } from '../src/asset/finish/profiles.js';
 import { growFaces, seamBlocks } from '../src/asset/finish/select.js';
 import { runFinish } from '../src/asset/finish/pipeline.js';
@@ -31,7 +33,7 @@ function pushBox(dst, min, max) {
   for (const face of faces) dst.i.push(start + face[0], start + face[1], start + face[2]);
 }
 
-function meshGlb(fill) {
+function meshGlb(fill, image) {
   const dst = { p: [], u: [], n: [], i: [] };
   fill(dst);
   return packGlb({
@@ -42,7 +44,7 @@ function meshGlb(fill) {
       baseColorFactor: [1, 1, 1, 1],
       metallicFactor: 0,
       roughnessFactor: 1,
-      baseColorImage: { name: 'atlas', mime: 'image/png', bytes: atlasPng() }
+      baseColorImage: { name: 'atlas', mime: 'image/png', bytes: image || atlasPng() }
     }],
     meshes: [{
       name: 'shell',
@@ -72,6 +74,38 @@ function figureGlb(armsOut) {
   });
 }
 
+function windowCarGlb() {
+  const rgba = new Uint8Array(32 * 32 * 4);
+  for (let y = 0; y < 32; y++) {
+    for (let x = 0; x < 32; x++) {
+      const index = (y * 32 + x) * 4;
+      const glass = x >= 16;
+      rgba[index] = glass ? 34 : 40;
+      rgba[index + 1] = glass ? 34 : 90;
+      rgba[index + 2] = glass ? 34 : 180;
+      rgba[index + 3] = 255;
+    }
+  }
+  return meshGlb((dst) => {
+    const body = dst.p.length / 3;
+    pushBox(dst, [-0.35, 0, -1], [0.35, 1, 1]);
+    glassBand(dst, body + 3, -0.35, 1, 1.28);
+    pushBox(dst, [-0.72, 0.02, 0.55], [-0.48, 0.26, 0.82]);
+    pushBox(dst, [0.48, 0.02, 0.55], [0.72, 0.26, 0.82]);
+    pushBox(dst, [-0.72, 0.02, -0.82], [-0.48, 0.26, -0.55]);
+    pushBox(dst, [0.48, 0.02, -0.82], [0.72, 0.26, -0.55]);
+  }, encodePng(32, 32, rgba));
+}
+
+function glassBand(dst, a, x, y0, y1) {
+  const start = dst.p.length / 3;
+  const x2 = x - 0.04;
+  dst.p.push(x2, y0, -1, x2, y0, 1, x2, y1, 1, x2, y1, -1, x2, (y0 + y1) / 2, 0);
+  dst.u.push(0.7, 0.35, 0.9, 0.35, 0.9, 0.7, 0.7, 0.7, 0.8, 0.5);
+  dst.n.push(-1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0);
+  dst.i.push(a, start, start + 1, start, start + 1, start + 4, start + 1, start + 2, start + 4, start + 2, start + 3, start + 4, start + 3, start, start + 4);
+}
+
 function blockGlb(min, max) {
   return meshGlb((dst) => pushBox(dst, min, max));
 }
@@ -84,7 +118,8 @@ describe('finish pipeline', () => {
     expect(loaded.sha256).toBe(sourceSha);
     expect(result.issuedReady).toBe(false);
     expect(result.ready).toBe(false);
-    expect(result.banner).toBe('LOGGED');
+    expect(result.banner).toBe('NOT READY');
+    expect(result.checks.find((check) => check.id === 'mask').pass).toBe(false);
     expect(result.before.triangles).toBeGreaterThan(result.after.triangles);
     expect(result.after.size[2]).toBeGreaterThan(4.4);
     expect(result.after.size[2]).toBeLessThan(4.6);
@@ -102,7 +137,7 @@ describe('finish pipeline', () => {
     }
     expect(json.meshes).toHaveLength(5);
     expect(result.log.some((line) => line.includes('Simplify skipped'))).toBe(true);
-    expect(result.log.some((line) => line.includes('does not read a window mask'))).toBe(true);
+    expect(result.summary).toMatch(/declared checks failed/);
     expect(result.sourceSha).toBe(sourceSha);
   });
 
@@ -159,6 +194,24 @@ describe('finish pipeline', () => {
     const square = await run(blockGlb([-2, 0, -2], [2, 4, 2]), resolveProfile('BUILDING'), { frontConfirmed: true });
     expect(square.result.banner).toBe('NOT READY');
     expect(square.result.summary).toMatch(/Forward is ambiguous/);
+  });
+
+  it('issues READY only when the declared car checks pass', async () => {
+    const { result } = await run(windowCarGlb(), resolveProfile('CAR'), { frontConfirmed: true });
+    expect(result.banner).toBe('READY');
+    expect(result.ready).toBe(true);
+    expect(result.summary).toMatch(/not a gameplay/);
+    expect(result.summary).toMatch(/does not read the mask/);
+    const { json } = readGlb(result.bytes);
+    expect(json.materials[0].extras.kitMask).toBe(true);
+    expect(json.materials[0].emissiveFactor).toEqual([0, 0, 0]);
+    expect(json.materials[0].emissiveTexture).toBeTruthy();
+    const files = unzipStore(result.zip);
+    const names = files.map((file) => file.name);
+    expect(names).toContain('validation.txt');
+    expect(names).toContain('model.glb');
+    const note = new TextDecoder().decode(files.find((file) => file.name === 'validation.txt').data);
+    expect(note.startsWith('READY')).toBe(true);
   });
 
   it('stops grow on a UV seam and a sampled color edge', () => {
