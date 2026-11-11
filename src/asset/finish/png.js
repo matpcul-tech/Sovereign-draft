@@ -52,28 +52,83 @@ export function decodePng(bytes) {
   let offset = 8;
   let width = 0;
   let height = 0;
-  let inflated = null;
+  let colorType = 6;
+  const idats = [];
   while (offset + 8 <= bytes.length) {
     const length = view.getUint32(offset);
     const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
     const data = bytes.subarray(offset + 8, offset + 8 + length);
     if (type === "IHDR") {
-      width = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(0);
-      height = new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(4);
-      if (data[8] !== 8 || data[9] !== 6) throw new Error("Only 8-bit RGBA PNG is read here.");
-    } else if (type === "IDAT") {
-      inflated = inflate(data);
-    } else if (type === "IEND") break;
+      const header = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      width = header.getUint32(0);
+      height = header.getUint32(4);
+      if (data[8] !== 8) throw new Error("Only 8-bit PNG is read here.");
+      colorType = data[9];
+      if (colorType !== 2 && colorType !== 6) throw new Error("Only RGB and RGBA PNG are read here.");
+    } else if (type === "IDAT") idats.push(data);
+    else if (type === "IEND") break;
     offset += 12 + length;
   }
-  if (!inflated) throw new Error("PNG has no image data.");
-  const rgba = new Uint8Array(width * height * 4);
-  const stride = width * 4 + 1;
+  if (!idats.length) throw new Error("PNG has no image data.");
+  let total = 0;
+  for (const chunk of idats) total += chunk.length;
+  const packed = new Uint8Array(total);
+  let cursor = 0;
+  for (const chunk of idats) {
+    packed.set(chunk, cursor);
+    cursor += chunk.length;
+  }
+  const inflated = inflate(packed);
+  const bpp = colorType === 6 ? 4 : 3;
+  const stride = width * bpp;
+  const raw = new Uint8Array(height * stride);
+  let prev = new Uint8Array(stride);
   for (let y = 0; y < height; y++) {
-    if (inflated[y * stride] !== 0) throw new Error("Only uncompressed PNG rows are read here.");
-    rgba.set(inflated.subarray(y * stride + 1, y * stride + 1 + width * 4), y * width * 4);
+    const filter = inflated[y * (stride + 1)];
+    const row = inflated.subarray(y * (stride + 1) + 1, y * (stride + 1) + 1 + stride);
+    const out = unfilterRow(filter, row, prev, bpp);
+    raw.set(out, y * stride);
+    prev = out;
+  }
+  const rgba = new Uint8Array(width * height * 4);
+  if (bpp === 4) {
+    rgba.set(raw);
+  } else {
+    for (let i = 0, j = 0; i < raw.length; i += 3, j += 4) {
+      rgba[j] = raw[i];
+      rgba[j + 1] = raw[i + 1];
+      rgba[j + 2] = raw[i + 2];
+      rgba[j + 3] = 255;
+    }
   }
   return { width, height, rgba };
+}
+
+function unfilterRow(filter, row, prev, bpp) {
+  const out = new Uint8Array(row.length);
+  for (let i = 0; i < out.length; i++) {
+    const left = i >= bpp ? out[i - bpp] : 0;
+    const up = prev[i] || 0;
+    const upLeft = i >= bpp ? prev[i - bpp] || 0 : 0;
+    const value = row[i];
+    if (filter === 0) out[i] = value;
+    else if (filter === 1) out[i] = (value + left) & 255;
+    else if (filter === 2) out[i] = (value + up) & 255;
+    else if (filter === 3) out[i] = (value + ((left + up) >> 1)) & 255;
+    else if (filter === 4) out[i] = (value + paeth(left, up, upLeft)) & 255;
+    else throw new Error("PNG filter " + filter + " is not supported.");
+  }
+  return out;
+}
+
+function paeth(left, up, upLeft) {
+  const estimate = left + up - upLeft;
+  const dl = Math.abs(estimate - left);
+  const du = Math.abs(estimate - up);
+  const dlu = Math.abs(estimate - upLeft);
+  if (dl <= du && dl <= dlu) return left;
+  if (du <= dlu) return up;
+  return upLeft;
 }
 
 export function whitePng(size = 8) {

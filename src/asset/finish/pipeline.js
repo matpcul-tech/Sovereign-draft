@@ -128,17 +128,29 @@ export async function runFinish(loaded, profile, options = {}) {
         action: ""
       });
     } else {
+      const fitted = split.separated ? split.parts.filter((part) => part.wheel).map((part) => fitTireCylinder(part.mesh, part.name)) : null;
       const cut = cutSpecifiedWheels(split.parts);
-      parts = cut.parts;
-      wheelCylinders = cut.cylinders;
-      log.push(cut.cuts
-        ? "Cut " + cut.cuts + " body triangles on the specified wheel cylinders. New vertices interpolate UV and normals. The shared loop stays within 1 mm."
-        : "No body triangle crossed a wheel cylinder, so no new cut was required.");
+      const bleedAfter = split.separated ? exportedBleed(cut.parts, cut.cylinders) : 0;
+      const keepCut = !split.separated || bleedAfter === 0;
+      parts = keepCut ? cut.parts : split.parts;
+      wheelCylinders = keepCut ? cut.cylinders : fitted;
+      if (split.separated) sourceHits = meshBleedReport(parts).centroids;
+      if (fitted) log.push("Disconnected wheel islands were named from full-resolution position connectivity." + (keepCut ? " The wheel-cylinder cut left no triangle more than 1 mm across the boundary." : " The automatic cut was not kept, so bleed uses the fitted tire cylinder."));
+      if (fitted && !keepCut) log.push(fitted.map((cyl) => cyl.name + " radius " + cyl.radius.toFixed(3) + " half " + cyl.half.toFixed(3)).join("; ") + ".");
+      if (!keepCut) {
+        log.push("A cut of " + cut.cuts + " body triangles was measured and not kept, because " + bleedAfter + " triangles still crossed the wheel cylinder. The four islands stay named. A reliable manual boundary is still required for the crossings that remain.");
+      } else {
+        log.push(cut.cuts
+          ? "Cut " + cut.cuts + " body triangles on the specified wheel cylinders. New vertices interpolate UV and normals. The shared loop stays within 1 mm."
+          : "No body triangle crossed a wheel cylinder, so no new cut was required.");
+      }
       checks.push({
         id: "border",
-        pass: cut.paired !== false,
-        detail: cut.cuts ? "Shared border points from the cut are on both the body and the wheel within 1 mm. Paired: " + (cut.paired ? "yes" : "no") + "." : "No shared cut was required.",
-        action: cut.paired === false ? "The cut did not copy the same border onto both sides." : ""
+        pass: !keepCut || cut.paired !== false,
+        detail: !keepCut
+          ? "The measured cut was not kept. No new border was written."
+          : (cut.cuts ? "Shared border points from the cut are on both the body and the wheel within 1 mm. Paired: " + (cut.paired ? "yes" : "no") + "." : "No shared cut was required."),
+        action: !keepCut ? "Specify the wheel boundary by hand. The automatic cylinder cut did not clear the 1 mm bleed." : (cut.paired === false ? "The cut did not copy the same border onto both sides." : "")
       });
     }
     const axles = split.parts.filter((part) => part.wheel).map((part) => part.name + " " + part.center.map((value) => value.toFixed(3)).join(" ")).join("; ");
@@ -151,6 +163,9 @@ export async function runFinish(loaded, profile, options = {}) {
 
   if (MeshoptSimplifier.ready) await MeshoptSimplifier.ready;
   const totalBefore = parts.reduce((sum, part) => sum + part.mesh.indices.length / 3, 0);
+  const snapshot = totalBefore > profile.triangleTarget && sourceHits.length
+    ? parts.map((part) => clonePartMesh(part.mesh))
+    : null;
   let triangles = 0;
   for (const part of parts) {
     const beforeTris = part.mesh.indices.length / 3;
@@ -165,6 +180,20 @@ export async function runFinish(loaded, profile, options = {}) {
     log.push(part.name + ". " + simplified.detail + " (" + beforeTris + " to " + (part.mesh.indices.length / 3) + ").");
     recomputeNormals(part.mesh, wheelCylinders);
   }
+  if (snapshot) {
+    const added = novelHits(meshBleedReport(parts).centroids, sourceHits);
+    if (added > 0) {
+      triangles = 0;
+      for (let i = 0; i < parts.length; i++) {
+        parts[i].mesh = snapshot[i];
+        dropBadFaces(parts[i].mesh);
+        parts[i].mesh = compact(parts[i].mesh);
+        recomputeNormals(parts[i].mesh, wheelCylinders);
+        triangles += parts[i].mesh.indices.length / 3;
+      }
+      log.push("Simplify was measured and not kept because it added " + added + " mesh intersections. Exported triangles stay at " + triangles + ", under the ceiling.");
+    }
+  }
   const budget = triangles > profile.triangleCeiling;
   checks.push({
     id: "budget",
@@ -173,7 +202,7 @@ export async function runFinish(loaded, profile, options = {}) {
     action: budget ? "The count is over the ceiling. Borders were not unlocked." : ""
   });
   checks.push(wheelCylinders.length ? cylinderBleed(parts, wheelCylinders) : wheelBleed(parts));
-  if (namedWheels) checks.push(meshHitCheck(parts, sourceHits));
+  if (namedWheels || parts.some((part) => part.wheel)) checks.push(meshHitCheck(parts, sourceHits));
   checks.push({
     id: "drawcalls",
     pass: drawCallCheck(parts.length, profile).pass,
@@ -669,13 +698,29 @@ function splitByLabel(mesh) {
   return { ok: true, named: true, parts, detail: "Used the named body and four wheel meshes. They were not welded together, and no extra piece was dropped." };
 }
 
-function meshHitCheck(parts, sourceHits) {
-  const report = meshBleedReport(parts);
+function clonePartMesh(mesh) {
+  const copy = {
+    positions: mesh.positions.slice(),
+    uvs: mesh.uvs.slice(),
+    normals: mesh.normals.slice(),
+    indices: mesh.indices.slice()
+  };
+  if (mesh.labels) copy.labels = mesh.labels.slice();
+  return copy;
+}
+
+function novelHits(centroids, sourceHits) {
   let novel = 0;
-  for (const hit of report.centroids) {
+  for (const hit of centroids) {
     const known = sourceHits.some((prior) => Math.hypot(prior[0] - hit[0], prior[1] - hit[1], prior[2] - hit[2]) < 0.002);
     if (!known) novel += 1;
   }
+  return novel;
+}
+
+function meshHitCheck(parts, sourceHits) {
+  const report = meshBleedReport(parts);
+  const novel = novelHits(report.centroids, sourceHits);
   const matched = report.count - novel;
   return {
     id: "mesh-hit",
@@ -698,6 +743,12 @@ function splitWheels(mesh) {
     const pb = find(b);
     if (pa !== pb) parent[pa] = pb;
   };
+  const seen = new Map();
+  for (let i = 0; i < count; i++) {
+    const key = Math.round(mesh.positions[i * 3] * 2000) + "," + Math.round(mesh.positions[i * 3 + 1] * 2000) + "," + Math.round(mesh.positions[i * 3 + 2] * 2000);
+    if (seen.has(key)) unite(i, seen.get(key));
+    else seen.set(key, i);
+  }
   for (let face = 0; face < mesh.indices.length; face += 3) {
     unite(mesh.indices[face], mesh.indices[face + 1]);
     unite(mesh.indices[face + 1], mesh.indices[face + 2]);
@@ -711,21 +762,35 @@ function splitWheels(mesh) {
   const pieces = [...groups.values()].map((faces) => ({ faces, box: faceBounds(mesh, faces) }));
   pieces.sort((a, b) => (b.box.size[0] * b.box.size[1] * b.box.size[2]) - (a.box.size[0] * a.box.size[1] * a.box.size[2]));
   if (!pieces.length) return { ok: false, detail: "The mesh has no triangles left to split." };
-  const body = pieces[0];
-  const slots = { wheel_fl: null, wheel_fr: null, wheel_rl: null, wheel_rr: null };
+  const bodyFaces = pieces[0].faces.slice();
+  const slots = { wheel_fl: [], wheel_fr: [], wheel_rl: [], wheel_rr: [] };
+  const whole = measureMesh(mesh);
   for (const piece of pieces.slice(1)) {
-    const name = wheelSlot(piece.box, measureMesh(mesh));
-    if (!name || slots[name]) return { ok: false, detail: "Wheel islands are not one piece at each low corner. No wheel was invented, and simplify did not run." };
-    slots[name] = piece;
+    const name = wheelSlot(piece.box, whole);
+    if (!name) {
+      bodyFaces.push(...piece.faces);
+      continue;
+    }
+    slots[name].push(piece);
   }
-  if (Object.values(slots).some((piece) => !piece)) {
-    return { ok: false, detail: "The shell does not have four disconnected wheel islands. No wheel was invented, and simplify did not run." };
+  for (const name of Object.keys(slots)) {
+    slots[name].sort((a, b) => b.faces.length - a.faces.length);
+    const winner = slots[name][0];
+    if (!winner) {
+      return { ok: false, detail: "The shell does not have four disconnected wheel islands. No wheel was invented, and simplify did not run." };
+    }
+    const rival = slots[name][1];
+    if (rival && rival.faces.length > winner.faces.length * 0.4) {
+      return { ok: false, detail: "Wheel islands are not one piece at each low corner. No wheel was invented, and simplify did not run." };
+    }
+    for (const extra of slots[name].slice(1)) bodyFaces.push(...extra.faces);
+    slots[name] = winner;
   }
-  const parts = [{ name: "body", mesh: facesToMesh(mesh, body.faces), wheel: false }];
+  const parts = [{ name: "body", mesh: facesToMesh(mesh, bodyFaces), wheel: false }];
   for (const name of ["wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"]) {
     parts.push({ name, mesh: facesToMesh(mesh, slots[name].faces), wheel: true, center: centerOf(slots[name].box) });
   }
-  return { ok: true, parts, detail: "Split four disconnected wheel islands before simplify. Names use +Z as the geometric front." };
+  return { ok: true, separated: true, parts, detail: "Split four disconnected wheel islands before simplify. Names use +Z as the geometric front. One node was not treated as one island." };
 }
 
 function wheelSlot(box, whole) {
@@ -858,8 +923,8 @@ function cylinderBleed(parts, cylinders) {
   return {
     id: "bleed",
     pass: count === 0,
-    detail: count + " exported triangles cross a wheel cylinder by more than 1 mm after simplify.",
-    action: count ? "The wheel border left the curve. It was not unlocked to pass." : ""
+    detail: count + " exported triangles cross a wheel cylinder by more than 1 mm.",
+    action: count ? "The fitted wheel cylinder is still crossed by more than 1 mm. The border was not unlocked." : ""
   };
 }
 
