@@ -13,10 +13,13 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: 'index.html',
-        embed: 'embed.html'
+        embed: 'embed.html',
+        asset: 'asset.html'
       }
     }
   },
+  // Sovereign Asset runs its finish in a module worker with its own lazy chunks.
+  worker: { format: 'es' },
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
