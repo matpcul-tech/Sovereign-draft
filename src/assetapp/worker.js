@@ -1,6 +1,6 @@
 // Runs the heavy work off the page, so the screen stays live on a phone.
 import { finishModel, inspectModel } from "./engine.js";
-import { finishCar } from "./car.js";
+import { finishCar, finishMotorcycle } from "./car.js";
 import { browserCodec } from "./codec.js";
 import { validate } from "./validate.js";
 
@@ -11,6 +11,7 @@ self.onmessage = async (event) => {
     let result;
     if (kind === "inspect") result = await inspectModel(bytes);
     else if (kind === "car") result = await finishCar(bytes, name, options, env);
+    else if (kind === "motorcycle") result = await finishMotorcycle(bytes, name, options, env);
     else result = await finishModel(bytes, options, env);
     self.postMessage({ id, ok: true, result });
   } catch (error) {

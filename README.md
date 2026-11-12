@@ -334,9 +334,19 @@ It opens GLB and glTF directly, and converts FBX, OBJ (with its MTL and textures
 
 The verdict is READY or NOT READY. Every check is measured on the finished file after it is read back, including the Khronos glTF validator. A failed check names the one thing that fixes it. The source bytes are never changed.
 
-Presets: Clean up, Game ready, 3D print check, and three for Street Empire. The Street Empire car preset runs the `FINISH` wheel split and window mask from the section above, then completes the mask so it covers the whole body, and names the file `<slot>@keep.glb` for that game's `kit-inbox`. Two of that pipeline's checks (edges shared by three faces, and UV pieces packed closer than 8 px) fail on every AI-generated car and on the cars already in the game, so this app shows them as notes with their numbers, not as failures. It also paints tail lamps red when the generator left them an unlit gray, and leaves lamps that already have a color alone (`lamps.js`). It also evens the glass: pale windows the mask missed (gray texels above the belt line on a car with a body color) are marked as glass, and every glass texel gets one dark tone, so a windshield with a painted reflection no longer comes out white or patchy in the game.
+Presets: Clean up, Game ready, 3D print check, and four for Street Empire (car, motorcycle, building, character). The Street Empire car preset runs the `FINISH` wheel split and window mask from the section above, then completes the mask so it covers the whole body, and names the file `<slot>@keep.glb` for that game's `kit-inbox`. Slot lengths are sedan 4.9 m, coupe 4.7 m (the 4.6 to 4.8 m coupe, not the muscle length), muscle 4.8 m, suv 4.8 m, van 5.2 m, taxi 4.9 m, police 5.2 m, lowrider 5.4 m, pickup 5.2 m. UV pieces packed closer than 8 px are a note. Edges shared by three faces are a note only when every one of them was already in the source. An edge the cut creates is a failure. After the mask is complete, glass texels already in the mask are painted to one near-black, RGB 24, 24, 25, without moving UVs. Pale windows the mask missed (gray texels above the belt line on a car with a body color) are then marked as glass, and every glass texel gets one dark, slightly blue tone (`glass.js`), so a windshield with a painted reflection no longer comes out white or patchy. It also paints tail lamps red when the generator left them an unlit gray, and leaves lamps that already have a color alone (`lamps.js`). Motorcycles are not given invented glass by that pale-window step.
 
-Code is in `src/assetapp/`. `engine.js` is bytes in, bytes out, and runs the same in the browser, a worker and Node. Tests: `tests/assetapp-engine.test.js`, `tests/assetapp-car.test.js`. Browser check: `npm run asset:browser` against `vite preview`.
+Street Empire motorcycle (`se-motorcycle`, `finishMotorcycle`) is a separate preset. It does not borrow the four-wheel car path. The contract:
+
+- Nodes `body`, `wheel_f`, `wheel_r`. Each wheel has `extras.kitWheel` true and its pivot at that wheel's center.
+- One material, named `atlas`. Never `paint` or `body`. Metallic factor 0. The original albedo and UVs are kept.
+- 1024 px base texture. A 1024 px kit mask on `emissiveTexture`, factor 0, 0, 0, `extras.kitMask` true. R is glass, G is paint, B is chrome and lamps.
+- +Y up, +Z forward, ground at Y = 0. Length 2.2 m, inside the 2.1 to 2.3 m band. About 30,000 triangles, ceiling 40,000.
+- Wheels are taken only from islands that are already separate tires. If a bike's wheels cannot be separated that way, the finish fails and says no wheel was invented. It does not cut a wheel out of a solid frame.
+
+Slots are cruiser, dirt, and sport. All three use 2.2 m. A finished car or bike that already has its wheels and a mask is repaired in place: no second split, parts and pivots stay.
+
+Code is in `src/assetapp/`. `engine.js` is bytes in, bytes out, and runs the same in the browser, a worker and Node. Tests: `tests/assetapp-engine.test.js`, `tests/assetapp-car.test.js`, `tests/assetapp-street.test.js`. Browser check: `npm run asset:browser` against `vite preview`.
 
 Not done here: unwrapping UVs, rigging, retexturing, Draco-compressed input, and sending the file to a game repo from the app.
 

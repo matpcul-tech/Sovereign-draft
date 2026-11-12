@@ -62,6 +62,30 @@ export const PROFILES = {
     kitWheel: true,
     wheelCircle: { minSegments: 24, maxSegments: 32, toleranceMm: 1, checked: false }
   },
+  // Street Empire motorcycle. Two wheels, not four. Length 2.2 m sits in the
+  // 2.1 to 2.3 m contract. The material is always named atlas.
+  MOTORCYCLE: {
+    id: "MOTORCYCLE",
+    lengthZ: 2.2,
+    heightY: 0,
+    longest: 0,
+    storeys: 0,
+    storeyHeight: 0,
+    triangleTarget: 30000,
+    triangleCeiling: 40000,
+    maxTexture: 1024,
+    byteCap: 8 * MIB,
+    tolerance: 0.05,
+    pose: "",
+    requiredNodes: [],
+    outputNodes: ["body", "wheel_f", "wheel_r"],
+    drawCallTargetMin: 3,
+    drawCallTargetMax: 5,
+    drawCallCeiling: 8,
+    singleMaterial: true,
+    kitWheel: true,
+    wheelCircle: { minSegments: 24, maxSegments: 32, toleranceMm: 1, checked: false }
+  },
   BUILDING: {
     id: "BUILDING",
     lengthZ: 0,
@@ -160,7 +184,7 @@ function takenInt(value, fallback, label) {
 export function resolveProfile(id, input = {}) {
   const key = String(id || "").toUpperCase();
   const base = PROFILES[key];
-  if (!base) return { error: "Choose CAR, BUILDING, CHARACTER, or PROP." };
+  if (!base) return { error: "Choose CAR, MOTORCYCLE, BUILDING, CHARACTER, or PROP." };
   const target = takenInt(
     input.triangleTarget != null && input.triangleTarget !== "" ? input.triangleTarget : input.triangleBudget,
     base.triangleTarget,
@@ -218,7 +242,7 @@ export function resolveProfile(id, input = {}) {
     kitWheel: !!base.kitWheel,
     wheelCircle: base.wheelCircle ? { ...base.wheelCircle } : null
   };
-  if (key === "CAR") {
+  if (key === "CAR" || key === "MOTORCYCLE") {
     const length = taken(input.lengthZ, base.lengthZ, "Length");
     if (length.error) return length;
     profile.lengthZ = length.value;
@@ -373,7 +397,7 @@ export function carSourceCheck(source) {
 export function profileSummary(profile) {
   if (!profile || profile.error) return profile && profile.error || "No profile.";
   const lines = [];
-  if (profile.id === "CAR") {
+  if (profile.id === "CAR" || profile.id === "MOTORCYCLE") {
     lines.push("Target length " + profile.lengthZ + " m on Z.");
     lines.push("Output nodes " + (profile.outputNodes || []).join(", ") + ". One material on all of them. Wheel nodes get extras.kitWheel. No door split and no material named paint or body.");
     lines.push("Draw call target " + profile.drawCallTargetMin + " to " + profile.drawCallTargetMax + ". More than " + profile.drawCallCeiling + " exported primitives fails.");

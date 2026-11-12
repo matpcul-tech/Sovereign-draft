@@ -1,4 +1,5 @@
 import { decodePng, encodePng } from "./png.js";
+import jpeg from "jpeg-js";
 import webpDecoder from "@jsquash/webp/codec/dec/webp_dec.js";
 
 let webpReady;
@@ -32,7 +33,11 @@ export async function decodeRaster(bytes, mime) {
       rgba: new Uint8Array(image.data.buffer, image.data.byteOffset, image.data.byteLength)
     };
   }
-  throw new Error("This image is not a PNG or a WebP.");
+  if (mime === "image/jpeg" || mime === "image/jpg" || isJpeg(data)) {
+    const image = jpeg.decode(data, { useTArray: true, formatAsRGBA: true });
+    return { width: image.width, height: image.height, rgba: image.data };
+  }
+  throw new Error("This image is not a PNG or a WebP" + (mime ? ". It is " + mime + "." : "."));
 }
 
 export function encodeRaster(width, height, rgba) {
@@ -45,4 +50,8 @@ function isPng(bytes) {
 
 function isWebp(bytes) {
   return bytes.length > 12 && bytes[0] === 82 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 70;
+}
+
+function isJpeg(bytes) {
+  return bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8;
 }
