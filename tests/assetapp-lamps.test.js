@@ -8,7 +8,7 @@ import { io } from "./assetapp-helpers.js";
 // each face given its own square of the texture. The rear face square holds two gray lamps at the
 // outer ends, a gray plate in the middle, and a bright chrome strip.
 const N = 128;
-function carBytes(lampColor = [70, 72, 74]) {
+function carBytes(lampColor = [70, 72, 74], bodyColor = null) {
   const rgba = new Uint8Array(N * N * 4);
   for (let i = 0; i < N * N; i++) rgba.set([24, 96, 104, 255], i * 4);
   const put = (x0, y0, x1, y1, c) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) rgba.set([...c, 255], (y * N + x) * 4); };
@@ -19,7 +19,12 @@ function carBytes(lampColor = [70, 72, 74]) {
   put(0, 60, 64, 64, [240, 240, 240]); // bright chrome strip
   put(66, 22, 78, 34, [70, 72, 74]);  // the same gray on the FRONT face square: headlamp
   const doc = new Document(), buffer = doc.createBuffer(), scene = doc.createScene();
-  const mat = doc.createMaterial("atlas").setBaseColorTexture(doc.createTexture("albedo").setImage(encodePng(N, N, rgba)).setMimeType("image/png"));
+  const green = new Uint8Array(N * N * 4);
+  for (let i = 0; i < N * N; i++) green.set([0, 255, 0, 255], i * 4);
+  const mat = doc.createMaterial("atlas").setBaseColorTexture(doc.createTexture("albedo").setImage(encodePng(N, N, rgba)).setMimeType("image/png"))
+    .setEmissiveTexture(doc.createTexture("mask").setImage(encodePng(N, N, green)).setMimeType("image/png")).setEmissiveFactor([0, 0, 0]).setExtras({ kitMask: true });
+  if (bodyColor) for (let i = 0; i < N * N; i++) if (rgba[i * 4] === 24 && rgba[i * 4 + 1] === 96) rgba.set([...bodyColor, 255], i * 4);
+  if (bodyColor) mat.getBaseColorTexture().setImage(encodePng(N, N, rgba));
   const pos = [], uv = [], idx = [];
   const quad = (pts, u0, v0) => { const b = pos.length / 3; pts.forEach((p, i) => { pos.push(...p); uv.push(u0 + [0, 0.5, 0.5, 0][i], v0 + [0.5, 0.5, 0, 0][i]); }); idx.push(b, b + 1, b + 2, b, b + 2, b + 3); };
   quad([[1, 0, -2.25], [-1, 0, -2.25], [-1, 1.4, -2.25], [1, 1.4, -2.25]], 0, 0);     // rear, faces -Z
@@ -41,7 +46,7 @@ describe("Sovereign Asset: tail lamps", () => {
     const result = await paintTailLamps(await (await io()).writeBinary(doc));
     expect(result.texels).toBe(2 * 12 * 12);
     const out = await (await io()).readBinary(result.bytes);
-    const img = decodePng(out.getRoot().listTextures()[0].getImage());
+    const img = decodePng(out.getRoot().listMaterials()[0].getBaseColorTexture().getImage());
     const lamp = pixel(img, 8, 28);
     expect(lamp[0]).toBeGreaterThan(150);
     expect(lamp[1]).toBeLessThan(40);
@@ -53,6 +58,15 @@ describe("Sovereign Asset: tail lamps", () => {
     let changed = 0;
     for (let i = 0; i < rgba.length; i += 4) if (rgba[i] !== img.rgba[i] || rgba[i + 1] !== img.rgba[i + 1] || rgba[i + 2] !== img.rgba[i + 2]) changed++;
     expect(changed).toBe(result.texels);
+  });
+
+  it("paints nothing on a white car, where a gray lamp cannot be told from a door", async () => {
+    const { doc } = carBytes([70, 72, 74], [228, 226, 216]);
+    const bytes = await (await io()).writeBinary(doc);
+    const result = await paintTailLamps(bytes);
+    expect(result.texels).toBe(0);
+    expect(result.reason).toMatch(/white, gray or black/);
+    expect(result.bytes).toBe(bytes);
   });
 
   it("does nothing to lamps that already have a color", async () => {
