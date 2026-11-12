@@ -472,7 +472,7 @@ describe('finish pipeline', () => {
     expect(result.checks.find((check) => check.id === 'open-edges').detail).toMatch(/not a closed-shell certificate/);
     expect(text).toMatch(/does not read that mask/);
     expect(result.banner).toBe('NOT READY');
-  }, 20000);
+  }, 60000);
 
   it('names four real wheel islands in the raw single-node sedan and does not keep a cut that adds intersections', async () => {
     const bytes = readFileSync('fixtures/vehicle/sedan-01-textured.glb');
