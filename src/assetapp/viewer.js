@@ -113,5 +113,6 @@ export function createViewer(canvas) {
     if (controls.update() || dirty) { dirty = false; renderer.render(scene, camera); }
   };
   loop();
-  return { show, setWire, setTurn, dispose() { cancelAnimationFrame(raf); clear(holder); clear(extras); renderer.dispose(); pmrem.dispose(); } };
+  // canvas, camera, controls, the model on screen and a redraw request: what the touch up tool needs to paint on the model
+  return { canvas, camera, controls, getModel: () => model, redraw() { dirty = true; }, show, setWire, setTurn, dispose() { cancelAnimationFrame(raf); clear(holder); clear(extras); renderer.dispose(); pmrem.dispose(); } };
 }

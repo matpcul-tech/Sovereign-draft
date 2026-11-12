@@ -39,6 +39,16 @@ main { max-width: 1120px; margin: 0 auto; padding: 16px; display: grid; gap: 14p
 .view .btn { min-height: 40px; padding: 0 12px; font-size: 14px; }
 .view .name { padding: 10px 14px 0; font-size: 13px; color: var(--dim); overflow-wrap: anywhere; }
 
+.touch { padding: 10px 12px 12px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.touch .tools .btn { flex: 1 1 74px; }
+.touch .opts { gap: 14px; font-size: 14px; }
+.touch .size { display: flex; align-items: center; gap: 8px; color: var(--dim); flex: 1 1 220px; }
+.touch .size input { flex: 1; accent-color: var(--gold); min-height: 32px; }
+.touch .size span { color: var(--text); min-width: 46px; }
+.touch .sw { min-width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--soft); background: var(--card2); cursor: pointer; padding: 0 10px; font-size: 13px; color: var(--dim); }
+.touch .sw.on { border-color: var(--teal); box-shadow: 0 0 0 2px rgba(0, 212, 184, 0.35); color: var(--teal); }
+.touch .status { margin-top: 0; }
+
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
 .tile { background: var(--card2); border: 1px solid var(--soft); border-radius: 10px; padding: 10px 12px; }
 .tile b { display: block; font-family: "Playfair Display", serif; font-size: 20px; color: var(--gold); font-weight: 600; overflow-wrap: anywhere; }

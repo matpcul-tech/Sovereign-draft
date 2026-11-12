@@ -40,7 +40,10 @@ export function checkStatus(check) {
 // parts, pivots or size is changed.
 async function repairFinishedCar(bytes, env, progress, wheelCount = 4) {
   progress("Cleaning the car", 0.1);
-  const result = await finishModel(bytes, { triangles: null, maxTexture: null, textureFormat: "png", ground: false, center: false, closeHoles: "small", compress: false }, { codec: env.codec, validate: env.validate });
+  // Holes stay as they are here. A cap takes its UVs from the rim of the hole, and on a car's atlas the rim of one
+  // hole sits on several islands, so each cap is a triangle stretched across the texture. The mask is built by
+  // drawing every face into the texture: a stretched cap on a wheel wiped the paint area off whole body panels.
+  const result = await finishModel(bytes, { triangles: null, maxTexture: null, textureFormat: "png", ground: false, center: false, closeHoles: "off", compress: false }, { codec: env.codec, validate: env.validate });
   if (!result.bytes) return { ...result, car: true };
   const checks = result.checks.slice(), log = ["This car already has its wheels split off and a window mask, so the wheel split was not run again."].concat(result.log);
   let finished = result.bytes;

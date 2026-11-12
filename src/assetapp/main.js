@@ -5,6 +5,7 @@ import { PRESETS, presetById } from "./presets.js";
 import { DEFAULTS } from "./engine.js";
 import { ACCEPT, toGlb } from "./convert.js";
 import { createViewer } from "./viewer.js";
+import { createTouchUp } from "./touchup.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -50,6 +51,7 @@ host.innerHTML = `
       <button class="btn" id="vturn" title="Turn the model a quarter turn, so the gold arrow points out its front">Turn</button>
       <button class="btn" id="vnew">Load another</button>
     </div>
+    <div class="touch" id="touch" hidden></div>
   </section>
 
   <section class="card" id="found" hidden>
@@ -77,7 +79,7 @@ host.innerHTML = `
   <section class="card verdict" id="verdict" hidden></section>
 </main>`;
 
-let viewer = null;
+let viewer = null, touch = null;
 
 // ---- running the heavy work: a worker when the browser can, the page itself when it cannot ----
 let worker = null, workerOk = typeof Worker !== "undefined" && typeof OffscreenCanvas !== "undefined", seq = 0;
@@ -143,7 +145,8 @@ async function load(files) {
     $("#status").textContent = "";
     $("#vafter").disabled = true;
     setShowing("before");
-    if (!viewer) viewer = createViewer($("#canvas"));
+    if (!viewer) { viewer = createViewer($("#canvas")); touch = createTouchUp({ viewer, host: $("#touch") }); }
+    touch.close();
     viewer.setTurn(null);
     await viewer.show(state.bytes);
     state.stats = await run("inspect", { bytes: state.bytes });
@@ -189,14 +192,14 @@ function setShowing(which) {
   $("#vbefore").classList.toggle("on", which === "before");
   $("#vafter").classList.toggle("on", which === "after");
 }
-$("#vbefore").addEventListener("click", async () => { if (!state.bytes) return; setShowing("before"); viewer.setTurn(state.turn); await viewer.show(state.bytes, false); });
-$("#vafter").addEventListener("click", async () => { if (!state.result || !state.result.bytes) return; setShowing("after"); viewer.setTurn(null); await viewer.show(state.result.bytes, false); });
+$("#vbefore").addEventListener("click", async () => { if (!state.bytes) return; setShowing("before"); touch.show(false); viewer.setTurn(state.turn); await viewer.show(state.bytes, false); });
+$("#vafter").addEventListener("click", async () => { if (!state.result || !state.result.bytes) return; setShowing("after"); viewer.setTurn(null); await viewer.show(state.result.bytes, false); touch.dress(); touch.show(true); });
 $("#vwire").addEventListener("click", (e) => { const on = !e.currentTarget.classList.contains("on"); e.currentTarget.classList.toggle("on", on); viewer.setWire(on); });
 async function applyTurn(step) {
   if (state.busy || !state.bytes) return;
   const next = mul(step, state.turn || IDENTITY);
   state.turn = next.every((v, i) => v === IDENTITY[i]) ? null : next;
-  if (state.showing !== "before") { setShowing("before"); await viewer.show(state.bytes, false); }
+  if (state.showing !== "before") { setShowing("before"); touch.show(false); await viewer.show(state.bytes, false); }
   viewer.setTurn(state.turn);
   stale();
 }
@@ -295,7 +298,9 @@ async function finish() {
       setShowing("after");
       viewer.setTurn(null);
       await viewer.show(result.bytes, true);
-    }
+      // a finished car with a window mask can be touched up by hand: the download then carries the edits
+      if (await touch.start(result.bytes, markTouched)) markTouched();
+    } else touch.close();
     $("#verdict").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     status.className = "status err";
@@ -332,6 +337,7 @@ function renderVerdict() {
       <button class="btn" id="dlreport">Download the report</button>
       ${r.pack ? '<button class="btn" id="dlpack">Download the review pack</button>' : ""}
     </div>
+    <p class="lead" id="touchnote"></p>
     <h3>Checks on the finished file</h3>
     <ul class="checks">${checks.map((c) => `<li><span class="chip ${c.status}">${word[c.status]}</span><div><b>${esc(c.label)}</b><p>${esc(c.detail)}</p>${c.fix ? `<p class="fix">${esc(c.fix)}</p>` : ""}</div></li>`).join("")}</ul>
     <h3>What was done</h3>
@@ -343,10 +349,21 @@ function renderVerdict() {
     document.body.append(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   };
-  if (r.bytes) $("#dl").addEventListener("click", () => save(r.bytes, r.fileName, "model/gltf-binary"));
+  if (r.bytes) $("#dl").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    if (!touch.edited()) return save(r.bytes, r.fileName, "model/gltf-binary");
+    button.disabled = true;
+    try { save(await touch.bytes(), r.fileName, "model/gltf-binary"); } finally { button.disabled = false; }
+  });
   $("#dlreport").addEventListener("click", () => save("Sovereign Asset report\nSource: " + state.name + "\nFinish: " + r.presetName + "\nOutput: " + (r.bytes ? r.fileName : "none") + "\n\n" + r.report + "\n", r.fileName.replace(/\.glb$/, "") + "-report.txt", "text/plain"));
   if (r.pack) $("#dlpack").addEventListener("click", () => save(r.pack, r.fileName.replace(/\.glb$/, "") + "-review.zip", "application/zip"));
 }
 
+// the download button says when it carries hand edits
+function markTouched() {
+  const note = $("#touchnote");
+  if (note) note.textContent = touch.edited() ? "The download includes your touch up (" + many(touch.strokes(), "stroke") + ")." : "Touch up is ready under the 3D view: mark glass, paint and chrome by hand, or clean a speck.";
+}
+
 // test hooks: lets a script drive the page without a file dialog
-window.sovereignAsset = { state, load };
+window.sovereignAsset = { state, load, get touch() { return touch; } };
