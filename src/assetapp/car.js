@@ -4,6 +4,7 @@
 import { finishModel, measureModel, readModel, writeModel } from "./engine.js";
 import { decodePng, encodePng } from "../asset/finish/png.js";
 import { paintTailLamps } from "./lamps.js";
+import { evenGlass } from "./glass.js";
 import { loadVehicle, readImages } from "../asset/finish/glb.js";
 import { decodeRaster } from "../asset/finish/raster.js";
 import { resolveProfile } from "../asset/finish/profiles.js";
@@ -37,7 +38,7 @@ export function checkStatus(check) {
 // A car that already has its four wheels split off and a window mask does not go through the wheel
 // split again. It is cleaned, its mask is completed and its lamps are checked, and nothing about its
 // parts, pivots or size is changed.
-async function repairFinishedCar(bytes, env, progress) {
+async function repairFinishedCar(bytes, env, progress, wheelCount = 4) {
   progress("Cleaning the car", 0.1);
   const result = await finishModel(bytes, { triangles: null, maxTexture: null, textureFormat: "png", ground: false, center: false, closeHoles: "small", compress: false }, { codec: env.codec, validate: env.validate });
   if (!result.bytes) return { ...result, car: true };
@@ -54,6 +55,15 @@ async function repairFinishedCar(bytes, env, progress) {
     }
   } catch (error) {
     checks.push({ id: "mask-cover", status: "fail", label: "Mask covers the body", detail: "The mask could not be completed: " + String(error && error.message || error), fix: "The mask and base texture must be PNG. Finish the car on a device that can convert them." });
+  }
+  if (wheelCount !== 2) {
+    try {
+      const glass = await evenGlass(finished);
+      if (glass.added || glass.evened) { finished = glass.bytes; log.push("Evened the glass: " + glass.added + " pale window texels the mask had missed are now glass, and " + glass.evened + " glass texels were given one dark glass tone." + (glass.reason ? " " + glass.reason : "")); }
+      else if (glass.reason) log.push("Glass was left as it is. " + glass.reason);
+    } catch (error) {
+      log.push("The glass was not checked: " + String(error && error.message || error));
+    }
   }
   try {
     const lamps = await paintTailLamps(finished);
@@ -93,7 +103,7 @@ async function finishStreet(bytes, name, opts, env, spec) {
   const progress = (label, f) => { if (env.onProgress) env.onProgress(label, f); };
   const log = [];
   progress("Reading the car", 0.03);
-  if (!opts.rotation && await alreadySplit(bytes, spec.wheels)) return repairFinishedCar(bytes, env, progress);
+  if (!opts.rotation && await alreadySplit(bytes, spec.wheels)) return repairFinishedCar(bytes, env, progress, spec.wheels);
   const before = await measureModel(bytes);
   let input = bytes;
   const needsPng = before.textures.some((t) => t.mime && t.mime !== "image/png");
@@ -150,6 +160,14 @@ async function finishStreet(bytes, name, opts, env, spec) {
     if (!coverage.failed) {
       log.push("Completed the window mask: the paint area now covers every body face (it covered " + coverage.was + " of " + (coverage.paint + coverage.glass) + " texels), and every piece of the mask is padded by " + PAD + " px so nothing bleeds in at its edges.");
       if (coverage.flattened) log.push("Flattened " + coverage.flattened + " glass texels to an even near-black (24, 24, 25). UVs were not moved.");
+    }
+  }
+  if (finished && opts.evenGlass !== false && spec.wheels !== 2) {
+    try {
+      const glass = await evenGlass(finished);
+      if (glass.added || glass.evened) { finished = glass.bytes; log.push("Evened the glass: " + glass.added + " pale window texels the mask had missed are now glass, and " + glass.evened + " glass texels were given one dark glass tone." + (glass.reason ? " " + glass.reason : "")); }
+    } catch (error) {
+      log.push("The glass was not checked: " + String(error && error.message || error));
     }
   }
   if (finished && opts.tailLamps !== false) {
