@@ -103,6 +103,7 @@ async function direct(kind, payload, onProgress) {
   const env = { codec: browserCodec, validate, onProgress };
   if (kind === "inspect") return inspectModel(payload.bytes);
   if (kind === "car") return (await import("./car.js")).finishCar(payload.bytes, payload.name, payload.options, env);
+  if (kind === "motorcycle") return (await import("./car.js")).finishMotorcycle(payload.bytes, payload.name, payload.options, env);
   return finishModel(payload.bytes, payload.options, env);
 }
 function run(kind, payload, onProgress = () => {}) {
@@ -215,12 +216,13 @@ function pickPreset(id) {
   if (preset.slots) {
     extra += `<label class="field">Game slot<select id="slot">${preset.slots.map((s) => `<option>${s}</option>`).join("")}</select></label>`;
   }
-  if (preset.car) {
-    extra += `<label class="confirm"><input type="checkbox" id="front"><span>The gold arrow points out the front of the car. If it does not, tap Turn until it does.</span></label>
-      <p class="lead">This runs the wheel split and window mask. It keeps one material and one texture, and it takes longer than the other finishes.</p>`;
+  if (preset.car || preset.motorcycle) {
+    const noun = preset.motorcycle ? "bike" : "car";
+    extra += `<label class="confirm"><input type="checkbox" id="front"><span>The gold arrow points out the front of the ${noun}. If it does not, tap Turn until it does.</span></label>
+      <p class="lead">This runs the wheel split and window mask. It keeps one material and the original texture, and it takes longer than the other finishes.</p>`;
   }
   $("#extra").innerHTML = extra;
-  $("#more").hidden = !!preset.car;
+  $("#more").hidden = !!(preset.car || preset.motorcycle);
   $("#settings").innerHTML = `
     <label class="field">Triangle target<input type="number" id="o-tris" min="4" step="1000" placeholder="Keep every triangle" value="${o.triangles || ""}"></label>
     <label class="field">Largest texture<select id="o-tex">${[["", "Leave textures alone"], [512, "512 px"], [1024, "1024 px"], [2048, "2048 px"], [4096, "4096 px"]].map(([v, l]) => `<option value="${v}"${String(o.maxTexture || "") === String(v) ? " selected" : ""}>${l}</option>`).join("")}</select></label>
@@ -232,7 +234,7 @@ function pickPreset(id) {
       ${[["o-debris", "Remove floating debris", o.removeDebris], ["o-facing", "Fix inside-out faces", o.fixFacing], ["o-normals", "Fix normals", o.fixNormals], ["o-ground", "Set on the ground", o.ground], ["o-center", "Center it", o.center], ["o-anim", "Drop animations", o.dropAnimations]]
     .map(([id, label, on]) => `<label class="check"><input type="checkbox" id="${id}"${on ? " checked" : ""}>${label}</label>`).join("")}
     </div>`;
-  if (preset.slots && preset.car) $("#slot").addEventListener("change", stale);
+  if (preset.slots && (preset.car || preset.motorcycle)) $("#slot").addEventListener("change", stale);
   stale();
 }
 $("#choose").addEventListener("change", stale);
@@ -275,9 +277,10 @@ async function finish() {
   onProgress("Starting", 0.01);
   try {
     let result;
-    if (preset.car) {
+    if (preset.car || preset.motorcycle) {
       const slot = $("#slot").value;
-      result = await run("car", { bytes: state.bytes, name: state.name + ".glb", options: { rotation: state.turn, frontConfirmed: $("#front").checked, length: preset.lengths[slot] } }, onProgress);
+      const kind = preset.motorcycle ? "motorcycle" : "car";
+      result = await run(kind, { bytes: state.bytes, name: state.name + ".glb", options: { rotation: state.turn, frontConfirmed: $("#front").checked, length: preset.lengths[slot] } }, onProgress);
     } else {
       result = await run("finish", { bytes: state.bytes, options: readOptions() }, onProgress);
     }

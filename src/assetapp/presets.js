@@ -19,8 +19,18 @@ export const PRESETS = [
     name: "Street Empire car",
     blurb: "Splits the four wheels, builds the window mask, one material.",
     car: true,
-    slots: ["sedan", "muscle", "suv", "van", "taxi", "police", "lowrider", "pickup"],
-    lengths: { sedan: 4.9, muscle: 4.8, suv: 4.8, van: 5.1, taxi: 4.9, police: 5.2, lowrider: 5.4, pickup: 5.2 },
+    slots: ["sedan", "coupe", "muscle", "suv", "van", "taxi", "police", "lowrider", "pickup"],
+    lengths: { sedan: 4.9, coupe: 4.7, muscle: 4.8, suv: 4.8, van: 5.2, taxi: 4.9, police: 5.2, lowrider: 5.4, pickup: 5.2 },
+    fileName: (slot) => slot + "@keep.glb",
+    options: {}
+  },
+  {
+    id: "se-motorcycle",
+    name: "Street Empire motorcycle",
+    blurb: "Splits the two wheels, builds the kit mask, one atlas material. Length 2.2 m.",
+    motorcycle: true,
+    slots: ["cruiser", "dirt", "sport"],
+    lengths: { cruiser: 2.2, dirt: 2.2, sport: 2.2 },
     fileName: (slot) => slot + "@keep.glb",
     options: {}
   },

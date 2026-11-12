@@ -4,11 +4,15 @@ import { encodePng } from "./png.js";
 import { decodeRaster } from "./raster.js";
 import { buildCarMask, maskClass } from "./mask.js";
 import { zipStore } from "./zip.js";
-import { cutManualBody, cutSpecifiedWheels, exportedBleed, fitTireCylinder, meshBleedReport } from "./clip.js";
+import { cutManualBody, cutSpecifiedWheels, exportedBleed, fitTireCylinder, meshBleedReport, settleCylinderBleed } from "./clip.js";
 import { faceTopology, manifoldEdgeKeys } from "./select.js";
 import { packGlb, sha256Hex, sourceCensus } from "./glb.js";
 
 const WELD = 2000;
+
+function isStreet(profile) {
+  return profile && (profile.id === "CAR" || profile.id === "MOTORCYCLE");
+}
 
 export async function runFinish(loaded, profile, options = {}) {
   const sourceSha = loaded.sha256 || await sha256Hex(loaded.bytes);
@@ -30,7 +34,7 @@ export async function runFinish(loaded, profile, options = {}) {
       summary: "This file has a skin, a morph, or an animation. None of those were removed, and no rewrite was written."
     });
   }
-  if (profile.id === "CAR") {
+  if (isStreet(profile)) {
     const source = carSourceCheck({
       materialNames: names,
       materialCount: names.length,
@@ -110,7 +114,7 @@ export async function runFinish(loaded, profile, options = {}) {
   let namedWheels = false;
   let preCutManifold = null;
   let capUv = null;
-  if (profile.id === "CAR") {
+  if (isStreet(profile)) {
     const image = (loaded.images || []).find((item) => item.bytes && item.bytes.length);
     if (image) {
       try {
@@ -121,8 +125,8 @@ export async function runFinish(loaded, profile, options = {}) {
       }
     }
   }
-  if (profile.id === "CAR") {
-    const split = splitByLabel(mesh) || splitWheels(mesh);
+  if (isStreet(profile)) {
+    const split = splitByLabel(mesh) || (profile.id === "MOTORCYCLE" ? splitBikeWheels(mesh) : splitWheels(mesh));
     log.push(split.detail);
     if (!split.ok && options.manualCylinders && options.manualCylinders.length === 4) {
       const manual = cutManualBody(mesh, options.manualCylinders);
@@ -153,7 +157,14 @@ export async function runFinish(loaded, profile, options = {}) {
     } else {
       const fitted = split.separated ? split.parts.filter((part) => part.wheel).map((part) => fitTireCylinder(part.mesh, part.name)) : null;
       preCutManifold = manifoldEdgeKeysOf(split.parts);
-      const cut = cutSpecifiedWheels(split.parts, fitted ? { cylinders: fitted, keepInsideOnBody: true, capUv } : {});
+      let cut;
+      try {
+        cut = cutSpecifiedWheels(split.parts, fitted ? { cylinders: fitted, keepInsideOnBody: true, capUv } : {});
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "the cut stopped";
+        log.push("The wheel cut stopped (" + message + "). The named islands were kept and no partial cut was written.");
+        cut = { parts: split.parts, cuts: 0, cylinders: fitted || [], paired: false, failed: message };
+      }
       const bleedAfter = split.separated ? exportedBleed(cut.parts, cut.cylinders) : 0;
       const keepCut = !split.separated || bleedAfter === 0;
       parts = keepCut ? cut.parts : split.parts;
@@ -170,15 +181,19 @@ export async function runFinish(loaded, profile, options = {}) {
       }
       checks.push({
         id: "border",
-        pass: !keepCut || cut.paired !== false,
-        detail: !keepCut
+        pass: !cut.failed && (!keepCut || cut.paired !== false),
+        detail: cut.failed
+          ? "The wheel cut stopped: " + cut.failed + "."
+          : !keepCut
           ? "The measured cut was not kept. No new border was written."
           : (cut.cuts
             ? (cut.wheelUnchanged
               ? "The cut border is on the body and within 1 mm of the cylinder. The existing wheel meshes were not rebuilt. Paired: " + (cut.paired ? "yes" : "no") + "."
               : "Shared border points from the cut are on both the body and the wheel within 1 mm. Paired: " + (cut.paired ? "yes" : "no") + ".")
             : "No shared cut was required."),
-        action: !keepCut ? "Specify the wheel boundary by hand. The automatic cylinder cut did not clear the 1 mm bleed." : (cut.paired === false ? "The cut did not copy the same border onto both sides." : "")
+        action: cut.failed
+          ? "The cut did not finish. The named wheel islands were kept."
+          : !keepCut ? "Specify the wheel boundary by hand. The automatic cylinder cut did not clear the 1 mm bleed." : (cut.paired === false ? "The cut did not copy the same border onto both sides." : "")
       });
     }
     const axles = split.parts.filter((part) => part.wheel).map((part) => part.name + " " + part.center.map((value) => value.toFixed(3)).join(" ")).join("; ");
@@ -222,6 +237,36 @@ export async function runFinish(loaded, profile, options = {}) {
       log.push("Simplify was measured and not kept because it added " + added + " mesh intersections. Exported triangles stay at " + triangles + ", under the ceiling.");
     }
   }
+  let carriedMids = [];
+  if (preCutManifold) carriedMids = inheritedNonManifoldMidpoints(preCutManifold, parts);
+  if (wheelCylinders.length) {
+    const nudged = settleCylinderBleed(parts, wheelCylinders, 0.015);
+    if (nudged) {
+      for (const part of parts) recomputeNormals(part.mesh, wheelCylinders);
+      log.push("Set " + nudged + " vertices that crossed a wheel cylinder by under 15 mm back on the tire. No wheel was invented.");
+    }
+    if (exportedBleed(parts, wheelCylinders)) {
+      try {
+        const again = cutSpecifiedWheels(parts, { cylinders: wheelCylinders, keepInsideOnBody: true, capUv });
+        if (again && exportedBleed(again.parts, again.cylinders) === 0) {
+          for (let i = 0; i < parts.length; i++) parts[i] = again.parts[i];
+          triangles = 0;
+          for (const part of parts) triangles += part.mesh.indices.length / 3;
+          log.push("Cut " + again.cuts + " triangles that crossed a wheel cylinder after simplify. The cut left none across the boundary.");
+        }
+      } catch (error) {
+        log.push("A second wheel cut was measured and not kept.");
+      }
+    }
+  }
+  if (preCutManifold) {
+    const removed = dropNovelNonManifoldFaces(parts, preCutManifold, carriedMids);
+    if (removed) {
+      triangles = 0;
+      for (const part of parts) triangles += part.mesh.indices.length / 3;
+      log.push("Removed " + removed + " faces that made a new non-manifold edge after the cut. Edges that were already there were left.");
+    }
+  }
   const budget = triangles > profile.triangleCeiling;
   checks.push({
     id: "budget",
@@ -240,14 +285,14 @@ export async function runFinish(loaded, profile, options = {}) {
 
   const images = await resizeImages(loaded, profile.maxTexture, log, checks);
   let maskPack = null;
-  if (profile.id === "CAR") {
+  if (isStreet(profile)) {
     const sourceImage = (images.outputs || []).find((image) => image.bytes && image.bytes.length);
     if (!sourceImage) {
       checks.push({ id: "mask", pass: false, detail: "No base image was measured, so no mask was built.", action: "Keep the original base color image. A new atlas was not baked." });
     } else {
       try {
         const decoded = await decodeRaster(sourceImage.bytes, sourceImage.mime);
-        const built = buildCarMask(parts, decoded.rgba, decoded.width, decoded.height);
+        const built = buildCarMask(parts, decoded.rgba, decoded.width, decoded.height, { allowEmptyGlass: profile.id === "MOTORCYCLE" });
         if (!built.ok) checks.push({ id: "mask", pass: false, detail: built.detail, action: built.action || "" });
         else {
           maskPack = built;
@@ -274,7 +319,7 @@ export async function runFinish(loaded, profile, options = {}) {
       }
     }
   }
-  const materialName = safeMaterialName(names[0] || "atlas");
+  const materialName = profile.id === "MOTORCYCLE" ? "atlas" : safeMaterialName(names[0] || "atlas");
   const bytes = packParts(parts, materialName, images.outputs, !!options.frontConfirmed, maskPack);
   const afterSha = await sha256Hex(bytes);
   const after = {
@@ -320,7 +365,7 @@ export async function runFinish(loaded, profile, options = {}) {
     detail: bad.zero + " zero-area triangles and " + bad.duplicate + " repeated triangles remain.",
     action: bad.zero || bad.duplicate ? "Remove the remaining bad triangles." : ""
   });
-  const manifoldReport = manifoldNovelty(preCutManifold, parts);
+  const manifoldReport = manifoldNovelty(preCutManifold, parts, carriedMids);
   checks.push({
     id: "manifold",
     pass: bad.nonManifold === 0 && manifoldReport.novel === 0,
@@ -333,13 +378,16 @@ export async function runFinish(loaded, profile, options = {}) {
     detail: bad.boundary + " boundary edges have one triangle. They were not filled. An open tear and an intentional opening are not distinguished, so this count is not a closed-shell certificate.",
     action: ""
   });
-  if (profile.id === "CAR") {
-    const missing = ["body", "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"].filter((name) => !parts.some((part) => part.name === name));
+  if (isStreet(profile)) {
+    const expected = profile.outputNodes && profile.outputNodes.length
+      ? profile.outputNodes
+      : ["body", "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"];
+    const missing = expected.filter((name) => !parts.some((part) => part.name === name));
     checks.push({
       id: "names",
-      pass: !missing.length,
-      detail: missing.length ? "Missing " + missing.join(", ") + "." : "Nodes are body and the four wheels.",
-      action: missing.length ? "The four wheel islands were not named." : ""
+      pass: !missing.length && parts.length === expected.length,
+      detail: missing.length ? "Missing " + missing.join(", ") + "." : "Nodes are " + expected.join(", ") + ".",
+      action: missing.length ? "The wheel islands were not named." : ""
     });
   }
   const failed = checks.some((check) => !check.pass);
@@ -471,18 +519,77 @@ function edgeMidpoint(key) {
   return pa.map((value, index) => (value + pb[index]) / 2 / 2000);
 }
 
-function manifoldNovelty(before, parts) {
+function manifoldNovelty(before, parts, carried) {
   if (!before) return { before: 0, novel: 0 };
   const prior = [...before].map((key) => edgeMidpoint(key));
+  const carriedMids = carried || [];
   let novel = 0;
   const after = manifoldEdgeKeysOf(parts);
   for (const key of after) {
-    if (before.has(key)) continue;
-    const mid = edgeMidpoint(key);
-    const same = prior.some((point) => Math.hypot(point[0] - mid[0], point[1] - mid[1], point[2] - mid[2]) <= 0.001);
-    if (!same) novel += 1;
+    if (edgeIsCarried(key, before, prior, carriedMids)) continue;
+    novel += 1;
   }
   return { before: before.size, novel };
+}
+
+function edgeIsCarried(key, before, prior, carriedMids) {
+  if (before && before.has(key)) return true;
+  const mid = edgeMidpoint(key);
+  if (prior.some((point) => Math.hypot(point[0] - mid[0], point[1] - mid[1], point[2] - mid[2]) <= 0.001)) return true;
+  return carriedMids.some((point) => Math.hypot(point[0] - mid[0], point[1] - mid[1], point[2] - mid[2]) <= 0.005);
+}
+
+function inheritedNonManifoldMidpoints(before, parts) {
+  const prior = [...before].map((key) => edgeMidpoint(key));
+  const mids = [];
+  for (const key of manifoldEdgeKeysOf(parts)) {
+    if (edgeIsCarried(key, before, prior, [])) mids.push(edgeMidpoint(key));
+  }
+  return mids;
+}
+
+function positionEdgeKey(mesh, a, b) {
+  const ka = Math.round(mesh.positions[a * 3] * 2000) + "," + Math.round(mesh.positions[a * 3 + 1] * 2000) + "," + Math.round(mesh.positions[a * 3 + 2] * 2000);
+  const kb = Math.round(mesh.positions[b * 3] * 2000) + "," + Math.round(mesh.positions[b * 3 + 1] * 2000) + "," + Math.round(mesh.positions[b * 3 + 2] * 2000);
+  return ka < kb ? ka + "|" + kb : kb + "|" + ka;
+}
+
+function dropNovelNonManifoldFaces(parts, before, carriedMids) {
+  const prior = [...before].map((key) => edgeMidpoint(key));
+  let dropped = 0;
+  for (const part of parts) {
+    let guard = 24;
+    while (guard-- > 0) {
+      const users = new Map();
+      const mesh = part.mesh;
+      const faceCount = mesh.indices.length / 3;
+      for (let face = 0; face < faceCount; face++) {
+        for (let corner = 0; corner < 3; corner++) {
+          const a = mesh.indices[face * 3 + corner];
+          const b = mesh.indices[face * 3 + ((corner + 1) % 3)];
+          const key = positionEdgeKey(mesh, a, b);
+          const list = users.get(key) || [];
+          list.push(face);
+          users.set(key, list);
+        }
+      }
+      let victim = -1;
+      for (const [key, list] of users) {
+        if (list.length <= 2) continue;
+        if (edgeIsCarried(key, before, prior, carriedMids)) continue;
+        victim = list[list.length - 1];
+        break;
+      }
+      if (victim < 0 || faceCount < 5) break;
+      const next = new Uint32Array((faceCount - 1) * 3);
+      if (victim > 0) next.set(mesh.indices.subarray(0, victim * 3));
+      if (victim < faceCount - 1) next.set(mesh.indices.subarray((victim + 1) * 3), victim * 3);
+      mesh.indices = next;
+      dropped += 1;
+    }
+    part.mesh = compact(part.mesh);
+  }
+  return dropped;
 }
 
 function outputDefects(parts) {
@@ -572,7 +679,7 @@ function hasMorph(json) {
 function orientMesh(mesh, profile, options) {
   const box = measureMesh(mesh);
   const [sx, sy, sz] = box.size;
-  if (profile.id === "CAR" && sy > sx * 1.15 && sy > sz * 1.15) {
+  if (isStreet(profile) && sy > sx * 1.15 && sy > sz * 1.15) {
     return {
       ok: false,
       detail: "Up is ambiguous. The mesh is taller than it is long, and no rotation was applied.",
@@ -586,14 +693,14 @@ function orientMesh(mesh, profile, options) {
     };
   }
   const horizontalGap = Math.abs(sx - sz) / Math.max(sx, sz, 1e-8);
-  if ((profile.id === "CAR" || profile.id === "BUILDING") && horizontalGap < 0.15) {
+  if ((isStreet(profile) || profile.id === "BUILDING") && horizontalGap < 0.15) {
     return {
       ok: false,
       detail: "Forward is ambiguous. The two horizontal lengths are similar, and no rotation was applied.",
       action: "Confirm which way is +Z, then run again."
     };
   }
-  if ((profile.id === "CAR" || profile.id === "BUILDING") && sx > sz * 1.15) {
+  if ((isStreet(profile) || profile.id === "BUILDING") && sx > sz * 1.15) {
     rotateY(mesh, Math.PI / 2);
     return {
       ok: true,
@@ -656,7 +763,7 @@ function baseCheck(mesh) {
 }
 
 function targetLength(profile, mesh) {
-  if (profile.id === "CAR") return { axis: 2, length: profile.lengthZ };
+  if (isStreet(profile)) return { axis: 2, length: profile.lengthZ };
   if (profile.id === "BUILDING" || profile.id === "CHARACTER") return { axis: 1, length: profile.heightY };
   const size = measureMesh(mesh).size;
   let axis = 0;
@@ -812,6 +919,57 @@ function meshHitCheck(parts, sourceHits) {
 }
 
 function splitWheels(mesh) {
+  return assignWheelSlots(mesh, {
+    names: ["wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"],
+    slot: wheelSlot,
+    empty: "The shell does not have four disconnected wheel islands. No wheel was invented, and simplify did not run.",
+    ambiguous: "Wheel islands are not one piece at each low corner. No wheel was invented, and simplify did not run.",
+    detail: "Split four disconnected wheel islands before simplify. Names use +Z as the geometric front. One node was not treated as one island."
+  });
+}
+
+function splitBikeWheels(mesh) {
+  return assignWheelSlots(mesh, {
+    names: ["wheel_f", "wheel_r"],
+    slot: bikeSlot,
+    empty: "The shell does not have two disconnected wheel islands. No wheel was invented, and simplify did not run.",
+    ambiguous: "Wheel islands are not one piece at one end. No wheel was invented, and simplify did not run.",
+    detail: "Split two disconnected wheel islands before simplify. Names use +Z as the geometric front. One node was not treated as one island."
+  });
+}
+
+function assignWheelSlots(mesh, spec) {
+  const pieces = connectedPieces(mesh);
+  if (!pieces.length) return { ok: false, detail: "The mesh has no triangles left to split." };
+  const bodyFaces = pieces[0].faces.slice();
+  const slots = new Map(spec.names.map((name) => [name, []]));
+  const whole = measureMesh(mesh);
+  for (const piece of pieces.slice(1)) {
+    const name = spec.slot(piece.box, whole);
+    if (!name || !slots.has(name)) {
+      bodyFaces.push(...piece.faces);
+      continue;
+    }
+    slots.get(name).push(piece);
+  }
+  const chosen = new Map();
+  for (const name of spec.names) {
+    const candidates = slots.get(name);
+    if (!candidates.length) return { ok: false, detail: spec.empty };
+    const pick = chooseWheelPiece(candidates, spec.ambiguous);
+    if (!pick.ok) return { ok: false, detail: pick.detail };
+    for (const extra of pick.rest) bodyFaces.push(...extra.faces);
+    chosen.set(name, pick.winner);
+  }
+  const parts = [{ name: "body", mesh: facesToMesh(mesh, bodyFaces), wheel: false }];
+  for (const name of spec.names) {
+    const winner = chosen.get(name);
+    parts.push({ name, mesh: facesToMesh(mesh, winner.faces), wheel: true, center: centerOf(winner.box) });
+  }
+  return { ok: true, separated: true, parts, detail: spec.detail };
+}
+
+function connectedPieces(mesh) {
   const count = mesh.positions.length / 3;
   const parent = new Uint32Array(count);
   for (let i = 0; i < count; i++) parent[i] = i;
@@ -842,36 +1000,39 @@ function splitWheels(mesh) {
   }
   const pieces = [...groups.values()].map((faces) => ({ faces, box: faceBounds(mesh, faces) }));
   pieces.sort((a, b) => (b.box.size[0] * b.box.size[1] * b.box.size[2]) - (a.box.size[0] * a.box.size[1] * a.box.size[2]));
-  if (!pieces.length) return { ok: false, detail: "The mesh has no triangles left to split." };
-  const bodyFaces = pieces[0].faces.slice();
-  const slots = { wheel_fl: [], wheel_fr: [], wheel_rl: [], wheel_rr: [] };
-  const whole = measureMesh(mesh);
-  for (const piece of pieces.slice(1)) {
-    const name = wheelSlot(piece.box, whole);
-    if (!name) {
-      bodyFaces.push(...piece.faces);
-      continue;
+  return pieces;
+}
+
+// A tire touches the ground, is round in the side view, and is wider than a brake disc.
+function tireLike(box) {
+  const diameter = Math.max(box.size[1], box.size[2]);
+  const minor = Math.min(box.size[1], box.size[2]);
+  if (!(diameter > 0)) return false;
+  const round = minor / diameter;
+  return round >= 0.82 && diameter >= 0.5 && diameter <= 1.05 && box.size[0] <= diameter * 0.6 && box.min[1] <= 0.08;
+}
+
+function chooseWheelPiece(candidates, ambiguous) {
+  const tires = candidates.filter((piece) => tireLike(piece.box));
+  if (tires.length) {
+    tires.sort((a, b) => a.box.min[1] - b.box.min[1] || Math.max(b.box.size[1], b.box.size[2]) - Math.max(a.box.size[1], a.box.size[2]));
+    const winner = tires[0];
+    if (tires.length > 1) {
+      const rival = tires[1];
+      const winnerDiameter = Math.max(winner.box.size[1], winner.box.size[2]);
+      const rivalDiameter = Math.max(rival.box.size[1], rival.box.size[2]);
+      const sameSize = Math.abs(winnerDiameter - rivalDiameter) <= Math.max(0.08, winnerDiameter * 0.15);
+      if (rival.box.min[1] <= 0.08 && sameSize && rival.faces.length > winner.faces.length * 0.4) {
+        return { ok: false, detail: ambiguous };
+      }
     }
-    slots[name].push(piece);
+    return { ok: true, winner, rest: candidates.filter((piece) => piece !== winner) };
   }
-  for (const name of Object.keys(slots)) {
-    slots[name].sort((a, b) => b.faces.length - a.faces.length);
-    const winner = slots[name][0];
-    if (!winner) {
-      return { ok: false, detail: "The shell does not have four disconnected wheel islands. No wheel was invented, and simplify did not run." };
-    }
-    const rival = slots[name][1];
-    if (rival && rival.faces.length > winner.faces.length * 0.4) {
-      return { ok: false, detail: "Wheel islands are not one piece at each low corner. No wheel was invented, and simplify did not run." };
-    }
-    for (const extra of slots[name].slice(1)) bodyFaces.push(...extra.faces);
-    slots[name] = winner;
-  }
-  const parts = [{ name: "body", mesh: facesToMesh(mesh, bodyFaces), wheel: false }];
-  for (const name of ["wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr"]) {
-    parts.push({ name, mesh: facesToMesh(mesh, slots[name].faces), wheel: true, center: centerOf(slots[name].box) });
-  }
-  return { ok: true, separated: true, parts, detail: "Split four disconnected wheel islands before simplify. Names use +Z as the geometric front. One node was not treated as one island." };
+  const ranked = candidates.slice().sort((a, b) => b.faces.length - a.faces.length);
+  const winner = ranked[0];
+  const rival = ranked[1];
+  if (rival && rival.faces.length > winner.faces.length * 0.4) return { ok: false, detail: ambiguous };
+  return { ok: true, winner, rest: ranked.slice(1) };
 }
 
 function wheelSlot(box, whole) {
@@ -879,6 +1040,14 @@ function wheelSlot(box, whole) {
   if (center[1] > whole.max[1] * 0.55) return null;
   if (Math.abs(center[0]) < 0.2 || Math.abs(center[2]) < 0.2) return null;
   return "wheel_" + (center[2] >= 0 ? "f" : "r") + (center[0] < 0 ? "l" : "r");
+}
+
+function bikeSlot(box, whole) {
+  const center = centerOf(box);
+  if (center[1] > whole.max[1] * 0.62) return null;
+  if (Math.abs(center[2]) < Math.max(0.18, whole.size[2] * 0.12)) return null;
+  if (Math.abs(center[0]) > 0.35) return null;
+  return center[2] >= 0 ? "wheel_f" : "wheel_r";
 }
 
 async function simplifyPart(mesh, target, hold, locks) {
@@ -973,17 +1142,21 @@ async function resizeImages(loaded, max, log, checks) {
   for (const image of loaded.images || []) {
     try {
       const decoded = await decodeRaster(image.bytes, image.mime);
-      if (decoded.width <= max && decoded.height <= max) {
+      const fits = decoded.width <= max && decoded.height <= max;
+      const png = image.mime === "image/png" || (image.bytes[0] === 137 && image.bytes[1] === 80);
+      if (fits && png) {
         outputs.push(image);
         log.push(image.name + " is " + decoded.width + " px (" + (image.mime || "image") + "). It was not resized. Channels were kept.");
         continue;
       }
-      const scale = max / Math.max(decoded.width, decoded.height);
+      const scale = fits ? 1 : max / Math.max(decoded.width, decoded.height);
       const width = Math.max(1, Math.round(decoded.width * scale));
       const height = Math.max(1, Math.round(decoded.height * scale));
-      const rgba = boxFilter(decoded.rgba, decoded.width, decoded.height, width, height);
+      const rgba = width === decoded.width && height === decoded.height ? decoded.rgba : boxFilter(decoded.rgba, decoded.width, decoded.height, width, height);
       outputs.push({ ...image, mime: "image/png", bytes: encodePng(width, height, rgba) });
-      log.push(image.name + " was resized from " + decoded.width + "x" + decoded.height + " to " + width + "x" + height + ". Only the size changed. The channels were not recolored.");
+      log.push(fits
+        ? image.name + " was converted from " + (image.mime || "an unknown type") + " to PNG at " + width + "x" + height + ". The channels were not recolored."
+        : image.name + " was resized from " + decoded.width + "x" + decoded.height + " to " + width + "x" + height + ". Only the size changed. The channels were not recolored.");
     } catch (error) {
       outputs.push(image);
       failed = true;

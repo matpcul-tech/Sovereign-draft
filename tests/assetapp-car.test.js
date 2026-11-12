@@ -60,6 +60,18 @@ describe("Sovereign Asset: Street Empire car", () => {
     expect(doc2.getRoot().listMaterials()[0].getExtras().kitMask).toBe(true);
     // the two findings that come with every AI car are shown, and do not block
     expect(result.checks.filter((c) => c.status === "note").map((c) => c.id).sort()).toEqual(["manifold", "mask-clean"]);
+    const manifold = result.checks.find((c) => c.id === "manifold");
+    expect(manifold.detail).toMatch(/\b0 are new after the cut\b/);
+    const base = decodePng(mat.getBaseColorTexture().getImage());
+    let glassTexels = 0, offGlass = 0;
+    const n = Math.min(mask.rgba.length, base.rgba.length);
+    for (let i = 0; i < n; i += 4) {
+      if (mask.rgba[i] < 250 || mask.rgba[i + 1] > 5) continue;
+      glassTexels++;
+      if (base.rgba[i] !== 24 || base.rgba[i + 1] !== 24 || base.rgba[i + 2] !== 25) offGlass++;
+    }
+    expect(glassTexels).toBeGreaterThan(0);
+    expect(offGlass).toBe(0);
   }, 180000);
 
   it("does not call a car ready when the front was not confirmed", async () => {

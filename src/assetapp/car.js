@@ -4,7 +4,8 @@
 import { finishModel, measureModel, readModel, writeModel } from "./engine.js";
 import { decodePng, encodePng } from "../asset/finish/png.js";
 import { paintTailLamps } from "./lamps.js";
-import { loadVehicle } from "../asset/finish/glb.js";
+import { loadVehicle, readImages } from "../asset/finish/glb.js";
+import { decodeRaster } from "../asset/finish/raster.js";
 import { resolveProfile } from "../asset/finish/profiles.js";
 import { runFinish } from "../asset/finish/pipeline.js";
 
@@ -16,13 +17,22 @@ const LABELS = {
   triangles: "Clean triangles", manifold: "Edges shared by three faces", "open-edges": "Open edges", names: "Part names", share: "Shared meshes"
 };
 
-// These two fail on every car made by an AI generator, and on the cars already running in the game
+// These fail on every car made by an AI generator, and on the cars already running in the game
 // (taxi-v1 fails both). They come from the source model and do not stop a car from working, so they
-// are shown as notes with the numbers, not as failures.
+// are shown as notes with the numbers, not as failures. A non-manifold edge the cut itself creates
+// is not one of these: that stays a failure.
 const INHERITED = {
   manifold: "Carried over from the source model. The cars already in the game have these too.",
   "mask-clean": "The source texture packs its pieces too close together to pad each one by 8 px. Cars already in the game are packed the same way. Look for color creeping at window edges on a phone; if you see it, retexture in Meshy."
 };
+
+const GLASS_RGB = [24, 24, 25];
+
+export function checkStatus(check) {
+  const carried = !check.pass && INHERITED[check.id] && (check.id !== "manifold" || /\b0 are new after the cut\b/.test(check.detail || ""));
+  if (check.pass) return "pass";
+  return carried ? "note" : "fail";
+}
 
 // A car that already has its four wheels split off and a window mask does not go through the wheel
 // split again. It is cleaned, its mask is completed and its lamps are checked, and nothing about its
@@ -40,6 +50,7 @@ async function repairFinishedCar(bytes, env, progress) {
       finished = fixed.bytes;
       checks.push({ id: "mask-cover", status: "pass", label: "Mask covers the body", detail: "Every texel a body face uses is marked paint, glass or chrome (" + fixed.paint + " paint, " + fixed.glass + " glass). Wheels are marked as neither. Each piece is padded by " + PAD + " px.", fix: "" });
       log.push("Completed the window mask: the paint area covered " + fixed.was + " texels and now covers " + fixed.paint + "." + (fixed.moved ? " " + fixed.moved + " texels marked chrome were the body color and are now paint." : ""));
+      if (fixed.flattened) log.push("Flattened " + fixed.flattened + " glass texels to an even near-black (24, 24, 25). UVs were not moved.");
     }
   } catch (error) {
     checks.push({ id: "mask-cover", status: "fail", label: "Mask covers the body", detail: "The mask could not be completed: " + String(error && error.message || error), fix: "The mask and base texture must be PNG. Finish the car on a device that can convert them." });
@@ -63,18 +74,26 @@ async function repairFinishedCar(bytes, env, progress) {
   return { ready, banner: ready ? "READY" : "NOT READY", summary, checks, log, before: result.before, after, bytes: finished, pack: null, report, car: true };
 }
 
-async function alreadySplit(bytes) {
+async function alreadySplit(bytes, wheelCount) {
   const doc = await readModel(bytes);
   const wheels = doc.getRoot().listNodes().filter((n) => n.getExtras() && n.getExtras().kitWheel).length;
   const masked = doc.getRoot().listMaterials().some((m) => m.getExtras() && m.getExtras().kitMask && m.getEmissiveTexture());
-  return wheels === 4 && masked;
+  return wheels === wheelCount && masked;
 }
 
 export async function finishCar(bytes, name, opts = {}, env = {}) {
+  return finishStreet(bytes, name, opts, env, { profile: "CAR", wheels: 4 });
+}
+
+export async function finishMotorcycle(bytes, name, opts = {}, env = {}) {
+  return finishStreet(bytes, name, opts, env, { profile: "MOTORCYCLE", wheels: 2, wheelLabel: "Two wheels found" });
+}
+
+async function finishStreet(bytes, name, opts, env, spec) {
   const progress = (label, f) => { if (env.onProgress) env.onProgress(label, f); };
   const log = [];
   progress("Reading the car", 0.03);
-  if (!opts.rotation && await alreadySplit(bytes)) return repairFinishedCar(bytes, env, progress);
+  if (!opts.rotation && await alreadySplit(bytes, spec.wheels)) return repairFinishedCar(bytes, env, progress);
   const before = await measureModel(bytes);
   let input = bytes;
   const needsPng = before.textures.some((t) => t.mime && t.mime !== "image/png");
@@ -88,11 +107,15 @@ export async function finishCar(bytes, name, opts = {}, env = {}) {
     if (!prep.bytes) throw new Error("The car could not be prepared: " + prep.summary);
     input = prep.bytes;
     if (opts.rotation) log.push("Turned the model the way you set it in the view.");
-    if (needsPng) log.push("Converted the textures to PNG so the mask can be measured pixel for pixel.");
+    if (needsPng) {
+      const left = readImages(input).filter((image) => image.bytes && image.bytes.length && image.mime !== "image/png" && image.mime !== "image/webp");
+      if (left.length) log.push("Still not PNG or WebP: " + left.map((image) => (image.name || "image") + " (" + (image.mime || "no type") + ")").join(", ") + ". JPEG is converted while the mask is measured. Anything else fails with that name.");
+      else log.push("Converted the textures to PNG so the mask can be measured pixel for pixel.");
+    }
   }
   progress("Splitting wheels and building the mask", 0.2);
   const loaded = await loadVehicle(input, name || "car.glb");
-  const profile = resolveProfile("CAR", { lengthZ: opts.length || undefined });
+  const profile = resolveProfile(spec.profile, { lengthZ: opts.length || undefined });
   if (profile.error) throw new Error(profile.error);
   const result = await runFinish(loaded, profile, { frontConfirmed: !!opts.frontConfirmed });
   progress("Checking the finished car", 0.92);
@@ -110,20 +133,24 @@ export async function finishCar(bytes, name, opts = {}, env = {}) {
     const n = (seen.get(c.id) || 0) + 1;
     seen.set(c.id, n);
     const key = c.id.startsWith("mask") ? (c.pass ? "mask" : c.id) : c.id;
-    const inherited = !c.pass && INHERITED[c.id];
+    const status = checkStatus(c);
+    const inherited = status === "note";
     return {
       id: c.id + (n > 1 ? "-" + n : ""),
-      status: c.pass ? "pass" : inherited ? "note" : "fail",
-      label: LABELS[key] || LABELS[c.id] || (c.id.startsWith("mask") ? "Window mask" : c.id),
-      detail: c.detail + (inherited ? " " + inherited : ""),
-      fix: c.pass || inherited ? "" : (c.action || "")
+      status,
+      label: spec.wheelLabel && c.id === "wheels" ? spec.wheelLabel : (LABELS[key] || LABELS[c.id] || (c.id.startsWith("mask") ? "Window mask" : c.id)),
+      detail: c.detail + (inherited ? " " + INHERITED[c.id] : ""),
+      fix: status === "fail" ? (c.action || "") : ""
     };
   });
   if (coverage) {
     checks.push(coverage.failed
       ? { id: "mask-cover", status: "fail", label: "Mask covers the body", detail: "The mask could not be completed: " + coverage.failed, fix: "Open the car in the VEHICLE panel of Sovereign Draft and mark the windows by hand." }
       : { id: "mask-cover", status: "pass", label: "Mask covers the body", detail: "Every texel a body face uses is marked paint or glass (" + coverage.paint + " paint, " + coverage.glass + " glass). Wheels are marked as neither. Each piece is padded by " + PAD + " px.", fix: "" });
-    if (!coverage.failed) log.push("Completed the window mask: the paint area now covers every body face (it covered " + coverage.was + " of " + (coverage.paint + coverage.glass) + " texels), and every piece of the mask is padded by " + PAD + " px so nothing bleeds in at its edges.");
+    if (!coverage.failed) {
+      log.push("Completed the window mask: the paint area now covers every body face (it covered " + coverage.was + " of " + (coverage.paint + coverage.glass) + " texels), and every piece of the mask is padded by " + PAD + " px so nothing bleeds in at its edges.");
+      if (coverage.flattened) log.push("Flattened " + coverage.flattened + " glass texels to an even near-black (24, 24, 25). UVs were not moved.");
+    }
   }
   if (finished && opts.tailLamps !== false) {
     try {
@@ -250,6 +277,27 @@ export async function completeMask(bytes) {
     }
     for (let k = 0; k < grow.length; k += 2) cls[grow[k]] = grow[k + 1];
   }
+  let flattened = 0;
+  if (baseTex && baseTex.getImage()) {
+    let decoded = null;
+    try {
+      decoded = baseTex.getMimeType() === "image/png" ? decodePng(baseTex.getImage()) : await decodeRaster(baseTex.getImage(), baseTex.getMimeType());
+    } catch (error) {
+      decoded = null;
+    }
+    if (decoded && decoded.width === W && decoded.height === H) {
+      const px = decoded.rgba;
+      for (let i = 0; i < cls.length; i++) {
+        if (cls[i] !== 3) continue;
+        if (px[i * 4] !== GLASS_RGB[0] || px[i * 4 + 1] !== GLASS_RGB[1] || px[i * 4 + 2] !== GLASS_RGB[2]) flattened++;
+        px[i * 4] = GLASS_RGB[0];
+        px[i * 4 + 1] = GLASS_RGB[1];
+        px[i * 4 + 2] = GLASS_RGB[2];
+        px[i * 4 + 3] = 255;
+      }
+      baseTex.setImage(encodePng(W, H, px)).setMimeType("image/png");
+    }
+  }
   const out = new Uint8Array(W * H * 4);
   for (let i = 0; i < cls.length; i++) {
     out[i * 4] = cls[i] === 3 ? 255 : 0;
@@ -258,5 +306,5 @@ export async function completeMask(bytes) {
     out[i * 4 + 3] = 255;
   }
   tex.setImage(encodePng(W, H, out)).setMimeType("image/png");
-  return { bytes: await writeModel(doc), paint, glass, was, moved };
+  return { bytes: await writeModel(doc), paint, glass, was, moved, flattened };
 }

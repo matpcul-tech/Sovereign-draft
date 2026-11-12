@@ -61,8 +61,8 @@ export function clipTriangle(tri, cyl, depth = 0) {
       const kidDist = kid.map((vert) => radial(vert.p, cyl) - cyl.radius);
       const kidCross = kidDist.some((value) => value < -MM) && kidDist.some((value) => value > MM);
       if (kidCross) return hit;
-      if (kidDist.some((value) => value < -MM)) inside.push([kid]);
-      else outside.push([kid]);
+      if (kidDist.some((value) => value < -MM)) inside.push(kid);
+      else outside.push(kid);
       continue;
     }
     if (next.inside) inside.push(...next.inside);
@@ -106,8 +106,10 @@ function clipTriangleRaw(tri, cyl) {
   const sides = tri.map((vert) => radial(vert.p, cyl) - cyl.radius);
   const inside = sides.filter((value) => value < -MM).length;
   const outside = sides.filter((value) => value > MM).length;
-  if (!hits.length && inside === 3) return { ok: true, kind: "inside", inside: [tri], outside: [], boundary: [] };
-  if (!hits.length && outside === 3) {
+  // A vertex within 1 mm of the cylinder is neither inside nor outside. A triangle
+  // with no vertex outside the tire is inside, including one that only touches the shell.
+  if (!hits.length && outside === 0) return { ok: true, kind: "inside", inside: [tri], outside: [], boundary: [] };
+  if (!hits.length && inside === 0) {
     const disk = diskInside(tri, cyl);
     if (disk === "miss") return { ok: true, kind: "outside", inside: [], outside: [tri], boundary: [] };
     if (!disk) return { ok: false, reason: "This triangle meets the cylinder in a way that was not clipped. No wedge was assigned by a corner test." };
@@ -233,7 +235,13 @@ function earClip(poly) {
 }
 
 function capFace(face, capUv) {
-  const copy = face.map((vert) => ({ p: vert.p.slice(), uv: capUv.slice(), n: (vert.n || [0, 1, 0]).slice() }));
+  if (!face || face.length !== 3 || !capUv || typeof capUv.slice !== "function") return null;
+  const copy = [];
+  for (const vert of face) {
+    if (!vert || !vert.p || typeof vert.p.slice !== "function") return null;
+    const n = vert.n && typeof vert.n.slice === "function" ? vert.n : [0, 1, 0];
+    copy.push({ p: vert.p.slice(), uv: capUv.slice(), n: n.slice() });
+  }
   copy.cut = true;
   copy.cap = true;
   return copy;
@@ -526,7 +534,7 @@ export function cutManualBody(mesh, cylinders) {
 export function cutSpecifiedWheels(parts, options = {}) {
   const body = parts.find((part) => !part.wheel);
   const wheels = parts.filter((part) => part.wheel);
-  if (!body || wheels.length !== 4) return { parts, cuts: 0, cylinders: [], paired: true };
+  if (!body || (wheels.length !== 4 && wheels.length !== 2)) return { parts, cuts: 0, cylinders: [], paired: true };
   const cylinders = options && options.cylinders ? options.cylinders : wheels.map(cylinderFromPart);
   let tris = meshTriangles(body.mesh);
   const extra = new Map(wheels.map((part) => [part.name, []]));
@@ -550,7 +558,12 @@ export function cutSpecifiedWheels(parts, options = {}) {
         keep.push(...hit.outside);
       }
       if (hit.inside && hit.inside.length) {
-        const caps = options.capUv ? hit.inside.map((face) => capFace(face, options.capUv)) : hit.inside;
+        let caps = hit.inside;
+        if (options.capUv) {
+          const made = hit.inside.map((face) => capFace(face, options.capUv));
+          // A face that cannot be capped stays as it was. Dropping it would open the tire.
+          caps = made.every(Boolean) ? made : hit.inside;
+        }
         for (const face of caps) {
           face.cut = true;
           face.cap = true;
@@ -730,6 +743,47 @@ export function exportedBleed(parts, cylinders) {
     }
   }
   return count;
+}
+
+// A simplify step may leave a vertex a couple of millimetres inside the tire.
+// Pull those back onto the cylinder. A vertex deeper than the limit stays, and the bleed check still fails.
+export function settleCylinderBleed(parts, cylinders, limit = 0.004) {
+  let moved = 0;
+  for (const part of parts || []) {
+    const mesh = part.mesh;
+    if (!mesh) continue;
+    const mark = new Uint8Array(mesh.positions.length / 3);
+    for (let face = 0; face < mesh.indices.length; face += 3) {
+      const ids = [mesh.indices[face], mesh.indices[face + 1], mesh.indices[face + 2]];
+      const pts = ids.map((id) => [mesh.positions[id * 3], mesh.positions[id * 3 + 1], mesh.positions[id * 3 + 2]]);
+      for (const cyl of cylinders || []) {
+        if (Math.max(...pts.map((p) => p[0])) < cyl.cx - cyl.half || Math.min(...pts.map((p) => p[0])) > cyl.cx + cyl.half) continue;
+        const dists = pts.map((p) => radial(p, cyl) - cyl.radius);
+        if (!(dists.some((value) => value < -MM) && dists.some((value) => value > MM))) continue;
+        dists.forEach((dist, index) => {
+          // A simplify step can leave a tread a couple of millimetres outside, or a lip a couple inside.
+          // Deeper vertices, such as a hub, stay where they are.
+          if (Math.abs(dist) > MM && Math.abs(dist) <= limit) mark[ids[index]] = 1;
+        });
+      }
+    }
+    for (let i = 0; i < mark.length; i++) {
+      if (!mark[i]) continue;
+      const p = [mesh.positions[i * 3], mesh.positions[i * 3 + 1], mesh.positions[i * 3 + 2]];
+      for (const cyl of cylinders || []) {
+        if (Math.abs(p[0] - cyl.cx) > cyl.half) continue;
+        const dist = radial(p, cyl) - cyl.radius;
+        if (!(Math.abs(dist) > MM && Math.abs(dist) <= limit)) continue;
+        const snapped = projectOntoCylinder(p, cyl);
+        mesh.positions[i * 3] = snapped[0];
+        mesh.positions[i * 3 + 1] = snapped[1];
+        mesh.positions[i * 3 + 2] = snapped[2];
+        moved += 1;
+        break;
+      }
+    }
+  }
+  return moved;
 }
 
 function cylinderFromPart(part) {

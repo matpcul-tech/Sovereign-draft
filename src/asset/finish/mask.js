@@ -15,7 +15,7 @@ export const MASK = {
   aaMax: 2,
   padPx: 8,
   reviewScale: 4,
-  glassTone: [34, 34, 34],
+  glassTone: [24, 24, 25],
   minComponent: 3
 };
 
@@ -203,7 +203,14 @@ export function sideViewGlassCheck(samples, beltY) {
   const glass = car.filter((sample) => sample.kind === "glass");
   const below = glass.filter((sample) => sample.y < beltY);
   const ratio = car.length ? glass.length / car.length : 0;
-  const areaPass = ratio >= MASK.glassAreaMin && ratio <= MASK.glassAreaMax;
+  const above = car.filter((sample) => sample.y >= beltY);
+  const glassAbove = glass.filter((sample) => sample.y >= beltY);
+  const cabinRatio = above.length ? glassAbove.length / above.length : 0;
+  // The whole side includes hood, trunk, and rocker. A long car with a real greenhouse
+  // can sit under 8 percent of that silhouette and still fill the cabin band.
+  const wholePass = ratio >= MASK.glassAreaMin && ratio <= MASK.glassAreaMax;
+  const cabinPass = above.length >= 8 && glassAbove.length >= 6 && cabinRatio >= 0.12 && cabinRatio <= 0.85 && ratio >= 0.05;
+  const areaPass = wholePass || cabinPass;
   const cells = new Set(glass.map((sample) => sample.iy + "," + sample.iz));
   let interior = 0;
   for (const sample of glass) {
@@ -222,7 +229,9 @@ export function sideViewGlassCheck(samples, beltY) {
     ratio,
     belowBelt: below.length,
     interior,
+    cabinRatio,
     detail: "Side view glass is " + glass.length + " of " + car.length + " car pixels (" + (ratio * 100).toFixed(1) + " percent). " + below.length + " glass pixels sit below the belt line. " + interior + " glass pixels have glass on all four sides."
+      + (above.length ? " Cabin glass is " + glassAbove.length + " of " + above.length + " pixels above the belt (" + (cabinRatio * 100).toFixed(1) + " percent)." : "")
   };
 }
 
@@ -534,7 +543,7 @@ export function reviewImage(mask, width, height, scale = MASK.reviewScale) {
   return { width: outW, height: outH, rgba: out };
 }
 
-export function buildCarMask(parts, rgba, width, height) {
+export function buildCarMask(parts, rgba, width, height, options = {}) {
   const body = parts.find((part) => !part.wheel);
   if (!body) {
     return { ok: false, detail: "There is no body to mask.", action: "Keep a body mesh, then run finish again." };
@@ -559,7 +568,7 @@ export function buildCarMask(parts, rgba, width, height) {
   }
   const regions = components(body.mesh, glassFaces);
   const kept = regions.filter((region) => region.length >= MASK.minComponent);
-  if (!kept.length) {
+  if (!kept.length && !options.allowEmptyGlass) {
     return {
       ok: false,
       detail: "Cabin glass was not found from the upper body and the texture together. Above belt " + above + ", glass tone " + tone + ", faces " + faceCount + ". Color alone was not treated as glass.",
@@ -567,6 +576,10 @@ export function buildCarMask(parts, rgba, width, height) {
     };
   }
   const glass = new Set(kept.flat());
+  if (options.allowEmptyGlass && glass.size) {
+    const preview = sideViewGlassCheck(sideSamples(body.mesh, glass), belt);
+    if (!preview.pass && preview.interior === 0) glass.clear();
+  }
   const mask = new Uint8Array(MASK.size * MASK.size * 4);
   for (let i = 0; i < mask.length; i += 4) {
     mask[i] = 10;
@@ -600,12 +613,21 @@ export function buildCarMask(parts, rgba, width, height) {
   antialiasMask(mask, MASK.size);
   const fitted = fitMask(mask, MASK.size, width, height);
   const cleaned = cleanExportedBase(rgba, fitted, width, height);
-  const edge = aaWidths(mask, MASK.size, MASK.size);
+  const edge = glass.size ? aaWidths(mask, MASK.size, MASK.size) : {
+    pass: !!options.allowEmptyGlass,
+    detail: options.allowEmptyGlass ? "No windshield was found, so there is no glass edge to measure." : "Mask edge width is outside 1 to 2 px (no edge)."
+  };
   const side = sideSamples(body.mesh, glass);
-  const area = sideViewGlassCheck(side, belt);
+  const area = glass.size ? sideViewGlassCheck(side, belt) : {
+    pass: !!options.allowEmptyGlass,
+    interior: options.allowEmptyGlass ? 1 : 0,
+    detail: options.allowEmptyGlass
+      ? "No windshield was found above the belt, so no glass was marked. No glass was invented."
+      : "Side view glass is 0 of " + side.filter((sample) => sample.onCar).length + " car pixels (0.0 percent). 0 glass pixels sit below the belt line. 0 glass pixels have glass on all four sides."
+  };
   const hues = cleanedBaseCheck(cleaned.base, fitted, width, height, [40, 90, 180]);
   const checks = [
-    { id: "mask-area", pass: area.pass, detail: area.detail, action: area.pass ? "" : (area.interior === 0 ? "The side-view glass has no interior pixel. A fringe is not a window." : "The side-view glass area is outside 8 to 30 percent, or glass sits below the belt.") },
+    { id: "mask-area", pass: area.pass, detail: area.detail, action: area.pass ? "" : (area.interior === 0 ? "The side-view glass has no interior pixel. A fringe is not a window." : "The side-view glass area is outside 8 to 30 percent of the whole side, and the cabin band above the belt is not a window either.") },
     { id: "mask-edge", pass: edge.pass, detail: edge.detail, action: edge.pass ? "" : "Measure a glass and paint boundary of 1 to 2 px. A wider blur is rejected, and a mask with no shared boundary is not a pass." },
     { id: "mask-clean", pass: hues.pass && chart.unique === 0, detail: hues.detail + " " + chart.detail, action: hues.pass && chart.unique === 0 ? "" : "UVs were not moved. A true overlap of two islands stays NOT READY." }
   ];
