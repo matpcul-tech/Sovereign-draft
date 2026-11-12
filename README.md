@@ -334,7 +334,7 @@ It opens GLB and glTF directly, and converts FBX, OBJ (with its MTL and textures
 
 The verdict is READY or NOT READY. Every check is measured on the finished file after it is read back, including the Khronos glTF validator. A failed check names the one thing that fixes it. The source bytes are never changed.
 
-Presets: Clean up, Game ready, 3D print check, and three for Street Empire. The Street Empire car preset runs the `FINISH` wheel split and window mask from the section above, then completes the mask so it covers the whole body, and names the file `<slot>@keep.glb` for that game's `kit-inbox`. Two of that pipeline's checks (edges shared by three faces, and UV pieces packed closer than 8 px) fail on every AI-generated car and on the cars already in the game, so this app shows them as notes with their numbers, not as failures.
+Presets: Clean up, Game ready, 3D print check, and three for Street Empire. The Street Empire car preset runs the `FINISH` wheel split and window mask from the section above, then completes the mask so it covers the whole body, and names the file `<slot>@keep.glb` for that game's `kit-inbox`. Two of that pipeline's checks (edges shared by three faces, and UV pieces packed closer than 8 px) fail on every AI-generated car and on the cars already in the game, so this app shows them as notes with their numbers, not as failures. It also paints tail lamps red when the generator left them an unlit gray, and leaves lamps that already have a color alone (`lamps.js`).
 
 Code is in `src/assetapp/`. `engine.js` is bytes in, bytes out, and runs the same in the browser, a worker and Node. Tests: `tests/assetapp-engine.test.js`, `tests/assetapp-car.test.js`. Browser check: `npm run asset:browser` against `vite preview`.
 

@@ -3,6 +3,7 @@
 
 import { finishModel, measureModel, readModel, writeModel } from "./engine.js";
 import { decodePng, encodePng } from "../asset/finish/png.js";
+import { paintTailLamps } from "./lamps.js";
 import { loadVehicle } from "../asset/finish/glb.js";
 import { resolveProfile } from "../asset/finish/profiles.js";
 import { runFinish } from "../asset/finish/pipeline.js";
@@ -76,6 +77,17 @@ export async function finishCar(bytes, name, opts = {}, env = {}) {
       ? { id: "mask-cover", status: "fail", label: "Mask covers the body", detail: "The mask could not be completed: " + coverage.failed, fix: "Open the car in the VEHICLE panel of Sovereign Draft and mark the windows by hand." }
       : { id: "mask-cover", status: "pass", label: "Mask covers the body", detail: "Every texel a body face uses is marked paint or glass (" + coverage.paint + " paint, " + coverage.glass + " glass). Wheels are marked as neither. Each piece is padded by " + PAD + " px.", fix: "" });
     if (!coverage.failed) log.push("Completed the window mask: the paint area now covers every body face (it covered " + coverage.was + " of " + (coverage.paint + coverage.glass) + " texels), and every piece of the mask is padded by " + PAD + " px so nothing bleeds in at its edges.");
+  }
+  if (finished && opts.tailLamps !== false) {
+    try {
+      const lamps = await paintTailLamps(finished);
+      if (lamps.texels) {
+        finished = lamps.bytes;
+        log.push("Painted the tail lamps red. They were an unlit gray in the texture (" + lamps.texels + " texels). Nothing else in the texture was touched.");
+      }
+    } catch (error) {
+      log.push("The tail lamps were not checked: " + String(error && error.message || error));
+    }
   }
   const after = finished ? await measureModel(finished) : null;
   const failed = checks.filter((c) => c.status === "fail");
