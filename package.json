@@ -42,12 +42,18 @@
     "accept": "node scripts/acceptance.mjs",
     "handoff": "node scripts/handoff.mjs",
     "job": "node scripts/job.mjs",
-    "share:browser": "node scripts/share-browser.mjs"
+    "share:browser": "node scripts/share-browser.mjs",
+    "asset:browser": "node scripts/asset-browser.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
     "@jsquash/webp": "^1.5.0",
     "fix-webm-duration": "^1.0.6",
+    "gltf-validator": "^2.0.0-dev.3.10",
+    "meshoptimizer": "^1.3.0",
     "pako": "^2.1.0",
     "three": "^0.185.1",
     "three-bvh-csg": "^0.0.18"
