@@ -4,6 +4,7 @@
 import { finishModel, measureModel, readModel, writeModel } from "./engine.js";
 import { decodePng, encodePng } from "../asset/finish/png.js";
 import { paintTailLamps } from "./lamps.js";
+import { evenGlass } from "./glass.js";
 import { loadVehicle } from "../asset/finish/glb.js";
 import { resolveProfile } from "../asset/finish/profiles.js";
 import { runFinish } from "../asset/finish/pipeline.js";
@@ -43,6 +44,13 @@ async function repairFinishedCar(bytes, env, progress) {
     }
   } catch (error) {
     checks.push({ id: "mask-cover", status: "fail", label: "Mask covers the body", detail: "The mask could not be completed: " + String(error && error.message || error), fix: "The mask and base texture must be PNG. Finish the car on a device that can convert them." });
+  }
+  try {
+    const glass = await evenGlass(finished);
+    if (glass.added || glass.evened) { finished = glass.bytes; log.push("Evened the glass: " + glass.added + " pale window texels the mask had missed are now glass, and " + glass.evened + " glass texels were given one dark glass tone." + (glass.reason ? " " + glass.reason : "")); }
+    else if (glass.reason) log.push("Glass was left as it is. " + glass.reason);
+  } catch (error) {
+    log.push("The glass was not checked: " + String(error && error.message || error));
   }
   try {
     const lamps = await paintTailLamps(finished);
@@ -124,6 +132,14 @@ export async function finishCar(bytes, name, opts = {}, env = {}) {
       ? { id: "mask-cover", status: "fail", label: "Mask covers the body", detail: "The mask could not be completed: " + coverage.failed, fix: "Open the car in the VEHICLE panel of Sovereign Draft and mark the windows by hand." }
       : { id: "mask-cover", status: "pass", label: "Mask covers the body", detail: "Every texel a body face uses is marked paint or glass (" + coverage.paint + " paint, " + coverage.glass + " glass). Wheels are marked as neither. Each piece is padded by " + PAD + " px.", fix: "" });
     if (!coverage.failed) log.push("Completed the window mask: the paint area now covers every body face (it covered " + coverage.was + " of " + (coverage.paint + coverage.glass) + " texels), and every piece of the mask is padded by " + PAD + " px so nothing bleeds in at its edges.");
+  }
+  if (finished && opts.evenGlass !== false) {
+    try {
+      const glass = await evenGlass(finished);
+      if (glass.added || glass.evened) { finished = glass.bytes; log.push("Evened the glass: " + glass.added + " pale window texels the mask had missed are now glass, and " + glass.evened + " glass texels were given one dark glass tone." + (glass.reason ? " " + glass.reason : "")); }
+    } catch (error) {
+      log.push("The glass was not checked: " + String(error && error.message || error));
+    }
   }
   if (finished && opts.tailLamps !== false) {
     try {
