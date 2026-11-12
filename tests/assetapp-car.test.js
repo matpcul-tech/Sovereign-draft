@@ -46,6 +46,18 @@ describe("Sovereign Asset: Street Empire car", () => {
     const cover = result.checks.find((c) => c.id === "mask-cover");
     expect(cover.status).toBe("pass");
     expect(result.report).not.toMatch(/does not read|declared check/);
+    // a finished car put back through is repaired in place: no second wheel split, same parts and pivots
+    const again = await finishCar(result.bytes, "sedan.glb", { frontConfirmed: true, length: 4.9 }, { codec: pngCodec });
+    expect(again.log[0]).toMatch(/wheel split was not run again/);
+    expect(again.ready).toBe(true);
+    const doc2 = await (await io()).readBinary(again.bytes);
+    const wheels2 = doc2.getRoot().listNodes().filter((n) => n.getExtras().kitWheel);
+    expect(wheels2.length).toBe(4);
+    for (const w of wheels2) {
+      const was = wheels.find((n) => n.getName() === w.getName()).getWorldTranslation(), now = w.getWorldTranslation();
+      expect(Math.hypot(now[0] - was[0], now[1] - was[1], now[2] - was[2])).toBeLessThan(1e-5);
+    }
+    expect(doc2.getRoot().listMaterials()[0].getExtras().kitMask).toBe(true);
     // the two findings that come with every AI car are shown, and do not block
     expect(result.checks.filter((c) => c.status === "note").map((c) => c.id).sort()).toEqual(["manifold", "mask-clean"]);
   }, 180000);

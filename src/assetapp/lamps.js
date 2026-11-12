@@ -85,6 +85,17 @@ export async function paintTailLamps(bytes) {
     else if (r > 120 && r > g * 1.6 && r > b * 1.8) lit++;
   }
   if (lit > gray * 0.3) return { bytes, texels: 0, reason: "The tail lamps already have a color." };
+  // On a white, gray or black car the body itself is gray, so position and color cannot tell a lamp
+  // from a door panel. Painting there would put red blocks on the doors, so nothing is painted.
+  let bodyGray = 0, bodyAll = 0;
+  for (let i = 0; i < W * H; i += 7) {
+    if (mask) { const mi = (Math.floor((i % W) * mask.width / W) + Math.floor(Math.floor(i / W) * mask.height / H) * mask.width) * 4; if (mask.rgba[mi + 1] < 128) continue; }
+    bodyAll++;
+    const r = px[i * 4], g = px[i * 4 + 1], b = px[i * 4 + 2], hi = Math.max(r, g, b);
+    if ((hi ? (hi - Math.min(r, g, b)) / hi : 0) <= 0.2) bodyGray++;
+  }
+  if (!mask || bodyGray > bodyAll * 0.4) return { bytes, texels: 0, reason: mask ? "The body is white, gray or black, so a gray lamp cannot be told from a body panel." : "The car has no mask to say where its body is." };
+  if (gray > W * H * 0.03) return { bytes, texels: 0, reason: "The gray area at the rear is too large to be lamps." };
   let texels = 0;
   for (let i = 0; i < W * H; i++) {
     if (!hit[i]) continue;

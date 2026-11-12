@@ -24,10 +24,57 @@ const INHERITED = {
   "mask-clean": "The source texture packs its pieces too close together to pad each one by 8 px. Cars already in the game are packed the same way. Look for color creeping at window edges on a phone; if you see it, retexture in Meshy."
 };
 
+// A car that already has its four wheels split off and a window mask does not go through the wheel
+// split again. It is cleaned, its mask is completed and its lamps are checked, and nothing about its
+// parts, pivots or size is changed.
+async function repairFinishedCar(bytes, env, progress) {
+  progress("Cleaning the car", 0.1);
+  const result = await finishModel(bytes, { triangles: null, maxTexture: null, textureFormat: "png", ground: false, center: false, closeHoles: "small", compress: false }, { codec: env.codec, validate: env.validate });
+  if (!result.bytes) return { ...result, car: true };
+  const checks = result.checks.slice(), log = ["This car already has its wheels split off and a window mask, so the wheel split was not run again."].concat(result.log);
+  let finished = result.bytes;
+  progress("Completing the mask", 0.8);
+  try {
+    const fixed = await completeMask(finished);
+    if (fixed) {
+      finished = fixed.bytes;
+      checks.push({ id: "mask-cover", status: "pass", label: "Mask covers the body", detail: "Every texel a body face uses is marked paint, glass or chrome (" + fixed.paint + " paint, " + fixed.glass + " glass). Wheels are marked as neither. Each piece is padded by " + PAD + " px.", fix: "" });
+      log.push("Completed the window mask: the paint area covered " + fixed.was + " texels and now covers " + fixed.paint + "." + (fixed.moved ? " " + fixed.moved + " texels marked chrome were the body color and are now paint." : ""));
+    }
+  } catch (error) {
+    checks.push({ id: "mask-cover", status: "fail", label: "Mask covers the body", detail: "The mask could not be completed: " + String(error && error.message || error), fix: "The mask and base texture must be PNG. Finish the car on a device that can convert them." });
+  }
+  try {
+    const lamps = await paintTailLamps(finished);
+    if (lamps.texels) { finished = lamps.bytes; log.push("Painted the tail lamps red. They were an unlit gray in the texture (" + lamps.texels + " texels)."); }
+    else if (lamps.reason) log.push("Tail lamps were left as they are. " + lamps.reason);
+  } catch (error) {
+    log.push("The tail lamps were not checked: " + String(error && error.message || error));
+  }
+  const after = await measureModel(finished);
+  const failed = checks.filter((c) => c.status === "fail");
+  const ready = !failed.length;
+  const summary = ready ? "Every check passed on the finished car." : failed.length + (failed.length === 1 ? " check" : " checks") + " failed: " + failed.map((c) => c.label).join(", ") + ".";
+  const mark = { pass: "PASS  ", fail: "FAIL  ", note: "NOTE  " };
+  const report = [ready ? "READY" : "NOT READY", summary, ""]
+    .concat(checks.map((c) => mark[c.status] + c.label + ": " + c.detail + (c.fix ? "  Fix: " + c.fix : "")))
+    .concat(["", "What was done"]).concat(log.map((line) => "- " + line)).join("\n");
+  progress("Done", 1);
+  return { ready, banner: ready ? "READY" : "NOT READY", summary, checks, log, before: result.before, after, bytes: finished, pack: null, report, car: true };
+}
+
+async function alreadySplit(bytes) {
+  const doc = await readModel(bytes);
+  const wheels = doc.getRoot().listNodes().filter((n) => n.getExtras() && n.getExtras().kitWheel).length;
+  const masked = doc.getRoot().listMaterials().some((m) => m.getExtras() && m.getExtras().kitMask && m.getEmissiveTexture());
+  return wheels === 4 && masked;
+}
+
 export async function finishCar(bytes, name, opts = {}, env = {}) {
   const progress = (label, f) => { if (env.onProgress) env.onProgress(label, f); };
   const log = [];
   progress("Reading the car", 0.03);
+  if (!opts.rotation && await alreadySplit(bytes)) return repairFinishedCar(bytes, env, progress);
   const before = await measureModel(bytes);
   let input = bytes;
   const needsPng = before.textures.some((t) => t.mime && t.mime !== "image/png");
@@ -114,7 +161,7 @@ const PAD = 6;
 // repaints where the mask says paint, so those parts stayed the old color in blotches.
 // This marks every texel a body face uses as paint (glass stays glass, wheels stay neither), then
 // grows each piece outward so texture filtering at its edge never picks up its neighbor.
-async function completeMask(bytes) {
+export async function completeMask(bytes) {
   const doc = await readModel(bytes);
   const mat = doc.getRoot().listMaterials().find((m) => m.getExtras() && m.getExtras().kitMask && m.getEmissiveTexture());
   if (!mat) return null;
@@ -163,6 +210,34 @@ async function completeMask(bytes) {
   }
   for (const s of surfaces) if (!s.wheel) fill(s.uv, s.idx, 2);
   for (const s of surfaces) if (s.wheel) fill(s.uv, s.idx, 1);
+  // On a white, gray or black car the pipeline cannot tell paint from chrome by color, and marks whole
+  // body panels chrome. A chrome texel that is the same color as the paint is paint.
+  let moved = 0;
+  const baseTex = mat.getBaseColorTexture();
+  if (baseTex && baseTex.getMimeType() === "image/png") {
+    const base = decodePng(baseTex.getImage());
+    if (base.width === W && base.height === H) {
+      const bins = new Map();
+      for (let i = 0; i < cls.length; i++) {
+        if (cls[i] !== 2) continue;
+        const key = (base.rgba[i * 4] >> 4) << 8 | (base.rgba[i * 4 + 1] >> 4) << 4 | (base.rgba[i * 4 + 2] >> 4);
+        bins.set(key, (bins.get(key) || 0) + 1);
+      }
+      let best = -1, most = 0;
+      for (const [key, n] of bins) if (n > most) { most = n; best = key; }
+      if (best >= 0) {
+        const body = [((best >> 8) & 15) * 16 + 8, ((best >> 4) & 15) * 16 + 8, (best & 15) * 16 + 8];
+        const hi = Math.max(...body), lo = Math.min(...body);
+        if (hi && (hi - lo) / hi < 0.2) { // only when the body has no real hue
+          for (let i = 0; i < cls.length; i++) {
+            if (cls[i] !== 4) continue;
+            const d = Math.max(Math.abs(base.rgba[i * 4] - body[0]), Math.abs(base.rgba[i * 4 + 1] - body[1]), Math.abs(base.rgba[i * 4 + 2] - body[2]));
+            if (d <= 40) { cls[i] = 2; moved++; }
+          }
+        }
+      }
+    }
+  }
   let paint = 0, glass = 0;
   for (let i = 0; i < cls.length; i++) { if (cls[i] === 2) paint++; else if (cls[i] === 3) glass++; }
   for (let pass = 0; pass < PAD; pass++) {
@@ -183,5 +258,5 @@ async function completeMask(bytes) {
     out[i * 4 + 3] = 255;
   }
   tex.setImage(encodePng(W, H, out)).setMimeType("image/png");
-  return { bytes: await writeModel(doc), paint, glass, was };
+  return { bytes: await writeModel(doc), paint, glass, was, moved };
 }
