@@ -297,6 +297,160 @@ describe("Sovereign Asset engine: triangle target and textures", () => {
   });
 });
 
+// A box whose faces are grids of small triangles, each corner pushed a little off its face the way
+// an AI generator leaves a wall. Corners at the same place get the same push, so the box stays closed.
+function crumpledBox(half, cells, noise) {
+  const pos = [], idx = [];
+  const jitter = (x, y, z, salt) => {
+    const h = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719 + salt * 4.1) * 43758.5453;
+    return ((h - Math.floor(h)) * 2 - 1) * noise;
+  };
+  const faces = [[0, 1, 2, 1], [0, 1, 2, -1], [1, 2, 0, 1], [1, 2, 0, -1], [2, 0, 1, 1], [2, 0, 1, -1]];
+  for (const [axis, ua, va, sign] of faces) {
+    const base = pos.length / 3;
+    for (let j = 0; j <= cells; j++) for (let i = 0; i <= cells; i++) {
+      const p = [0, 0, 0];
+      p[axis] = sign * half;
+      p[ua] = -half + 2 * half * i / cells;
+      p[va] = -half + 2 * half * j / cells;
+      pos.push(p[0] + jitter(p[0], p[1], p[2], 1), p[1] + jitter(p[0], p[1], p[2], 2), p[2] + jitter(p[0], p[1], p[2], 3));
+    }
+    const at = (i, j) => base + j * (cells + 1) + i;
+    for (let j = 0; j < cells; j++) for (let i = 0; i < cells; i++) {
+      if (sign > 0) idx.push(at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j), at(i + 1, j + 1), at(i, j + 1));
+      else idx.push(at(i, j), at(i + 1, j + 1), at(i + 1, j), at(i, j), at(i, j + 1), at(i + 1, j + 1));
+    }
+  }
+  return { pos, idx };
+}
+
+// A closed cylinder standing on Y, smooth around the side.
+function cylinderData(radius, height, segs) {
+  const pos = [], nor = [], idx = [];
+  for (let s = 0; s < segs; s++) {
+    const a = 2 * Math.PI * s / segs, x = Math.cos(a), z = Math.sin(a);
+    pos.push(x * radius, 0, z * radius, x * radius, height, z * radius);
+    nor.push(x, 0, z, x, 0, z);
+  }
+  for (let s = 0; s < segs; s++) {
+    const a = s * 2, b = ((s + 1) % segs) * 2;
+    idx.push(a, a + 1, b + 1, a, b + 1, b);
+  }
+  const low = pos.length / 3;
+  pos.push(0, 0, 0, 0, height, 0);
+  nor.push(0, -1, 0, 0, 1, 0);
+  for (let s = 0; s < segs; s++) {
+    const a = s * 2, b = ((s + 1) % segs) * 2;
+    idx.push(low, a, b, low + 1, b + 1, a + 1);
+  }
+  return { pos, nor, idx };
+}
+
+const primOf = async (bytes) => {
+  const prim = (await read(bytes)).getRoot().listMeshes()[0].listPrimitives()[0];
+  return { pos: prim.getAttribute("POSITION").getArray(), nor: prim.getAttribute("NORMAL").getArray(), idx: prim.getIndices().getArray() };
+};
+
+describe("Sovereign Asset engine: flatten walls", () => {
+  it("presses a crumpled box flat and lights each wall as one face", async () => {
+    const bytes = await modelBytes(crumpledBox(2, 12, 0.006));
+    const result = await finishModel(bytes, { flatten: "light" });
+    expect(result.ready).toBe(true);
+    expect(result.log.join(" ")).toMatch(/Flat areas: 6 walls and other flat areas \(1728 triangles\)/);
+    const { pos, nor, idx } = await primOf(result.bytes);
+    // every triangle: its three corners carry one axis-aligned normal and sit on one plane with every
+    // other triangle that carries that normal
+    const planes = new Map();
+    for (let t = 0; t < idx.length; t += 3) {
+      const n = [nor[idx[t] * 3], nor[idx[t] * 3 + 1], nor[idx[t] * 3 + 2]];
+      expect(Math.max(...n.map(Math.abs))).toBeGreaterThan(0.9999);
+      const key = n.map((v) => Math.round(v)).join(",");
+      for (let e = 0; e < 3; e++) {
+        const i = idx[t + e] * 3;
+        expect(Math.abs(nor[i] - n[0]) + Math.abs(nor[i + 1] - n[1]) + Math.abs(nor[i + 2] - n[2])).toBeLessThan(1e-6);
+        const d = pos[i] * n[0] + pos[i + 1] * n[1] + pos[i + 2] * n[2];
+        const seen = planes.get(key) || { lo: d, hi: d };
+        seen.lo = Math.min(seen.lo, d); seen.hi = Math.max(seen.hi, d);
+        planes.set(key, seen);
+      }
+    }
+    expect(planes.size).toBe(6);
+    for (const p of planes.values()) expect(p.hi - p.lo).toBeLessThan(1e-4);
+    expect(result.after.defects.openEdges).toBe(0);
+    expect(result.after.defects.wrongNormals).toBe(0);
+    expect(result.after.triangles).toBe(1728);
+  });
+
+  it("is off unless asked for", async () => {
+    const box = crumpledBox(2, 6, 0.006);
+    const result = await finishModel(await modelBytes(box), { ground: false, center: false });
+    expect(result.log.join(" ")).not.toMatch(/flat area/i);
+    const { pos } = await primOf(result.bytes);
+    let rough = 0;
+    for (let i = 0; i < pos.length; i += 3) rough = Math.max(rough, Math.abs(Math.max(Math.abs(pos[i]), Math.abs(pos[i + 1]), Math.abs(pos[i + 2])) - 2));
+    expect(rough).toBeGreaterThan(0.003);
+  });
+
+  it("keeps the walls flat when triangles are reduced afterwards", async () => {
+    const bytes = await modelBytes(crumpledBox(2, 20, 0.006));
+    // how far the worst face leans off its wall, in degrees
+    const lean = async (out) => {
+      const { pos, idx } = await primOf(out);
+      let worst = 0;
+      for (let t = 0; t < idx.length; t += 3) {
+        const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+        const u = [pos[b] - pos[a], pos[b + 1] - pos[a + 1], pos[b + 2] - pos[a + 2]], v = [pos[c] - pos[a], pos[c + 1] - pos[a + 1], pos[c + 2] - pos[a + 2]];
+        const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        const len = Math.hypot(...n);
+        if (len < 1e-3) continue; // a sliver along an edge has no direction worth measuring
+        worst = Math.max(worst, Math.acos(Math.min(1, Math.max(...n.map(Math.abs)) / len)) * 180 / Math.PI);
+      }
+      return worst;
+    };
+    const rough = await finishModel(bytes, { triangles: 400 });
+    const flat = await finishModel(bytes, { triangles: 400, flatten: "light" });
+    expect(flat.after.triangles).toBeLessThanOrEqual(408);
+    expect(await lean(rough.bytes)).toBeGreaterThan(0.5);
+    expect(await lean(flat.bytes)).toBeLessThan(0.05);
+    expect(flat.ready).toBe(true);
+  });
+
+  it("leaves a ball alone", async () => {
+    const ball = sphereData(1, 16);
+    const result = await finishModel(await modelBytes(ball), { flatten: "strong", ground: false, center: false });
+    expect(result.log.join(" ")).toMatch(/No crumpled flat areas were found/);
+    const { pos } = await primOf(result.bytes);
+    for (let i = 0; i < pos.length; i += 3) expect(Math.hypot(pos[i], pos[i + 1], pos[i + 2])).toBeCloseTo(1, 5);
+  });
+
+  it("does not cut facets into a round wall", async () => {
+    const result = await finishModel(await modelBytes(cylinderData(1, 4, 48)), { flatten: "strong", ground: false, center: false });
+    const { pos } = await primOf(result.bytes);
+    for (let i = 0; i < pos.length; i += 3) {
+      const r = Math.hypot(pos[i], pos[i + 2]);
+      expect(Math.min(Math.abs(r - 1), r)).toBeLessThan(1e-5);
+    }
+    expect(result.log.join(" ")).toMatch(/nearly flat but curved/);
+  });
+
+  it("does not flatten a part with a skeleton", async () => {
+    const bytes = await modelBytes(crumpledBox(2, 6, 0.006), async (doc, node) => {
+      const prim = node.getMesh().listPrimitives()[0];
+      const n = prim.getAttribute("POSITION").getCount();
+      const buffer = doc.getRoot().listBuffers()[0];
+      const joints = new Uint16Array(n * 4), weights = new Float32Array(n * 4);
+      for (let i = 0; i < n; i++) weights[i * 4] = 1;
+      prim.setAttribute("JOINTS_0", doc.createAccessor().setType("VEC4").setArray(joints).setBuffer(buffer));
+      prim.setAttribute("WEIGHTS_0", doc.createAccessor().setType("VEC4").setArray(weights).setBuffer(buffer));
+      const bone = doc.createNode("bone");
+      doc.getRoot().listScenes()[0].addChild(bone);
+      node.setSkin(doc.createSkin("skin").addJoint(bone).setSkeleton(bone));
+    });
+    const result = await finishModel(bytes, { flatten: "light" });
+    expect(result.log.join(" ")).toMatch(/1 part with a skeleton or morph targets was not flattened/);
+  });
+});
+
 describe("Sovereign Asset engine: real files", () => {
   const validate = async (bytes) => {
     const { validateBytes } = await import("gltf-validator");

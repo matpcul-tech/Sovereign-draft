@@ -7,13 +7,14 @@ import { WebIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS, EXTTextureWebP } from "@gltf-transform/extensions";
 import { compactPrimitive, convertPrimitiveToTriangles, dedup, dequantize, meshopt, prune, reorder, simplify, transformMesh, weld } from "@gltf-transform/functions";
 import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from "meshoptimizer";
-import { analyze, boundsOf, capHoles, computeNormals, diagOf, findDebris, invertedIslands, resizeRgba, wrongNormals } from "./geometry.js";
+import { analyze, boundsOf, capHoles, computeNormals, diagOf, findDebris, findFlats, flattenPositions, invertedIslands, resizeRgba, wrongNormals } from "./geometry.js";
 
 export const DEFAULTS = {
   removeDebris: true,     // drop small pieces that touch nothing
   fixFacing: true,        // turn inside-out shells the right way round
   closeHoles: "small",    // "off", "small" (pinholes), "all"
   fixNormals: true,       // add missing normals, rebuild ones that point the wrong way
+  flatten: "off",         // "off", "light", "strong": press crumpled walls flat and light each as one face
   rotation: null,         // 4x4 column-major rotation applied before sizing
   size: null,             // { axis: "height" | "length" | "width" | "longest", meters }
   ground: true,           // lowest point on Y = 0
@@ -30,6 +31,8 @@ export const DEFAULTS = {
 };
 
 const TRIANGLES = 4;
+// How far off its plane a point may sit and still count as part of a wall, as a share of the part's size.
+const FLATTEN = { light: { tolerance: 0.003 }, strong: { tolerance: 0.008 } };
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 let ioReady = null;
@@ -305,6 +308,7 @@ export async function finishModel(bytes, userOptions = {}, env = {}) {
   before.defects = findDefects(surfaces, diag, true);
   const d = before.defects;
   let removedDebris = 0, flipped = 0, capped = 0, holesLeft = 0, turnedNormals = 0, splitFaces = 0, addedNormals = 0, emptied = 0;
+  const flat = { areas: 0, triangles: 0, held: 0, far: 0, skipped: 0, tangents: 0 };
   progress("Cleaning the mesh", 0.25);
   for (const s of surfaces) {
     const a = s.analysis;
@@ -364,6 +368,12 @@ export async function finishModel(bytes, userOptions = {}, env = {}) {
         if (bad > tris * 0.02) splitFaces += splitWrongFaces(s.prim, buffer, doc);
       }
     }
+    if (FLATTEN[options.flatten]) {
+      const done = flattenFlats(s.prim, buffer, doc, FLATTEN[options.flatten]);
+      flat.areas += done.areas; flat.triangles += done.triangles; flat.held += done.held;
+      flat.skipped += done.skipped; flat.tangents += done.tangents;
+      if (done.far > flat.far) flat.far = done.far;
+    }
     compactPrimitive(s.prim);
   }
   for (const mesh of root.listMeshes()) if (!mesh.listPrimitives().length) { for (const node of root.listNodes()) if (node.getMesh() === mesh) node.setMesh(null); mesh.dispose(); }
@@ -386,6 +396,12 @@ export async function finishModel(bytes, userOptions = {}, env = {}) {
     if (turnedNormals) bits.push("turned around on " + count(turnedNormals, "part"));
     if (splitFaces) bits.push(count(splitFaces, "face") + " lit from behind got corners of their own");
     log.push("Normals: " + bits.join(", ") + ". Every other normal is the model's own.");
+  }
+  if (FLATTEN[options.flatten]) {
+    if (flat.areas) log.push("Flat areas: " + count(flat.areas, "wall or other flat area", "walls and other flat areas") + " (" + count(flat.triangles, "triangle") + ") pressed onto " + (flat.areas === 1 ? "its plane" : "their planes") + " and lit as one face each. No point moved more than " + (flat.far * 100).toFixed(2) + " percent of the part's size." + (flat.tangents ? " Tangents on those parts were dropped (the renderer rebuilds them)." : ""));
+    else log.push("No crumpled flat areas were found.");
+    if (flat.held) log.push(count(flat.held, "area that is", "areas that are") + " nearly flat but curved " + (flat.held === 1 ? "was" : "were") + " left alone.");
+    if (flat.skipped) log.push(count(flat.skipped, "part") + " with a skeleton or morph targets " + (flat.skipped === 1 ? "was" : "were") + " not flattened.");
   }
 
   // 2. animations
@@ -484,6 +500,65 @@ function splitWrongFaces(prim, buffer, doc) {
   prim.getAttribute("NORMAL").setArray(nor);
   prim.setIndices(doc.createAccessor().setType("SCALAR").setArray(indices).setBuffer(buffer));
   return wrong.length;
+}
+
+// Walls and other big flat areas that came out crumpled are pressed onto their plane, and every
+// corner on them gets the plane's normal, so the area is lit as one face. Where an area meets
+// anything else the corners are copied, so the hard edge does not bend the light on either side.
+// Parts that bend (a skeleton, morph targets) are left alone.
+function flattenFlats(prim, buffer, doc, settings) {
+  const stats = { areas: 0, triangles: 0, held: 0, far: 0, skipped: 0, tangents: 0 };
+  if (prim.getAttribute("JOINTS_0") || prim.listTargets().length) { stats.skipped = 1; return stats; }
+  const position = prim.getAttribute("POSITION");
+  const indices = Uint32Array.from(prim.getIndices().getArray());
+  const diag = diagOf(boundsOf(position.getArray()));
+  const flats = findFlats(position.getArray(), indices, diag, settings);
+  stats.held = flats.held;
+  if (!flats.regions.length) return stats;
+  if (!prim.getAttribute("NORMAL")) prim.setAttribute("NORMAL", doc.createAccessor().setType("VEC3").setArray(computeNormals(position.getArray(), indices)).setBuffer(buffer));
+
+  const count = position.getCount();
+  const none = flats.regions.length;
+  const first = new Int32Array(count).fill(-1);
+  const copies = new Map(), from = [];
+  for (let t = 0; t < indices.length / 3; t++) {
+    const k = flats.owner[t] < 0 ? none : flats.owner[t];
+    for (let e = 0; e < 3; e++) {
+      const v = indices[t * 3 + e];
+      if (first[v] < 0) { first[v] = k; continue; }
+      if (first[v] === k) continue;
+      const key = v * (none + 1) + k;
+      let copy = copies.get(key);
+      if (copy === undefined) { copy = count + from.length; from.push(v); copies.set(key, copy); }
+      indices[t * 3 + e] = copy;
+    }
+  }
+  if (from.length) {
+    for (const acc of prim.listAttributes()) {
+      const size = acc.getElementSize(), src = acc.getArray();
+      const dst = new src.constructor((count + from.length) * size);
+      dst.set(src);
+      for (let i = 0; i < from.length; i++) for (let c = 0; c < size; c++) dst[(count + i) * size + c] = src[from[i] * size + c];
+      acc.setArray(dst);
+    }
+  }
+  const nor = prim.getAttribute("NORMAL").getArray();
+  for (const region of flats.regions) {
+    for (const t of region.tris) for (let e = 0; e < 3; e++) {
+      const i = indices[t * 3 + e] * 3;
+      nor[i] = region.normal[0]; nor[i + 1] = region.normal[1]; nor[i + 2] = region.normal[2];
+    }
+    stats.triangles += region.tris.length;
+  }
+  prim.getAttribute("NORMAL").setArray(nor);
+  const pos = position.getArray();
+  const moved = flattenPositions(pos, indices, flats, diag);
+  position.setArray(pos);
+  prim.setIndices(doc.createAccessor().setType("SCALAR").setArray(indices).setBuffer(buffer));
+  if (prim.getAttribute("TANGENT")) { prim.setAttribute("TANGENT", null); stats.tangents = 1; }
+  stats.areas = flats.regions.length;
+  stats.far = diag > 0 ? moved.far / diag : 0;
+  return stats;
 }
 
 // glTF requires every normal to have length 1 and every tangent to be a unit vector with a

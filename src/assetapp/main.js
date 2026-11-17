@@ -232,6 +232,7 @@ function pickPreset(id) {
     <label class="field">Texture format<select id="o-fmt">${[["keep", "Keep PNG and JPEG"], ["webp", "WebP (smallest, for web and games)"]].map(([v, l]) => `<option value="${v}"${o.textureFormat === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
     <label class="field">Size<span class="pair"><select id="o-axis">${[["", "Keep the size"], ["height", "Height"], ["length", "Length"], ["width", "Width"], ["longest", "Longest side"]].map(([v, l]) => `<option value="${v}"${(o.size ? o.size.axis : "") === v ? " selected" : ""}>${l}</option>`).join("")}</select><input type="number" id="o-m" min="0" step="0.1" placeholder="meters" value="${o.size ? o.size.meters : ""}"></span></label>
     <label class="field">Close holes<select id="o-holes">${[["off", "Off"], ["small", "Small holes only"], ["all", "Every hole it can"]].map(([v, l]) => `<option value="${v}"${o.closeHoles === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
+    <label class="field">Flatten walls<select id="o-flat">${[["off", "Off"], ["light", "Light (crumpled walls)"], ["strong", "Strong (badly crumpled walls)"]].map(([v, l]) => `<option value="${v}"${(o.flatten || "off") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
     <label class="field">Compress geometry<select id="o-zip">${[["", "Same as the source"], ["on", "On (smaller, needs the Meshopt decoder)"], ["off", "Off (opens everywhere)"]].map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select></label>
     <div>
       ${[["o-debris", "Remove floating debris", o.removeDebris], ["o-facing", "Fix inside-out faces", o.fixFacing], ["o-normals", "Fix normals", o.fixNormals], ["o-ground", "Set on the ground", o.ground], ["o-center", "Center it", o.center], ["o-anim", "Drop animations", o.dropAnimations]]
@@ -253,6 +254,7 @@ function readOptions() {
     textureFormat: $("#o-fmt").value,
     size: axis && m > 0 ? { axis, meters: m } : null,
     closeHoles: $("#o-holes").value,
+    flatten: $("#o-flat").value,
     compress: zip === "on" ? true : zip === "off" ? false : null,
     removeDebris: $("#o-debris").checked, fixFacing: $("#o-facing").checked, fixNormals: $("#o-normals").checked,
     ground: $("#o-ground").checked, center: $("#o-center").checked, dropAnimations: $("#o-anim").checked,

@@ -425,6 +425,230 @@ export function wrongNormals(pos, normals, indices, list) {
   return bad;
 }
 
+// Large flat areas that came out crumpled. AI generators build a wall from thousands of small
+// triangles that each sit a little off the plane, so the wall is lit like crushed paper.
+// Finds connected areas whose triangles all lie within `tolerance` (a share of the model size) of
+// one plane and face within `angle` degrees of it. An area must be a real share of the surface, and
+// it must not bow: a curved surface reads as a run of narrow flats, and those are left alone.
+// Returns { owner, regions, held }. owner[t] is the area a triangle belongs to, or -1.
+// Each region is { normal, d, tris, area } with the plane normal . p = d.
+export function findFlats(pos, indices, diag, opts = {}) {
+  const tris = indices.length / 3;
+  const owner = new Int32Array(tris).fill(-1);
+  const out = { owner, regions: [], held: 0 };
+  if (!(diag > 0) || tris < 4) return out;
+  const tol = (opts.tolerance ?? 0.003) * diag;
+  const cosMax = Math.cos((opts.angle ?? 30) * Math.PI / 180);
+  const minShare = opts.minShare ?? 0.02, minSpan = (opts.minSpan ?? 0.12) * diag;
+  const { ids, unique } = weldIds(pos, diag * 1e-6);
+
+  // face normal, centroid and area of every triangle
+  const fn = new Float32Array(tris * 3), fc = new Float32Array(tris * 3), area = new Float32Array(tris);
+  let total = 0;
+  for (let t = 0; t < tris; t++) {
+    const a = indices[t * 3] * 3, b = indices[t * 3 + 1] * 3, c = indices[t * 3 + 2] * 3;
+    const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+    const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+    const x = uy * vz - uz * vy, y = uz * vx - ux * vz, z = ux * vy - uy * vx;
+    const len = Math.hypot(x, y, z);
+    if (!(len > 0)) continue;
+    fn[t * 3] = x / len; fn[t * 3 + 1] = y / len; fn[t * 3 + 2] = z / len;
+    fc[t * 3] = (pos[a] + pos[b] + pos[c]) / 3; fc[t * 3 + 1] = (pos[a + 1] + pos[b + 1] + pos[c + 1]) / 3; fc[t * 3 + 2] = (pos[a + 2] + pos[b + 2] + pos[c + 2]) / 3;
+    area[t] = len / 2;
+    total += len / 2;
+  }
+  if (!(total > 0)) return out;
+
+  // the triangle across each edge
+  const nb = new Int32Array(tris * 3).fill(-1);
+  const open = new Map();
+  for (let t = 0; t < tris; t++) {
+    if (!(area[t] > 0)) continue;
+    for (let e = 0; e < 3; e++) {
+      const a = ids[indices[t * 3 + e]], b = ids[indices[t * 3 + (e + 1) % 3]];
+      const key = a < b ? a * unique + b : b * unique + a;
+      const other = open.get(key);
+      if (other === undefined) open.set(key, t * 3 + e);
+      else if (other >= 0) { nb[t * 3 + e] = (other / 3) | 0; nb[other] = t; open.set(key, -1); }
+    }
+  }
+
+  const visited = new Int32Array(tris).fill(-1), tried = new Uint8Array(tris), queue = new Int32Array(tris);
+  let stamp = 0;
+  const n = [0, 0, 0];
+  let d = 0;
+  const fits = (t) => {
+    if (fn[t * 3] * n[0] + fn[t * 3 + 1] * n[1] + fn[t * 3 + 2] * n[2] < cosMax) return false;
+    for (let e = 0; e < 3; e++) {
+      const i = indices[t * 3 + e] * 3;
+      if (Math.abs(pos[i] * n[0] + pos[i + 1] * n[1] + pos[i + 2] * n[2] - d) > tol) return false;
+    }
+    return true;
+  };
+  // every triangle reachable from the seed that lies on the current plane
+  const grow = (seed) => {
+    stamp++;
+    if (!fits(seed)) return 0;
+    let head = 0, tail = 0;
+    visited[seed] = stamp; queue[tail++] = seed;
+    while (head < tail) {
+      const t = queue[head++];
+      for (let e = 0; e < 3; e++) {
+        const u = nb[t * 3 + e];
+        if (u < 0 || owner[u] >= 0 || visited[u] === stamp) continue;
+        visited[u] = stamp;
+        if (fits(u)) queue[tail++] = u;
+      }
+    }
+    return tail;
+  };
+  // area weighted plane through a list of triangles
+  const fit = (list, count) => {
+    let x = 0, y = 0, z = 0;
+    for (let i = 0; i < count; i++) { const t = list[i], w = area[t]; x += fn[t * 3] * w; y += fn[t * 3 + 1] * w; z += fn[t * 3 + 2] * w; }
+    const len = Math.hypot(x, y, z);
+    if (!(len > 0)) return false;
+    n[0] = x / len; n[1] = y / len; n[2] = z / len;
+    let sum = 0, weight = 0;
+    for (let i = 0; i < count; i++) { const t = list[i], w = area[t]; sum += w * (fc[t * 3] * n[0] + fc[t * 3 + 1] * n[1] + fc[t * 3 + 2] * n[2]); weight += w; }
+    d = sum / weight;
+    return true;
+  };
+
+  const order = new Uint32Array(tris);
+  for (let t = 0; t < tris; t++) order[t] = t;
+  order.sort((a, b) => area[b] - area[a]);
+  const ring = [];
+  for (const seed of order) {
+    if (owner[seed] >= 0 || tried[seed] || !(area[seed] > 0)) continue;
+    // start from the seed and the two rings around it, so one noisy triangle does not set the plane
+    ring.length = 0;
+    ring.push(seed);
+    for (let pass = 0, from = 0; pass < 2; pass++) {
+      const end = ring.length;
+      for (; from < end; from++) {
+        const t = ring[from];
+        for (let e = 0; e < 3; e++) {
+          const u = nb[t * 3 + e];
+          if (u < 0 || owner[u] >= 0 || ring.includes(u)) continue;
+          if (fn[u * 3] * fn[seed * 3] + fn[u * 3 + 1] * fn[seed * 3 + 1] + fn[u * 3 + 2] * fn[seed * 3 + 2] > 0.5) ring.push(u);
+        }
+      }
+    }
+    if (!fit(ring, ring.length)) { tried[seed] = 1; continue; }
+    let count = 0;
+    for (let round = 0, last = -1; round < 4; round++) {
+      count = grow(seed);
+      if (!count || count === last) break;
+      last = count;
+      fit(queue, count);
+    }
+    if (!count) { tried[seed] = 1; continue; }
+
+    let regionArea = 0;
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < count; i++) {
+      const t = queue[i];
+      regionArea += area[t];
+      for (let e = 0; e < 3; e++) {
+        const v = indices[t * 3 + e] * 3;
+        for (let k = 0; k < 3; k++) { if (pos[v + k] < min[k]) min[k] = pos[v + k]; if (pos[v + k] > max[k]) max[k] = pos[v + k]; }
+      }
+    }
+    const big = regionArea >= total * minShare && Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) >= minSpan;
+    if (!big || bows(queue, count, n, fn, fc, area, tol)) {
+      if (big) out.held++;
+      for (let i = 0; i < count; i++) tried[queue[i]] = 1;
+      continue;
+    }
+    const k = out.regions.length;
+    for (let i = 0; i < count; i++) owner[queue[i]] = k;
+    out.regions.push({ normal: [n[0], n[1], n[2]], d, tris: queue.slice(0, count), area: regionArea });
+  }
+  return out;
+}
+
+// Does this near-flat area curve? On a crumpled wall the face normals lean every way and cancel.
+// On a curved surface they lean further the further out the face is. Fit that lean against position,
+// and measure how high the curve it describes would rise across the area.
+function bows(list, count, n, fn, fc, area, tol) {
+  let ux, uy, uz;
+  if (Math.abs(n[0]) < 0.9) { ux = 0; uy = -n[2]; uz = n[1]; } else { ux = n[2]; uy = 0; uz = -n[0]; }
+  const ul = Math.hypot(ux, uy, uz); ux /= ul; uy /= ul; uz /= ul;
+  const vx = n[1] * uz - n[2] * uy, vy = n[2] * ux - n[0] * uz, vz = n[0] * uy - n[1] * ux;
+  let cx = 0, cy = 0, weight = 0;
+  for (let i = 0; i < count; i++) {
+    const t = list[i], w = area[t];
+    cx += w * (fc[t * 3] * ux + fc[t * 3 + 1] * uy + fc[t * 3 + 2] * uz);
+    cy += w * (fc[t * 3] * vx + fc[t * 3 + 1] * vy + fc[t * 3 + 2] * vz);
+    weight += w;
+  }
+  cx /= weight; cy /= weight;
+  let sxx = 0, sxy = 0, syy = 0, mxx = 0, mxy = 0, myx = 0, myy = 0;
+  for (let i = 0; i < count; i++) {
+    const t = list[i], w = area[t];
+    const px = fc[t * 3] * ux + fc[t * 3 + 1] * uy + fc[t * 3 + 2] * uz - cx, py = fc[t * 3] * vx + fc[t * 3 + 1] * vy + fc[t * 3 + 2] * vz - cy;
+    const qx = fn[t * 3] * ux + fn[t * 3 + 1] * uy + fn[t * 3 + 2] * uz, qy = fn[t * 3] * vx + fn[t * 3 + 1] * vy + fn[t * 3 + 2] * vz;
+    sxx += w * px * px; sxy += w * px * py; syy += w * py * py;
+    mxx += w * qx * px; mxy += w * qx * py; myx += w * qy * px; myy += w * qy * py;
+  }
+  const det = sxx * syy - sxy * sxy;
+  if (!(det > 1e-9 * (sxx + syy) * (sxx + syy))) return false; // every face on one line: nothing to fit
+  // lean = K . position
+  const kxx = (mxx * syy - mxy * sxy) / det, kxy = (mxy * sxx - mxx * sxy) / det;
+  const kyx = (myx * syy - myy * sxy) / det, kyy = (myy * sxx - myx * sxy) / det;
+  const kd = (kxy + kyx) / 2;
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < count; i++) {
+    const t = list[i];
+    const px = fc[t * 3] * ux + fc[t * 3 + 1] * uy + fc[t * 3 + 2] * uz - cx, py = fc[t * 3] * vx + fc[t * 3 + 1] * vy + fc[t * 3 + 2] * vz - cy;
+    const h = 0.5 * (kxx * px * px + 2 * kd * px * py + kyy * py * py);
+    if (h < lo) lo = h;
+    if (h > hi) hi = h;
+  }
+  return hi - lo > tol * 0.5;
+}
+
+// Move every vertex of a flat area onto its plane. A vertex on the line where two or three areas
+// meet lands on all of their planes. Vertices at the same place move together, so no seam opens.
+// Changes pos in place. Returns how many places moved and the farthest any of them went.
+export function flattenPositions(pos, indices, flats, diag) {
+  const { ids } = weldIds(pos, (diag > 0 ? diag : 1) * 1e-6);
+  const planes = new Map();
+  flats.regions.forEach((region, k) => {
+    for (const t of region.tris) {
+      for (let e = 0; e < 3; e++) {
+        const id = ids[indices[t * 3 + e]];
+        const list = planes.get(id);
+        if (!list) planes.set(id, [k]); else if (!list.includes(k)) list.push(k);
+      }
+    }
+  });
+  const target = new Map();
+  let moved = 0, far = 0;
+  for (let v = 0; v < pos.length / 3; v++) {
+    const list = planes.get(ids[v]);
+    if (!list) continue;
+    let p = target.get(ids[v]);
+    if (!p) {
+      p = [pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]];
+      for (let round = list.length > 1 ? 16 : 1; round > 0; round--) {
+        for (const k of list) {
+          const r = flats.regions[k];
+          const s = p[0] * r.normal[0] + p[1] * r.normal[1] + p[2] * r.normal[2] - r.d;
+          p[0] -= s * r.normal[0]; p[1] -= s * r.normal[1]; p[2] -= s * r.normal[2];
+        }
+      }
+      const step = Math.hypot(p[0] - pos[v * 3], p[1] - pos[v * 3 + 1], p[2] - pos[v * 3 + 2]);
+      if (step > 0) moved++;
+      if (step > far) far = step;
+      target.set(ids[v], p);
+    }
+    pos[v * 3] = p[0]; pos[v * 3 + 1] = p[1]; pos[v * 3 + 2] = p[2];
+  }
+  return { moved, far };
+}
+
 // Area average downsample of an RGBA image. Color is weighted by alpha so clear pixels do not bleed in.
 export function resizeRgba(src, sw, sh, dw, dh) {
   const out = new Uint8Array(dw * dh * 4);

@@ -37,10 +37,10 @@ export const PRESETS = [
   {
     id: "se-building",
     name: "Street Empire building",
-    blurb: "Clean, under 60,000 triangles, 1024 px textures.",
+    blurb: "Clean, crumpled walls pressed flat, under 60,000 triangles, 1024 px textures.",
     slots: ["house", "house-2", "house-3", "store", "apt", "tower", "shed"],
     fileName: (slot) => slot + ".glb",
-    options: { triangles: 60000, maxTexture: 1024, textureFormat: "keep", size: null }
+    options: { triangles: 60000, maxTexture: 1024, textureFormat: "keep", size: null, flatten: "light" }
   },
   {
     id: "se-character",

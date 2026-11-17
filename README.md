@@ -327,6 +327,7 @@ It opens GLB and glTF directly, and converts FBX, OBJ (with its MTL and textures
 - turns inside-out shells the right way round, without flipping a hollow inside a closed shell
 - closes small holes, or every simple hole when asked
 - adds missing normals, and fixes only the normals that are wrong; the model's own normals are kept
+- presses crumpled walls flat when Flatten walls is on (Light or Strong; on at Light in the Street Empire building preset): a large area whose triangles all sit close to one plane is moved onto that plane and lit as one face, with a hard edge where it meets anything else. Areas that are nearly flat but curved, and parts with a skeleton or morph targets, are left alone
 - turns, sizes, grounds and centers the model
 - reduces triangles to a target, and fails the budget check when the shape would be damaged
 - resizes textures, optionally to WebP
