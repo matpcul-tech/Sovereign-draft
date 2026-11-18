@@ -53,8 +53,8 @@ export const PRESETS = [
   {
     id: "unity-building",
     name: "Unity building",
-    blurb: "Clean, walls pressed flat, windows found and lit as their own materials, color held to the shared standard, surface maps made. 2048 px.",
-    options: { triangles: null, maxTexture: 2048, textureFormat: "keep", size: null, flatten: "light", surfaceMaps: "light", colorStandard: true, windowLights: true }
+    blurb: "Clean, walls pressed flat and given a clean texture of their own, windows found and lit, color held to the shared standard, surface maps made. 2048 px.",
+    options: { triangles: null, maxTexture: 2048, textureFormat: "keep", size: null, flatten: "light", walls: "auto", surfaceMaps: "light", colorStandard: true, windowLights: true }
   },
   {
     id: "unity-static",

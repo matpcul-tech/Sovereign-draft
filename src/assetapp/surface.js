@@ -33,7 +33,7 @@ export function uvInside(uv) {
 }
 
 // Walk every pixel center inside every UV triangle. fn(pixelIndex, w0, w1, w2, i0, i1, i2).
-function eachTexel(width, height, uv, indices, fn) {
+export function eachTexel(width, height, uv, indices, fn) {
   for (let t = 0; t < indices.length; t += 3) {
     const i0 = indices[t], i1 = indices[t + 1], i2 = indices[t + 2];
     const x0 = uv[i0 * 2] * width - 0.5, y0 = uv[i0 * 2 + 1] * height - 0.5;

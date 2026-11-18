@@ -233,6 +233,7 @@ function pickPreset(id) {
     <label class="field">Size<span class="pair"><select id="o-axis">${[["", "Keep the size"], ["height", "Height"], ["length", "Length"], ["width", "Width"], ["longest", "Longest side"]].map(([v, l]) => `<option value="${v}"${(o.size ? o.size.axis : "") === v ? " selected" : ""}>${l}</option>`).join("")}</select><input type="number" id="o-m" min="0" step="0.1" placeholder="meters" value="${o.size ? o.size.meters : ""}"></span></label>
     <label class="field">Close holes<select id="o-holes">${[["off", "Off"], ["small", "Small holes only"], ["all", "Every hole it can"]].map(([v, l]) => `<option value="${v}"${o.closeHoles === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
     <label class="field">Flatten walls<select id="o-flat">${[["off", "Off"], ["light", "Light (crumpled walls)"], ["strong", "Strong (badly crumpled walls)"]].map(([v, l]) => `<option value="${v}"${(o.flatten || "off") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
+    <label class="field">Clean wall texture (buildings)<select id="o-walls">${[["off", "Off"], ["auto", "Auto (read the old paint)"], ["stucco", "Stucco"], ["block", "Block"], ["brick", "Brick"]].map(([v, l]) => `<option value="${v}"${(o.walls || "off") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
     <label class="field">Remove baked light<select id="o-light">${[["off", "Off"], ["light", "Light (take most of it out)"], ["strong", "Strong (take all of it out)"]].map(([v, l]) => `<option value="${v}"${(o.delight || "off") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
     <label class="field">Make surface maps<select id="o-maps">${[["off", "Off"], ["light", "Light relief"], ["strong", "Strong relief"]].map(([v, l]) => `<option value="${v}"${(o.surfaceMaps || "off") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
     <label class="field">Compress geometry<select id="o-zip">${[["", "Same as the source"], ["on", "On (smaller, needs the Meshopt decoder)"], ["off", "Off (opens everywhere)"]].map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select></label>
@@ -257,6 +258,7 @@ function readOptions() {
     size: axis && m > 0 ? { axis, meters: m } : null,
     closeHoles: $("#o-holes").value,
     flatten: $("#o-flat").value,
+    walls: $("#o-walls").value,
     delight: $("#o-light").value,
     surfaceMaps: $("#o-maps").value,
     compress: zip === "on" ? true : zip === "off" ? false : null,
