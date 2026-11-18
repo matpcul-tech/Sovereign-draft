@@ -175,13 +175,15 @@ export function findWindows(pos, indices, diag, colorOf, opts = {}) {
   for (let i = 0; i < pieces.length; i++) for (let j = i + 1; j < pieces.length; j++) {
     const p = pieces[i], q = pieces[j];
     if (p.n[0] * q.n[0] + p.n[2] * q.n[2] < 0.9) continue;
-    const overlap = Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0);
-    if (overlap < 0.7 * Math.min(p.y1 - p.y0, q.y1 - q.y0)) continue;
-    // measure the gap along p's wall direction, and the step along p's facing
+    // measure along p's wall direction, and the step along p's facing
     const qa0 = q.a0 * (q.hx * p.hx + q.hz * p.hz), qa1 = q.a1 * (q.hx * p.hx + q.hz * p.hz);
     const lo = Math.min(qa0, qa1), hi = Math.max(qa0, qa1);
-    const gap = Math.max(lo - p.a1, p.a0 - hi);
-    if (gap > o.maxGap * diag) continue;
+    const overlapY = Math.min(p.y1, q.y1) - Math.max(p.y0, q.y0), overlapA = Math.min(p.a1, hi) - Math.max(p.a0, lo);
+    // side by side at the same height (a mullion, a bar between them), or one right above the
+    // other across the same width (the lights over a crossbar, a transom): either way one window
+    const beside = overlapY >= 0.7 * Math.min(p.y1 - p.y0, q.y1 - q.y0) && Math.max(lo - p.a1, p.a0 - hi) <= o.maxGap * diag;
+    const stacked = overlapA >= 0.7 * Math.min(p.a1 - p.a0, hi - lo) && Math.max(q.y0 - p.y1, p.y0 - q.y1) <= o.maxGap * diag;
+    if (!beside && !stacked) continue;
     const step = Math.abs((q.c[0] - p.c[0]) * p.n[0] + (q.c[2] - p.c[2]) * p.n[2]);
     if (step > o.maxStep * diag) continue;
     parent[find(i)] = find(j);

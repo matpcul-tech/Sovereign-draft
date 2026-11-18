@@ -110,6 +110,15 @@ describe("Sovereign Asset windows: finding the glass", () => {
     expect(found.windows[0].width).toBeCloseTo(2.88, 2);
   });
 
+  it("joins the lights above a crossbar to the window below, and keeps separate floors apart", () => {
+    const stacked = find(facade([{ ...WINDOW, y0: 2, y1: 3.6 }, { ...WINDOW, y0: 3.75, y1: 4.3 }]));
+    expect(stacked.windows.length).toBe(1);
+    expect(stacked.windows[0].tris.length).toBe(4);
+    expect(stacked.windows[0].height).toBeCloseTo(2.3, 2);
+    const floors = find(facade([{ ...WINDOW, y0: 0.8, y1: 2.2 }, { ...WINDOW, y0: 3.6, y1: 5 }]));
+    expect(floors.windows.length).toBe(2);
+  });
+
   it("ignores a recess too small to be a window", () => {
     expect(find(facade([{ x0: 2, x1: 2.12, y0: 3, y1: 3.12, depth: -0.1, paint: "glass" }])).windows.length).toBe(0);
   });
