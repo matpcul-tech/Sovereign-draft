@@ -51,6 +51,18 @@ export const PRESETS = [
     options: { triangles: 15000, maxTexture: 1024, textureFormat: "keep", size: { axis: "height", meters: 1.8 }, requireSkeleton: true, dropAnimations: true }
   },
   {
+    id: "unity-static",
+    name: "Unity building or prop",
+    blurb: "Clean, walls pressed flat, baked light taken out, normal and roughness maps made. 2048 px PNG or JPEG.",
+    options: { triangles: null, maxTexture: 2048, textureFormat: "keep", size: null, flatten: "light", delight: "light", surfaceMaps: "light" }
+  },
+  {
+    id: "unity-character",
+    name: "Unity character",
+    blurb: "Needs a skeleton. Keeps animations. Baked light taken out, normal and roughness maps made. 2048 px.",
+    options: { triangles: null, maxTexture: 2048, textureFormat: "keep", size: null, delight: "light", surfaceMaps: "light", requireSkeleton: true }
+  },
+  {
     id: "print",
     name: "3D print check",
     blurb: "Closes every hole it can and fails on any edge left open.",

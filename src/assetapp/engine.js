@@ -8,6 +8,7 @@ import { ALL_EXTENSIONS, EXTTextureWebP } from "@gltf-transform/extensions";
 import { compactPrimitive, convertPrimitiveToTriangles, dedup, dequantize, meshopt, prune, reorder, simplify, transformMesh, weld } from "@gltf-transform/functions";
 import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from "meshoptimizer";
 import { analyze, boundsOf, capHoles, computeNormals, diagOf, findDebris, findFlats, flattenPositions, invertedIslands, resizeRgba, wrongNormals } from "./geometry.js";
+import { applyGain, coverageMask, fitBakedLight, gainFrom, gainMap, normalFromColor, paintOf, roughnessFromColor, sampleColor, texelDensity, uvInside } from "./surface.js";
 
 export const DEFAULTS = {
   removeDebris: true,     // drop small pieces that touch nothing
@@ -15,6 +16,9 @@ export const DEFAULTS = {
   closeHoles: "small",    // "off", "small" (pinholes), "all"
   fixNormals: true,       // add missing normals, rebuild ones that point the wrong way
   flatten: "off",         // "off", "light", "strong": press crumpled walls flat and light each as one face
+  delight: "off",         // "off", "light", "strong": take light that was painted into the color texture back out
+  surfaceMaps: "off",     // "off", "light", "strong": make normal and roughness maps for materials that have none
+  minTexelDensity: null,  // fail when the color texture has fewer pixels per meter than this
   rotation: null,         // 4x4 column-major rotation applied before sizing
   size: null,             // { axis: "height" | "length" | "width" | "longest", meters }
   ground: true,           // lowest point on Y = 0
@@ -33,6 +37,12 @@ export const DEFAULTS = {
 const TRIANGLES = 4;
 // How far off its plane a point may sit and still count as part of a wall, as a share of the part's size.
 const FLATTEN = { light: { tolerance: 0.003 }, strong: { tolerance: 0.008 } };
+// How much of the painted light is taken out, and the most any pixel may be brightened or darkened.
+const DELIGHT = { light: { strength: 0.6, limit: 1.6 }, strong: { strength: 1, limit: 2.5 } };
+// Slope of the made normal map per unit of brightness.
+const RELIEF = { light: 2, strong: 4 };
+// Painted light under this ratio, lit side to dark side, is not worth touching the texture for.
+const BAKED_FLOOR = 1.08;
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 let ioReady = null;
@@ -404,6 +414,12 @@ export async function finishModel(bytes, userOptions = {}, env = {}) {
     if (flat.skipped) log.push(count(flat.skipped, "part") + " with a skeleton or morph targets " + (flat.skipped === 1 ? "was" : "were") + " not flattened.");
   }
 
+  // 1b. surfaces: light painted into the color, and the maps a material is missing
+  if (DELIGHT[options.delight] || RELIEF[options.surfaceMaps]) {
+    progress("Surfaces", 0.33);
+    await refineSurfaces(doc, options, env.codec, log);
+  }
+
   // 2. animations
   if (options.dropAnimations && root.listAnimations().length) {
     const dropped = root.listAnimations().length;
@@ -458,6 +474,7 @@ export async function finishModel(bytes, userOptions = {}, env = {}) {
   const after = measure(check, out.byteLength);
   await normalize(check);
   after.defects = findDefects(surfacesOf(check), Math.hypot(...after.size), false);
+  after.detail = texelDensity(colorGroups(check).flatMap((g) => g.parts.map((part) => ({ ...part, width: g.size[0], height: g.size[1] }))));
   let validation = null;
   if (env.validate) {
     try { validation = await env.validate(out); } catch (error) { validation = { failed: String(error && error.message || error) }; }
@@ -673,6 +690,180 @@ function placeModel(doc, options, log) {
   log.push("The model was " + parts.join(", ") + "." + (single ? "" : " The change sits on one top node, so parts, bones and animation are untouched."));
 }
 
+// Every color texture with the triangles that show it. Parts are in world space, so areas are in meters.
+function colorGroups(doc) {
+  const groups = new Map();
+  for (const s of surfacesOf(doc)) {
+    const mat = s.prim.getMaterial();
+    const tex = mat && mat.getBaseColorTexture();
+    if (!tex) continue;
+    const info = mat.getBaseColorTextureInfo();
+    const acc = s.prim.getAttribute("TEXCOORD_" + (info ? info.getTexCoord() : 0));
+    const size = tex.getSize();
+    if (!acc || !size) continue;
+    let group = groups.get(tex);
+    if (!group) groups.set(tex, group = { tex, size, parts: [], materials: new Set(), moved: false });
+    if (info && info.getExtension("KHR_texture_transform")) group.moved = true;
+    group.materials.add(mat);
+    group.parts.push({ pos: s.pos, uv: Float32Array.from(acc.getArray()), indices: s.indices });
+  }
+  return [...groups.values()];
+}
+
+// All parts of one texture as one vertex list.
+function joinParts(parts) {
+  let verts = 0, tris = 0;
+  for (const p of parts) { verts += p.pos.length / 3; tris += p.indices.length; }
+  const pos = new Float32Array(verts * 3), uv = new Float32Array(verts * 2), indices = new Uint32Array(tris);
+  let v = 0, t = 0;
+  for (const p of parts) {
+    pos.set(p.pos, v * 3); uv.set(p.uv, v * 2);
+    for (let i = 0; i < p.indices.length; i++) indices[t + i] = p.indices[i] + v;
+    v += p.pos.length / 3; t += p.indices.length;
+  }
+  return { pos, uv, indices };
+}
+
+async function readPixels(tex, options, codec) {
+  const image = tex.getImage(), mime = tex.getMimeType();
+  if (!image || !codec) return null;
+  let decoded = null;
+  try { decoded = await codec.decode(image, mime); } catch (error) { decoded = null; }
+  if (!decoded) return null;
+  let { width, height, rgba } = decoded;
+  const max = options.maxTexture;
+  if (max && Math.max(width, height) > max) {
+    const k = max / Math.max(width, height);
+    const w = Math.max(1, Math.round(width * k)), h = Math.max(1, Math.round(height * k));
+    rgba = resizeRgba(rgba, width, height, w, h);
+    width = w; height = h;
+  }
+  return { width, height, rgba };
+}
+
+// The format a rewritten or new texture is saved in: the one asked for, else the source's own, else PNG.
+async function encodePixels(rgba, width, height, prefer, options, codec) {
+  const want = options.textureFormat === "webp" ? "image/webp" : options.textureFormat === "png" ? "image/png" : prefer || "image/png";
+  for (const mime of want === "image/png" ? ["image/png"] : [want, "image/png"]) {
+    let bytes = null;
+    try { bytes = await codec.encode(rgba, width, height, mime, options.textureQuality); } catch (error) { bytes = null; }
+    if (bytes) return { bytes, mime };
+  }
+  return null;
+}
+
+function nameTexture(doc, tex, mime) {
+  const uri = tex.getURI();
+  if (uri) tex.setURI(uri.replace(/\.[a-z0-9]+$/i, "") + "." + mime.split("/")[1].replace("jpeg", "jpg"));
+  if (mime === "image/webp") doc.createExtension(EXTTextureWebP).setRequired(true);
+}
+
+// How brightness follows the way a face points and how high it sits, measured at every vertex.
+function bakedLightOf(mesh, rgba, width, height, mask) {
+  const count = mesh.pos.length / 3;
+  const normal = computeNormals(mesh.pos, mesh.indices);
+  const weight = new Float32Array(count);
+  const p = mesh.pos;
+  for (let t = 0; t < mesh.indices.length; t += 3) {
+    const a = mesh.indices[t] * 3, b = mesh.indices[t + 1] * 3, c = mesh.indices[t + 2] * 3;
+    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
+    const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
+    const area = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 6;
+    weight[a / 3] += area; weight[b / 3] += area; weight[c / 3] += area;
+  }
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < count; i++) { const y = p[i * 3 + 1]; if (y < lo) lo = y; if (y > hi) hi = y; }
+  const span = hi - lo > 0 ? hi - lo : 1;
+  const h = new Float32Array(count), l = new Float32Array(count), paint = new Uint8Array(count);
+  const rgb = [0, 0, 0];
+  for (let i = 0; i < count; i++) {
+    h[i] = (p[i * 3 + 1] - lo) / span;
+    if (!sampleColor(rgba, width, height, mesh.uv[i * 2], mesh.uv[i * 2 + 1], 2, mask, rgb)) { weight[i] = 0; continue; }
+    l[i] = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+    paint[i] = paintOf(rgb[0], rgb[1], rgb[2]);
+  }
+  return fitBakedLight({ count, normal, height: h, luma: l, paint, weight });
+}
+
+async function refineSurfaces(doc, options, codec, log) {
+  const light = DELIGHT[options.delight], relief = RELIEF[options.surfaceMaps];
+  const groups = colorGroups(doc);
+  if (!groups.length) { log.push("Surfaces: the model has no color texture, so there was nothing to work from."); return; }
+  if (!codec) { log.push("Surfaces: textures cannot be read on this device, so baked light and surface maps were skipped."); return; }
+  let unread = 0, tiled = 0, evened = 0, clean = 0, normals = 0, roughs = 0, had = 0, flatMaps = 0;
+  let worst = 1, left = 1;
+  for (const group of groups) {
+    const pixels = await readPixels(group.tex, options, codec);
+    if (!pixels) { unread++; continue; }
+    let { width, height, rgba } = pixels;
+    const mesh = joinParts(group.parts);
+    const single = !group.moved && uvInside(mesh.uv);
+    const mask = single ? coverageMask(width, height, mesh.uv, mesh.indices) : null;
+
+    if (light) {
+      if (!single) tiled++;
+      else if (mesh.pos.length / 3 >= 200) {
+        const fit = bakedLightOf(mesh, rgba, width, height, mask);
+        if (fit.found && fit.range >= BAKED_FLOOR) {
+          rgba = applyGain(rgba, gainMap(width, height, mesh.uv, mesh.indices, gainFrom(fit, light.strength, light.limit)));
+          const again = bakedLightOf(mesh, rgba, width, height, mask);
+          const saved = await encodePixels(rgba, width, height, group.tex.getMimeType(), options, codec);
+          if (saved) {
+            group.tex.setImage(saved.bytes).setMimeType(saved.mime);
+            nameTexture(doc, group.tex, saved.mime);
+            evened++;
+            if (fit.range > worst) { worst = fit.range; left = again.found ? again.range : 1; }
+          } else unread++;
+        } else clean++;
+      } else clean++;
+    }
+
+    if (relief) {
+      let normalTex = null, bumps = 0;
+      const roughTex = new Map();
+      for (const mat of group.materials) {
+        if (mat.getExtension("KHR_materials_unlit")) continue;
+        const info = mat.getBaseColorTextureInfo();
+        const set = info ? info.getTexCoord() : 0;
+        if (mat.getNormalTexture()) had++;
+        else {
+          if (!normalTex) {
+            const made = normalFromColor(rgba, width, height, mask, relief);
+            bumps = made.bumps;
+            if (bumps >= 0.01) {
+              const saved = await encodePixels(made.rgba, width, height, "image/png", options, codec);
+              if (saved) { normalTex = doc.createTexture((mat.getName() || "surface") + "_normal").setImage(saved.bytes).setMimeType(saved.mime); nameTexture(doc, normalTex, saved.mime); }
+            } else flatMaps++;
+          }
+          if (normalTex) { mat.setNormalTexture(normalTex); mat.getNormalTextureInfo().setTexCoord(set); normals++; }
+        }
+        if (!mat.getMetallicRoughnessTexture()) {
+          const factor = mat.getRoughnessFactor();
+          const base = factor >= 0.99 ? 0.8 : Math.max(0.2, factor);
+          const key = base.toFixed(2);
+          let tex = roughTex.get(key);
+          if (!tex) {
+            const saved = await encodePixels(roughnessFromColor(rgba, width, height, base, mask), width, height, "image/png", options, codec);
+            if (saved) { tex = doc.createTexture((mat.getName() || "surface") + "_roughness").setImage(saved.bytes).setMimeType(saved.mime); nameTexture(doc, tex, saved.mime); roughTex.set(key, tex); }
+          }
+          if (tex) { mat.setMetallicRoughnessTexture(tex).setRoughnessFactor(1); mat.getMetallicRoughnessTextureInfo().setTexCoord(set); roughs++; }
+        }
+      }
+    }
+  }
+  if (light) {
+    if (evened) log.push("Baked light: " + count(evened, "color texture") + " had light painted in. On the worst, the lit side was " + worst.toFixed(2) + " times as bright as the dark side. It is now " + left.toFixed(2) + " times. Local painted shadows are not touched.");
+    else if (clean) log.push("Baked light: none found. Brightness does not follow the direction faces point or how high they sit.");
+    if (tiled) log.push(count(tiled, "tiling texture") + " left as painted. A texture that repeats has no single pixel per point to correct.");
+  }
+  if (relief) {
+    if (normals || roughs) log.push("Surface maps: made " + count(normals, "normal map link") + " and " + count(roughs, "roughness map link") + " from the color texture, for materials that had none." + (had ? " " + count(had, "material") + " kept the normal map it came with." : ""));
+    else log.push(had ? "Surface maps: every material already has its own." : "Surface maps: nothing was made.");
+    if (flatMaps) log.push(count(flatMaps, "color texture is", "color textures are") + " too even to read any relief from. No normal map was made for " + (flatMaps === 1 ? "it" : "them") + ".");
+  }
+  if (unread) log.push(count(unread, "texture") + " could not be read or written here and " + (unread === 1 ? "was" : "were") + " left alone.");
+}
+
 async function fitTextures(doc, options, codec, log) {
   const max = options.maxTexture;
   const target = options.textureFormat === "webp" ? "image/webp" : options.textureFormat === "png" ? "image/png" : null;
@@ -785,6 +976,12 @@ function buildChecks(before, after, options, extra) {
         ? (over ? count(over, "texture is", "textures are") + " over " + options.maxTexture + " px." : "All " + (after.textures.length - unknown) + " readable textures are " + options.maxTexture + " px or under.") + (unknown ? " " + unknown + " are in a format this app cannot measure." : "")
         : "The model has no textures.",
       "Those textures could not be decoded on this device. Convert them to PNG or JPEG first.");
+  }
+  if (after.detail) {
+    const px = Math.round(after.detail.median), thin = Math.round(after.detail.stretched * 100);
+    const text = px + " texture pixels per meter across most of the surface." + (thin >= 5 ? " " + thin + " percent of the surface is stretched to under half that." : "");
+    if (options.minTexelDensity) add("detail", px >= options.minTexelDensity ? "pass" : "fail", "Texture detail", text + " Minimum " + options.minTexelDensity + ".", "Use a larger texture, or a smaller model. Stretched UVs need a new unwrap in a modeling tool.");
+    else add("detail", "note", "Texture detail", text + " Assets that share a street should be close to each other on this number.");
   }
   if (options.size && options.size.meters > 0) {
     const dims = { width: after.size[0], height: after.size[1], length: after.size[2], longest: Math.max(...after.size) };
