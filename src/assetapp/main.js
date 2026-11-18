@@ -36,7 +36,7 @@ host.innerHTML = `
     <h2>Finish any 3D model</h2>
     <button class="btn gold" id="pick">Load a 3D model</button>
     <input type="file" id="file" multiple hidden accept="${ACCEPT}">
-    <p class="lead">GLB, glTF, FBX, OBJ, DAE, STL or PLY. If the model has separate texture or .bin files, pick them together with it.</p>
+    <p class="lead">GLB, glTF, FBX, OBJ, DAE, 3DS, 3MF, USDZ, STL or PLY, or a ZIP that holds one. If the model has separate texture or .bin files, pick them together with it.</p>
     <p class="lead">The file is processed on this device. Nothing is uploaded.</p>
     <p class="status" id="loadstatus"></p>
   </section>

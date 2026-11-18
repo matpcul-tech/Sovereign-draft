@@ -320,7 +320,7 @@ Esc once returns to orbit. Esc again returns to plan.
 
 `/asset.html` is its own app: load any 3D model, see what is wrong with it, finish it, download it. It runs on the device. No file is uploaded.
 
-It opens GLB and glTF directly, and converts FBX, OBJ (with its MTL and textures), DAE, STL and PLY to GLB on load. On load it reports triangles, size, textures and every defect it found. `Finish` then:
+It opens GLB and glTF directly, and converts FBX, OBJ (with its MTL and textures), DAE, 3DS, 3MF, USDZ, STL and PLY to GLB on load. A ZIP is opened first and the model inside is read with its textures, whatever folder they are in, so a download can be picked as it came. TGA and BMP textures are read. A model that names a texture file that did not come with it still loads: the texture is left off and named, and nothing is fetched from the network. A file with no mesh in it, an unknown format and a damaged ZIP each get a plain message. On load it reports triangles, size, textures and every defect it found. `Finish` then:
 
 - removes triangles with no area and repeated triangles
 - removes small pieces that float free of the model (and leaves them when there are so many they must be intentional)
