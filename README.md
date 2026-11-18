@@ -329,13 +329,14 @@ It opens GLB and glTF directly, and converts FBX, OBJ (with its MTL and textures
 - adds missing normals, and fixes only the normals that are wrong; the model's own normals are kept
 - presses crumpled walls flat when Flatten walls is on (Light or Strong; on at Light in the Street Empire building preset): a large area whose triangles all sit close to one plane is moved onto that plane and lit as one face, with a hard edge where it meets anything else. Areas that are nearly flat but curved, and parts with a skeleton or morph targets, are left alone
 - takes baked light back out of the color texture when Remove baked light is on (Light or Strong). Light that was painted in shows up as brightness that follows the direction a face points and how high it sits. That is measured across the whole model, one paint color at a time, so a black tire next to a bright door is not mistaken for shadow, and then divided out. The log gives the lit side against the dark side before and after. A texture with none is left byte for byte. Local painted shadows (a blotch under an arm) are not this and are not touched. Tiling textures are skipped
+- holds color to one shared standard when Hold color to the shared standard is on: no surface darker than 2 percent reflectance or brighter than 82, and no color more vivid than 90 percent. Blacks are eased up, whites eased off, pure primaries eased back, hue kept, and the whole middle of the range is not touched. Every asset finished this way sits in the same range, so one set of game lights treats them alike. A texture already inside the range is left byte for byte
 - makes a normal map and a roughness map from the color texture when Make surface maps is on, only for materials that have none. Dark lines read as grooves and are a little rougher. The edge of every UV piece stays flat, so no seam is lit. A normal map the model came with is always kept, and an even color with nothing to read makes no map
 - turns, sizes, grounds and centers the model
 - reduces triangles to a target, and fails the budget check when the shape would be damaged
 - resizes textures, optionally to WebP
 - keeps skeletons, animations, materials, morph targets and part pivots
 
-Every finish also reports Texture detail: texture pixels per meter across most of the surface, and the share of the surface stretched to under half that. Assets that stand next to each other in a game should be close on this number. `minTexelDensity` turns it into a pass or fail.
+Every finish also reports Color range (darkest, middle and brightest surface, peak vividness, and whether the asset is inside the shared standard; a pass or fail when the standard is on) and Texture detail: texture pixels per meter across most of the surface, and the share of the surface stretched to under half that. Assets that stand next to each other in a game should be close on this number. `minTexelDensity` turns it into a pass or fail.
 
 The verdict is READY or NOT READY. Every check is measured on the finished file after it is read back, including the Khronos glTF validator. A failed check names the one thing that fixes it. The source bytes are never changed.
 

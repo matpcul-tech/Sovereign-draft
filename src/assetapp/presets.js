@@ -53,14 +53,14 @@ export const PRESETS = [
   {
     id: "unity-static",
     name: "Unity building or prop",
-    blurb: "Clean, walls pressed flat, baked light taken out, normal and roughness maps made. 2048 px PNG or JPEG.",
-    options: { triangles: null, maxTexture: 2048, textureFormat: "keep", size: null, flatten: "light", delight: "light", surfaceMaps: "light" }
+    blurb: "Clean, walls pressed flat, baked light out, color held to the shared standard, surface maps made. 2048 px.",
+    options: { triangles: null, maxTexture: 2048, textureFormat: "keep", size: null, flatten: "light", delight: "light", surfaceMaps: "light", colorStandard: true }
   },
   {
     id: "unity-character",
     name: "Unity character",
-    blurb: "Needs a skeleton. Keeps animations. Baked light taken out, normal and roughness maps made. 2048 px.",
-    options: { triangles: null, maxTexture: 2048, textureFormat: "keep", size: null, delight: "light", surfaceMaps: "light", requireSkeleton: true }
+    blurb: "Needs a skeleton. Keeps animations. Baked light out, color held to the shared standard, surface maps made. 2048 px.",
+    options: { triangles: null, maxTexture: 2048, textureFormat: "keep", size: null, delight: "light", surfaceMaps: "light", colorStandard: true, requireSkeleton: true }
   },
   {
     id: "print",

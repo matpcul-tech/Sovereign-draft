@@ -381,3 +381,89 @@ export function roughnessFromColor(rgba, width, height, base, mask = null, swing
   }
   return out;
 }
+
+// ---------------------------------------------------------------- one color standard for every asset
+
+// The range a real surface can have. Nothing reflects less than coal or more than fresh snow, and
+// no paint is a pure primary. A generator hands back each model with its own blacks, whites and
+// vividness, so two models never sit in the same light the same way. Holding every color texture
+// to these limits is what lets one set of lights in a game treat every asset alike.
+export const STANDARD = {
+  floor: 0.02,     // darkest a surface gets: about 2 percent reflectance
+  toe: 0.06,       // below this, brightness is eased up toward the floor
+  shoulder: 0.6,   // above this, brightness is eased off
+  ceiling: 0.82,   // brightest a surface gets
+  vivid: 0.75,     // saturation above this is eased off
+  vividMax: 0.9    // most vivid a surface gets
+};
+
+function percentile(hist, total, share) {
+  let run = 0;
+  const want = total * share;
+  for (let i = 0; i < hist.length; i++) { run += hist[i]; if (run >= want) return (i + 0.5) / hist.length; }
+  return 1;
+}
+
+// What a color texture's range is, over the pixels the model uses: brightness at the dark end,
+// the middle and the bright end (linear, 0 to 1), and how vivid its most vivid colors are (0 to 1).
+export function colorStats(rgba, mask) {
+  const bins = 2048;
+  const luma = new Uint32Array(bins), sat = new Uint32Array(bins);
+  let count = 0, colored = 0;
+  for (let p = 0, n = rgba.length / 4; p < n; p++) {
+    if (mask && !mask[p]) continue;
+    const i = p * 4;
+    const r = LINEAR[rgba[i]], g = LINEAR[rgba[i + 1]], b = LINEAR[rgba[i + 2]];
+    const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    luma[Math.min(bins - 1, Math.floor(l * bins))]++; count++;
+    const max = Math.max(r, g, b);
+    if (max > 0.05) { sat[Math.min(bins - 1, Math.floor((max - Math.min(r, g, b)) / max * bins))]++; colored++; }
+  }
+  if (!count) return null;
+  return {
+    low: percentile(luma, count, 0.02), mid: percentile(luma, count, 0.5), high: percentile(luma, count, 0.98),
+    vivid: colored > count * 0.01 ? percentile(sat, colored, 0.98) : 0
+  };
+}
+
+// True when the texture already sits inside the standard, with a little room for rounding.
+export function insideStandard(stats, standard = STANDARD) {
+  return stats.low >= standard.floor * 0.8 && stats.high <= standard.ceiling * 1.05 && stats.vivid <= standard.vividMax * 1.03;
+}
+
+// Ease every pixel into the standard. The middle of the range is not touched at all, so a model
+// that was already right comes back the same. Hue is kept. Returns the new pixels and the share
+// of pixels that changed.
+export function holdToStandard(rgba, standard = STANDARD) {
+  const { floor, toe, shoulder, ceiling, vivid, vividMax } = standard;
+  const out = Uint8Array.from(rgba);
+  let changed = 0;
+  const n = rgba.length / 4;
+  for (let p = 0; p < n; p++) {
+    const i = p * 4;
+    let r = LINEAR[rgba[i]], g = LINEAR[rgba[i + 1]], b = LINEAR[rgba[i + 2]];
+    let touched = false;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    if (max > 0.05) {
+      const s = (max - min) / max;
+      if (s > vivid) {
+        const want = vivid + (vividMax - vivid) * (1 - Math.exp(-(s - vivid) / (vividMax - vivid)));
+        const k = want * l / ((max - min) - want * (max - l));
+        if (k > 0 && k < 1) { r = l + (r - l) * k; g = l + (g - l) * k; b = l + (b - l) * k; touched = true; }
+      }
+    }
+    let to = l;
+    if (l < toe) to = floor + l * (toe - floor) / toe;
+    else if (l > shoulder) to = shoulder + (ceiling - shoulder) * (1 - Math.exp(-(l - shoulder) / (ceiling - shoulder)));
+    if (to !== l) {
+      if (l > 1e-5) { const k = to / l; r *= k; g *= k; b *= k; }
+      else { r = to; g = to; b = to; }
+      touched = true;
+    }
+    if (!touched) continue;
+    const R = toSrgb(r), G = toSrgb(g), B = toSrgb(b);
+    if (R !== rgba[i] || G !== rgba[i + 1] || B !== rgba[i + 2]) { out[i] = R; out[i + 1] = G; out[i + 2] = B; changed++; }
+  }
+  return { rgba: out, changed: n ? changed / n : 0 };
+}

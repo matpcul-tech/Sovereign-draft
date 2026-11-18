@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { finishModel } from "../src/assetapp/engine.js";
-import { applyGain, coverageMask, fitBakedLight, gainFrom, gainMap, normalFromColor, paintOf, roughnessFromColor, texelDensity } from "../src/assetapp/surface.js";
+import { STANDARD, applyGain, colorStats, coverageMask, fitBakedLight, gainFrom, gainMap, holdToStandard, insideStandard, normalFromColor, paintOf, roughnessFromColor, texelDensity } from "../src/assetapp/surface.js";
 import { decodePng, encodePng } from "../src/asset/finish/png.js";
 import { io, modelBytes, pngCodec, solidPng } from "./assetapp-helpers.js";
 
@@ -301,6 +301,91 @@ describe("Sovereign Asset surface: normal and roughness maps", () => {
     expect(flat.log.join(" ")).toMatch(/too even to read any relief from/);
     const off = await finishModel(bytes, {}, { codec: pngCodec });
     expect((await read(off.bytes)).getRoot().listTextures().length).toBe(1);
+  });
+});
+
+describe("Sovereign Asset surface: one color standard", () => {
+  const px = (...colors) => { const out = new Uint8Array(colors.length * 4); colors.forEach((c, i) => out.set([c[0], c[1], c[2], 255], i * 4)); return out; };
+  const lum = (rgba, i = 0) => 0.2126 * linear(rgba[i * 4]) + 0.7152 * linear(rgba[i * 4 + 1]) + 0.0722 * linear(rgba[i * 4 + 2]);
+  const hue = (rgba, i = 0) => { const r = linear(rgba[i * 4]), g = linear(rgba[i * 4 + 1]), b = linear(rgba[i * 4 + 2]); return Math.atan2(Math.sqrt(3) * (g - b), 2 * r - g - b); };
+
+  it("does not touch the middle of the range", () => {
+    const mid = px([120, 110, 100], [90, 140, 150], [160, 150, 140], [70, 70, 70]);
+    const held = holdToStandard(mid);
+    expect(Array.from(held.rgba)).toEqual(Array.from(mid));
+    expect(held.changed).toBe(0);
+  });
+
+  it("lifts pure black to the floor and eases white under the ceiling", () => {
+    const held = holdToStandard(px([0, 0, 0], [255, 255, 255], [8, 8, 8]));
+    expect(lum(held.rgba, 0)).toBeCloseTo(STANDARD.floor, 2);
+    expect(lum(held.rgba, 1)).toBeLessThanOrEqual(STANDARD.ceiling + 0.01);
+    expect(lum(held.rgba, 1)).toBeGreaterThan(0.7);
+    expect(lum(held.rgba, 2)).toBeGreaterThan(lum(held.rgba, 0)); // order is kept: darker stays darker
+    expect(held.rgba[3]).toBe(255);
+  });
+
+  it("eases off a pure primary and keeps its hue", () => {
+    const red = px([230, 0, 0], [0, 60, 230]);
+    const held = holdToStandard(red);
+    for (const i of [0, 1]) {
+      const r = linear(held.rgba[i * 4]), g = linear(held.rgba[i * 4 + 1]), b = linear(held.rgba[i * 4 + 2]);
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      expect((max - min) / max).toBeLessThanOrEqual(STANDARD.vividMax + 0.02);
+      expect((max - min) / max).toBeGreaterThan(STANDARD.vivid);
+      expect(Math.abs(hue(held.rgba, i) - hue(red, i))).toBeLessThan(0.06);
+    }
+  });
+
+  it("reads the range from the pixels the model uses, not the gutter", () => {
+    const rgba = px([0, 0, 0], [128, 128, 128], [128, 128, 128], [255, 255, 255]);
+    const all = colorStats(rgba, null), used = colorStats(rgba, new Uint8Array([0, 1, 1, 0]));
+    expect(insideStandard(all)).toBe(false);
+    expect(insideStandard(used)).toBe(true);
+    expect(used.mid).toBeCloseTo(linear(128), 2);
+    expect(colorStats(rgba, new Uint8Array(4))).toBe(null);
+  });
+
+  it("brings a harsh texture inside the range and passes the check on the finished file", async () => {
+    const size = 128;
+    const harsh = ballTexture(size, (u, v) => (v < 0.3 ? [1, 1, 1] : v > 0.7 ? [0, 0, 0] : Math.floor(u * 8) % 2 ? [0.9, 0, 0] : TEAL), () => 1);
+    const bytes = await texturedBall(harsh, size);
+    const off = await finishModel(bytes, {}, { codec: pngCodec });
+    expect(check(off, "color").status).toBe("note");
+    expect(check(off, "color").detail).toMatch(/This asset is outside it/);
+    const kept = decodePng((await read(off.bytes)).getRoot().listTextures()[0].getImage());
+    expect(Array.from(kept.rgba.slice(0, 4000))).toEqual(Array.from(harsh.slice(0, 4000)));
+
+    const on = await finishModel(bytes, { colorStandard: true }, { codec: pngCodec, validate });
+    expect(on.ready).toBe(true);
+    expect(check(on, "color").status).toBe("pass");
+    expect(on.log.join(" ")).toMatch(/Color standard: 1 color texture brought inside the shared range/);
+    expect(insideStandard(on.after.color)).toBe(true);
+    expect(on.after.color.high).toBeLessThan(off.after.color.high);
+    expect(on.after.color.low).toBeGreaterThan(off.after.color.low);
+  });
+
+  it("leaves a texture that is already inside the range byte for byte", async () => {
+    const size = 64;
+    const fine = ballTexture(size, stripes, () => 1);
+    const bytes = await texturedBall(fine, size);
+    const source = (await read(bytes)).getRoot().listTextures()[0].getImage();
+    const on = await finishModel(bytes, { colorStandard: true }, { codec: pngCodec });
+    expect(on.log.join(" ")).toMatch(/already inside the shared range/);
+    expect(Array.from((await read(on.bytes)).getRoot().listTextures()[0].getImage())).toEqual(Array.from(source));
+    expect(check(on, "color").status).toBe("pass");
+  });
+
+  it("gives two very different textures the same limits", async () => {
+    const size = 64;
+    const dark = await texturedBall(ballTexture(size, () => [0.001, 0.001, 0.001], () => 1), size);
+    const bright = await texturedBall(ballTexture(size, (u) => (Math.floor(u * 8) % 2 ? [1, 1, 1] : [1, 0, 0]), () => 1), size);
+    const a = await finishModel(dark, { colorStandard: true }, { codec: pngCodec });
+    const b = await finishModel(bright, { colorStandard: true }, { codec: pngCodec });
+    for (const r of [a, b]) expect(insideStandard(r.after.color)).toBe(true);
+    expect(a.after.color.low).toBeGreaterThanOrEqual(STANDARD.floor * 0.8);
+    expect(b.after.color.high).toBeLessThanOrEqual(STANDARD.ceiling * 1.05);
+    expect(b.after.color.vivid).toBeLessThanOrEqual(STANDARD.vividMax * 1.03);
   });
 });
 
