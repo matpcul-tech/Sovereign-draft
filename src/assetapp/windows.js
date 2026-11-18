@@ -22,15 +22,17 @@ const DEFAULTS = {
   spreadSide: 0.05,   // and no further than this past the pane's own edge
   minWindow: 0.035,   // smallest window, as a share of the building's height
   maxSat: 0.42,       // glass is gray, black, white or blue, even when dirty. A painted door is far past this
-  floorGap: 0.03      // anything that starts this close to the ground is a door
+  floorGap: 0.03,     // anything that starts this close to the ground is a door
+  minSign: 0.2        // narrowest sign, as a share of the building's height
 };
 
 // pos: world positions. indices: triangles. diag: model size. colorOf(t): mean linear [r, g, b] of
-// triangle t, or null. Returns { windows, pieces, seen }. Each window is
+// triangle t, or null. Returns { windows, signs, doors, pieces, seen }. A sign is a wide panel that
+// stands proud of the wall. A door is set back like a window but reaches the ground or is painted. Each window is
 // { tris, normal, width, height, bottom, left, depth, area }. tris index into the triangle list.
 export function findWindows(pos, indices, diag, colorOf, opts = {}) {
   const o = { ...DEFAULTS, ...opts };
-  const out = { windows: [], pieces: 0, seen: { flat: 0, upright: 0, rectangle: 0, sunken: 0, glass: 0 } };
+  const out = { windows: [], signs: [], doors: [], pieces: 0, seen: { flat: 0, upright: 0, rectangle: 0, sunken: 0, glass: 0 } };
   const tris = indices.length / 3;
   if (!(diag > 0) || tris < 4) return out;
   let floor = Infinity, top = -Infinity;
@@ -44,6 +46,18 @@ export function findWindows(pos, indices, diag, colorOf, opts = {}) {
 
   const welded = weldIds(pos, diag * 1e-6), ids = welded.ids;
   const verts = pos.length / 3, own = new Set(), ahead = [0, 0, 0, 0], behind = [0, 0, 0, 0];
+
+  // how wide the whole model is along a wall's direction
+  const spans = new Map();
+  const spanAlong = (hx, hz) => {
+    const key = Math.round(Math.atan2(hz, hx) * 20);
+    if (!spans.has(key)) {
+      let lo = Infinity, hi = -Infinity;
+      for (let i = 0; i < pos.length; i += 3) { const a = pos[i] * hx + pos[i + 2] * hz; if (a < lo) lo = a; if (a > hi) hi = a; }
+      spans.set(key, hi - lo);
+    }
+    return spans.get(key);
+  };
 
   const pieces = [];
   flats.regions.forEach((region, k) => {
@@ -62,8 +76,9 @@ export function findWindows(pos, indices, diag, colorOf, opts = {}) {
     }
     const w = a1 - a0, h = y1 - y0;
     if (!(w >= o.minPiece * diag && h >= o.minPiece * diag)) return;
-    if (region.area / (w * h) < o.minFill) return;
-    out.seen.rectangle++;
+    const fill = region.area / (w * h);
+    if (fill < 0.5) return;
+    if (fill >= o.minFill) out.seen.rectangle++;
 
     // look at the band just outside the rectangle, side by side: does the surface there stand in
     // front of the pane? A frame, a sill or a row of bars does. A wall the pane is simply part of
@@ -91,24 +106,35 @@ export function findWindows(pos, indices, diag, colorOf, opts = {}) {
       if (low) tally[2]++;
       if (high) tally[3]++;
     }
-    let raised = 0;
-    for (let k = 0; k < 4; k++) if (ahead[k] >= 2 && ahead[k] >= 0.7 * (ahead[k] + behind[k])) raised++;
-    if (raised < 3) return;
-    out.seen.sunken++;
-
-    if (y0 - floor < o.floorGap * height) return; // a door
-    let luma = -1;
+    let raised = 0, lowered = 0;
+    for (let k = 0; k < 4; k++) {
+      if (ahead[k] >= 2 && ahead[k] >= 0.7 * (ahead[k] + behind[k])) raised++;
+      if (behind[k] >= 2 && behind[k] >= 0.7 * (ahead[k] + behind[k])) lowered++;
+    }
+    const shape = { tris: Array.from(region.tris), normal: [n[0], 0, n[2]], width: w, height: h, bottom: y0 - floor, left: a0 };
+    // What paint is it? Glass is gray, black, white or blue. A sign or a door is painted.
+    let luma = -1, painted = false;
     if (colorOf) {
       let r = 0, g = 0, b = 0, m = 0;
       for (const t of region.tris) { const c = colorOf(t); if (!c) continue; r += c[0]; g += c[1]; b += c[2]; m++; }
       if (m) {
         const max = Math.max(r, g, b) / m, min = Math.min(r, g, b) / m;
         const sat = max > 1e-4 ? (max - min) / max : 0;
-        const cool = b >= r && b >= g;
-        if (max > 0.02 && sat > (cool ? 0.6 : o.maxSat)) return;
+        painted = max > 0.02 && sat > (b >= r && b >= g ? 0.6 : o.maxSat);
         luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / m;
       }
     }
+    // a sign: a wide painted panel up off the ground, proud of the wall or set in a frame of its
+    // own, and not a band that runs the whole width of the building (that is a cornice)
+    const wide = w >= o.minSign * height && w >= 1.6 * h && h >= 0.06 * height && y0 - floor > 0.2 * height && w < 0.9 * spanAlong(hx, hz);
+    if (painted && wide && fill >= o.minFill && raised + lowered >= 2) { out.signs.push({ ...shape, depth: region.d, hx, hz }); return; }
+    if (raised < 3) return;
+    if (fill >= o.minFill) out.seen.sunken++;
+
+    const tall = h >= 1.4 * w && h >= 0.1 * height;
+    if (y0 - floor < o.floorGap * height) { if (tall) out.doors.push(shape); return; } // reaches the ground: a door
+    if (painted) { if (tall) out.doors.push(shape); return; } // painted, not glass: a door upstairs
+    if (fill < o.minFill) return;
     out.seen.glass++;
     pieces.push({ tris: Array.from(region.tris), n, d: region.d, hx, hz, a0, a1, y0, y1, area: region.area, c: [cx / cw, cy / cw, cz / cw], luma });
   });
@@ -209,6 +235,17 @@ export function findWindows(pos, indices, diag, colorOf, opts = {}) {
     let at = 0;
     for (const p of list) { tri.set(p.tris, at); at += p.tris.length; }
     out.windows.push({ tris: tri, normal: [lead.n[0], 0, lead.n[2]], width: w, height: h, bottom: y0 - floor, left: a0, depth: depth / area, area });
+  }
+  // a sign made of two or three level strips is one sign
+  for (let i = 0; i < out.signs.length; i++) for (let j = out.signs.length - 1; j > i; j--) {
+    const p = out.signs[i], q = out.signs[j];
+    if (p.normal[0] * q.normal[0] + p.normal[2] * q.normal[2] < 0.9 || Math.abs(p.depth - q.depth) > o.maxStep * diag) continue;
+    const gapY = Math.max(q.bottom - (p.bottom + p.height), p.bottom - (q.bottom + q.height));
+    const overlap = Math.min(p.left + p.width, q.left + q.width) - Math.max(p.left, q.left);
+    if (gapY > o.maxGap * diag || overlap < 0.7 * Math.min(p.width, q.width)) continue;
+    const top = Math.max(p.bottom + p.height, q.bottom + q.height), right = Math.max(p.left + p.width, q.left + q.width);
+    p.tris = p.tris.concat(q.tris); p.bottom = Math.min(p.bottom, q.bottom); p.left = Math.min(p.left, q.left); p.height = top - p.bottom; p.width = right - p.left;
+    out.signs.splice(j, 1);
   }
   // a steady order: by the side they face, then floor by floor, then left to right
   const side = (wdw) => Math.round(Math.atan2(wdw.normal[0], wdw.normal[2]) / (Math.PI / 4));

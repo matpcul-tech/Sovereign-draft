@@ -119,6 +119,26 @@ describe("Sovereign Asset windows: finding the glass", () => {
     expect(floors.windows.length).toBe(2);
   });
 
+  it("finds a painted sign, proud of the wall, and not a band that runs the whole width", () => {
+    const sign = find(facade([{ x0: 2, x1: 7, y0: 4, y1: 5, depth: 0.12, paint: "sign" }]));
+    expect(sign.signs.length).toBe(1);
+    expect(sign.signs[0].width).toBeCloseTo(5, 3);
+    expect(sign.windows.length).toBe(0);
+    expect(find(facade([{ x0: 0.2, x1: 9.8, y0: 4, y1: 5, depth: 0.12, paint: "sign" }])).signs.length).toBe(0);  // a cornice
+    expect(find(facade([{ x0: 2, x1: 7, y0: 4, y1: 5, depth: 0.12, paint: "glass" }])).signs.length).toBe(0);     // not painted
+    expect(find(facade([{ x0: 2, x1: 7, y0: 0.5, y1: 1.1, depth: 0.12, paint: "sign" }])).signs.length).toBe(0);  // down by the ground
+  });
+
+  it("names a door: set back and reaching the ground, or painted and tall upstairs", () => {
+    const ground = find(facade([{ x0: 4, x1: 5.2, y0: 0, y1: 2.4, depth: -0.15, paint: "glass" }]));
+    expect(ground.doors.length).toBe(1);
+    expect(ground.doors[0].height).toBeCloseTo(2.4, 3);
+    const upstairs = find(facade([{ x0: 4, x1: 5.2, y0: 1, y1: 3.5, depth: -0.15, paint: "door" }]));
+    expect(upstairs.doors.length).toBe(1);
+    expect(find(facade([WINDOW])).doors.length).toBe(0);
+    expect(find(facade([{ x0: 3, x1: 6, y0: 2, y1: 3, depth: -0.15, paint: "door" }])).doors.length).toBe(0); // painted but wide: a panel
+  });
+
   it("ignores a recess too small to be a window", () => {
     expect(find(facade([{ x0: 2, x1: 2.12, y0: 3, y1: 3.12, depth: -0.1, paint: "glass" }])).windows.length).toBe(0);
   });
@@ -174,6 +194,22 @@ describe("Sovereign Asset windows: in the finished file", () => {
     const result = await finishModel(await building(row), { windowLights: true, triangles: 60 }, { codec: pngCodec, validate });
     expect(check(result, "windows").status).toBe("pass");
     expect(result.after.windows.litTris + result.after.windows.darkTris).toBe(16);
+    expect(check(result, "valid").status).toBe("pass");
+  });
+
+  it("gives a sign a material that glows with its own paint, and a door a material of its own", async () => {
+    const result = await finishModel(await building([...row, { x0: 2, x1: 7, y0: 5, y1: 5.7, depth: 0.12, paint: "sign" }, { x0: 9.2, x1: 9.9, y0: 0, y1: 2.2, depth: -0.15, paint: "door" }]), { windowLights: true }, { codec: pngCodec, validate });
+    expect(result.ready).toBe(true);
+    expect(check(result, "panels").status).toBe("pass");
+    expect(result.after.windows.signs).toBe(1);
+    expect(result.after.windows.doors).toBe(1);
+    const mats = Object.fromEntries((await read(result.bytes)).getRoot().listMaterials().map((m) => [m.getName(), m]));
+    expect(mats.sign_lit.getEmissiveTexture()).toBe(mats.sign_lit.getBaseColorTexture());
+    expect(mats.sign_lit.getEmissiveFactor()).toEqual([1, 1, 1]);
+    expect(mats.door.getEmissiveFactor()).toEqual([0, 0, 0]);
+    expect(result.after.windows.signTris).toBe(2);
+    expect(result.after.windows.doorTris).toBe(2);
+    expect(result.log.join(" ")).toMatch(/Signs and doors: 1 sign .* material sign_lit\. 1 door/);
     expect(check(result, "valid").status).toBe("pass");
   });
 

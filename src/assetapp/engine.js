@@ -11,6 +11,7 @@ import { analyze, boundsOf, capHoles, computeNormals, diagOf, findDebris, findFl
 import { LINEAR, STANDARD, applyGain, colorStats, coverageMask, fitBakedLight, gainFrom, gainMap, holdToStandard, insideStandard, normalFromColor, paintOf, roughnessFromColor, sampleColor, texelDensity, uvInside } from "./surface.js";
 import { findWindows, litPattern } from "./windows.js";
 import { colorOnly, copyPaint, findCourses, normalsFrom, packWalls, spreadEdges, surfaceAt } from "./walls.js";
+import { meanColor } from "./materials.js";
 
 export const DEFAULTS = {
   removeDebris: true,     // drop small pieces that touch nothing
@@ -421,25 +422,26 @@ export async function finishModel(bytes, userOptions = {}, env = {}) {
     if (flat.skipped) log.push(count(flat.skipped, "part") + " with a skeleton or morph targets " + (flat.skipped === 1 ? "was" : "were") + " not flattened.");
   }
 
-  // 1a. walls: before the surface steps, so the new wall texture is held to the same color standard
+  // 1a. windows, signs and doors: first, while every panel still has its full shape and its own
+  // paint. Once each is its own part, the walls step leaves it alone and the triangle target holds
+  // every edge between parts in place, so no seam can open.
+  let windows = null;
+  if (options.windowLights) {
+    progress("Windows", 0.28);
+    windows = await lightWindows(doc, buffer, env.codec, log);
+  }
+
+  // 1a. walls and roofs: before the surface steps, so the new texture is held to the same color standard
   let walls = null;
   if (WALL_KINDS.includes(options.walls)) {
     progress("Walls", 0.3);
-    walls = await retextureWalls(doc, buffer, options, env.codec, log);
+    walls = await retextureWalls(doc, buffer, options, env.codec, env.materials, log);
   }
 
   // 1b. surfaces: light painted into the color, and the maps a material is missing
   if (DELIGHT[options.delight] || RELIEF[options.surfaceMaps] || options.colorStandard) {
     progress("Surfaces", 0.33);
     await refineSurfaces(doc, options, env.codec, log);
-  }
-
-  // 1c. windows: before the triangle target, while the glass still has its full shape. Once the glass
-  // is its own part, the target holds every edge between parts in place, so no seam can open.
-  let windows = null;
-  if (options.windowLights) {
-    progress("Windows", 0.36);
-    windows = await lightWindows(doc, buffer, env.codec, log);
   }
 
   // 2. animations
@@ -482,7 +484,7 @@ export async function finishModel(bytes, userOptions = {}, env = {}) {
 
   // 6. write
   progress("Writing the file", 0.85);
-  await doc.transform(dedup(), prune({ keepAttributes: true, keepLeaves: false, keepSolidTextures: true, keepExtras: true, keepIndices: true }));
+  await doc.transform(dedup({ keepUniqueNames: true }), prune({ keepAttributes: true, keepLeaves: false, keepSolidTextures: true, keepExtras: true, keepIndices: true }));
   const compress = options.compress == null ? before.extensions.includes("EXT_meshopt_compression") : options.compress;
   if (compress) {
     await doc.transform(reorder({ encoder: MeshoptEncoder }), meshopt({ encoder: MeshoptEncoder, level: "medium" }));
@@ -499,7 +501,7 @@ export async function finishModel(bytes, userOptions = {}, env = {}) {
   after.detail = texelDensity(colorGroups(check).flatMap((g) => g.parts.map((part) => ({ ...part, width: g.size[0], height: g.size[1] }))));
   after.color = await colorOf(check, env.codec);
   if (WALL_KINDS.includes(options.walls)) after.walls = { ...(walls || { count: 0 }), ...wallsOf(check) };
-  if (options.windowLights) after.windows = { ...(windows || { found: 0, lit: 0 }), ...glassOf(check) };
+  if (options.windowLights) after.windows = { ...(windows || { found: 0, lit: 0, signs: 0, doors: 0 }), ...glassOf(check) };
   let validation = null;
   if (env.validate) {
     try { validation = await env.validate(out); } catch (error) { validation = { failed: String(error && error.message || error) }; }
@@ -721,18 +723,21 @@ const WALLS = "walls";
 const WALL_AREA = 0.04;
 // The height of one course, in meters: a concrete block with its joint, and a brick with its joint.
 const WALL_BLOCK = 0.2, WALL_BRICK = 0.075;
+// A smaller solid patch of wall (a pier, a band) still gets the clean texture.
+const WALL_PATCH = 0.005;
+// A roof slope: at least this much of it, and the raised tiles lie this close to its plane.
+const ROOF_AREA = 0.02, ROOF_NEAR = 0.014;
 
 // Move every large flat upright wall to a material of its own, with a new texture: one rectangle
 // per wall at one even scale, the old paint smoothed down to its colors, and a sharp surface laid
 // over it. Positions are not touched. See walls.js.
-async function retextureWalls(doc, buffer, options, codec, log) {
+async function retextureWalls(doc, buffer, options, codec, materials, log) {
   if (!codec) { log.push("Walls: textures cannot be read on this device, so the walls were left as they are."); return null; }
   const box = sceneBounds(doc);
-  const diag = Math.hypot(box.size[0], box.size[1], box.size[2]), tall = box.size[1];
+  const diag = Math.hypot(box.size[0], box.size[1], box.size[2]), tall = box.size[1], floor = box.min[1];
   const size = Math.min(options.maxTexture || 2048, 2048);
   // How many meters one unit of the model will be once it is sized, when a size was asked for.
-  // With that, block, brick and grain are laid at their real dimensions. Without it they can only
-  // be guessed from the old paint and the model's proportions.
+  // With that, block, brick, tile and grain are laid at their real dimensions.
   let metersPerUnit = 0;
   if (options.size && options.size.meters > 0) {
     const dims = { width: box.size[0], height: box.size[1], length: box.size[2], longest: Math.max(box.size[0], box.size[1], box.size[2]) };
@@ -744,7 +749,7 @@ async function retextureWalls(doc, buffer, options, codec, log) {
   for (const s of surfacesOf(doc)) {
     if (s.prim.getAttribute("JOINTS_0") || s.prim.listTargets().length) continue;
     const mat = s.prim.getMaterial();
-    if (!mat || [WALLS, WINDOW_LIT, WINDOW_DARK].includes(mat.getName())) continue;
+    if (!mat || PART_NAMES.includes(mat.getName())) continue;
     const tex = mat.getBaseColorTexture(), info = mat.getBaseColorTextureInfo();
     const uvAcc = tex && s.prim.getAttribute("TEXCOORD_" + (info ? info.getTexCoord() : 0));
     if (!uvAcc || !s.prim.getAttribute("NORMAL")) continue;
@@ -754,20 +759,87 @@ async function retextureWalls(doc, buffer, options, codec, log) {
       pixels.set(tex, decoded);
     }
     if (!pixels.get(tex)) continue;
-    const flats = findFlats(s.pos, s.indices, diag);
+    const base = { s, mat, src: pixels.get(tex), uvOld: uvAcc.getArray() };
+    const taken = new Uint8Array(s.indices.length / 3);
+    const extent = (tris, U, V) => {
+      let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+      for (const t of tris) for (let e = 0; e < 3; e++) {
+        const i = s.indices[t * 3 + e] * 3, a = s.pos[i] * U[0] + s.pos[i + 1] * U[1] + s.pos[i + 2] * U[2], b = s.pos[i] * V[0] + s.pos[i + 1] * V[1] + s.pos[i + 2] * V[2];
+        if (a < a0) a0 = a; if (a > a1) a1 = a; if (b < b0) b0 = b; if (b > b1) b1 = b;
+      }
+      return { a0, a1, b0, b1, w: a1 - a0, h: b1 - b0 };
+    };
+
+    // walls: flat upright areas. A big one always counts. A small one counts when it is a solid
+    // patch (a pier, a band of brick) and not a thin strip of trim or the ring of a frame.
+    let eave = 0, eaveArea = 0;
+    const flats = findFlats(s.pos, s.indices, diag, { minShare: 0.0008 });
     flats.regions.forEach((region) => {
       const n = region.normal;
-      if (Math.abs(n[1]) > 0.2 || region.area < WALL_AREA * diag * diag) return;
-      const len = Math.hypot(n[0], n[2]), hx = n[2] / len, hz = -n[0] / len;
-      let a0 = Infinity, a1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-      for (const t of region.tris) for (let e = 0; e < 3; e++) {
-        const i = s.indices[t * 3 + e] * 3, a = s.pos[i] * hx + s.pos[i + 2] * hz, y = s.pos[i + 1];
-        if (a < a0) a0 = a; if (a > a1) a1 = a; if (y < y0) y0 = y; if (y > y1) y1 = y;
-      }
-      found.push({ s, mat, src: pixels.get(tex), uvOld: uvAcc.getArray(), tris: region.tris, hx, hz, a0, a1, y0, y1, w: a1 - a0, h: y1 - y0 });
+      if (Math.abs(n[1]) > 0.2) return;
+      const len = Math.hypot(n[0], n[2]), U = [n[2] / len, 0, -n[0] / len], V = [0, 1, 0];
+      const e = extent(region.tris, U, V);
+      const big = region.area >= WALL_AREA * diag * diag;
+      const patch = region.area >= WALL_PATCH * diag * diag && Math.min(e.w, e.h) >= 0.05 * diag && region.area / (e.w * e.h) >= 0.4;
+      if (!big && !patch) return;
+      for (const t of region.tris) taken[t] = 1;
+      found.push({ ...base, ...e, kind: "wall", tris: region.tris, U, V });
+      if (big) { eave += e.b1 * region.area; eaveArea += region.area; }
     });
+
+    // roofs: sloping planes above the walls. A tiled roof is modeled with every tile raised, so no
+    // part of it is flat. Each slope is found as the plane most of the upward surface lies near.
+    const line = (eaveArea ? eave / eaveArea : floor + 0.45 * tall) - 0.04 * tall;
+    const cand = [], area = new Float32Array(taken.length), cen = new Float32Array(taken.length * 3), up = new Float32Array(taken.length);
+    for (let t = 0; t < taken.length; t++) {
+      if (taken[t]) continue;
+      const i0 = s.indices[t * 3] * 3, i1 = s.indices[t * 3 + 1] * 3, i2 = s.indices[t * 3 + 2] * 3, p = s.pos;
+      const cy = (p[i0 + 1] + p[i1 + 1] + p[i2 + 1]) / 3;
+      if (cy < line) continue;
+      const ux = p[i1] - p[i0], uy = p[i1 + 1] - p[i0 + 1], uz = p[i1 + 2] - p[i0 + 2], vx = p[i2] - p[i0], vy = p[i2 + 1] - p[i0 + 1], vz = p[i2 + 2] - p[i0 + 2];
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, len = Math.hypot(nx, ny, nz);
+      if (!(len > 0)) continue;
+      area[t] = len / 2; up[t] = ny / len;
+      cen[t * 3] = (p[i0] + p[i1] + p[i2]) / 3; cen[t * 3 + 1] = cy; cen[t * 3 + 2] = (p[i0 + 2] + p[i1 + 2] + p[i2 + 2]) / 3;
+      cand.push(t);
+    }
+    // level surface is a flat roof or a slab, not a slope, and is left out of the search
+    let pool = cand.filter((t) => up[t] > 0.2 && up[t] < 0.97);
+    const near = ROOF_NEAR * diag;
+    let seed = 12345;
+    const pick = (n) => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return seed % n; };
+    for (let slope = 0; slope < 12 && pool.length > 50; slope++) {
+      let best = null, bestArea = 0;
+      for (let tries = 0; tries < 160; tries++) {
+        const a = pool[pick(pool.length)] * 3, b = pool[pick(pool.length)] * 3, c = pool[pick(pool.length)] * 3;
+        const ux = cen[b] - cen[a], uy = cen[b + 1] - cen[a + 1], uz = cen[b + 2] - cen[a + 2], vx = cen[c] - cen[a], vy = cen[c + 1] - cen[a + 1], vz = cen[c + 2] - cen[a + 2];
+        let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        const len = Math.hypot(nx, ny, nz);
+        if (!(len > 1e-9)) continue;
+        nx /= len; ny /= len; nz /= len;
+        if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
+        if (ny < 0.25 || ny > 0.95) continue;
+        const d = nx * cen[a] + ny * cen[a + 1] + nz * cen[a + 2];
+        let sum = 0;
+        for (const t of pool) { const off = nx * cen[t * 3] + ny * cen[t * 3 + 1] + nz * cen[t * 3 + 2] - d; if (off < near && off > -near) sum += area[t]; }
+        if (sum > bestArea) { bestArea = sum; best = [nx, ny, nz, d]; }
+      }
+      if (!best || bestArea < ROOF_AREA * diag * diag) break;
+      const [nx, ny, nz, d] = best;
+      const tris = [];
+      for (const t of cand) {
+        if (taken[t]) continue;
+        const off = nx * cen[t * 3] + ny * cen[t * 3 + 1] + nz * cen[t * 3 + 2] - d;
+        if (off < near && off > -near) { tris.push(t); taken[t] = 1; }
+      }
+      pool = pool.filter((t) => !taken[t]);
+      const hl = Math.hypot(nx, nz), U = [nz / hl, 0, -nx / hl];
+      const V = [-(ny * nx) / hl, hl, -(ny * nz) / hl]; // up the slope
+      found.push({ ...base, ...extent(tris, U, V), kind: "roof", tris: Int32Array.from(tris), U, V, normal: [nx, ny, nz] });
+    }
   }
-  if (!found.length) { log.push("Walls: no large flat upright wall was found, so nothing was changed. Turn on Flatten walls first if the walls are crumpled."); return null; }
+  const wallCount = found.filter((f) => f.kind === "wall").length, roofCount = found.length - wallCount;
+  if (!found.length) { log.push("Walls: no large flat upright wall or sloping roof was found, so nothing was changed. Turn on Flatten walls first if the walls are crumpled."); return null; }
   const pack = packWalls(found, size);
   if (!pack) { log.push("Walls: the walls could not be laid out in one texture. Nothing was changed."); return null; }
   const ppu = pack.ppu;
@@ -777,17 +849,28 @@ async function retextureWalls(doc, buffer, options, codec, log) {
   found.forEach((wall, k) => {
     wall.spot = pack.spots[k];
     let part = bySurface.get(wall.s);
-    if (!part) bySurface.set(wall.s, part = { s: wall.s, mat: wall.mat, src: wall.src, uvOld: wall.uvOld, from: [], uvNew: [], indices: [], taken: new Uint8Array(wall.s.indices.length / 3) });
+    if (!part) bySurface.set(wall.s, part = { s: wall.s, mat: wall.mat, src: wall.src, uvOld: wall.uvOld, from: [], uvNew: [], face: [], indices: [], taken: new Uint8Array(wall.s.indices.length / 3) });
     const seen = new Map();
     for (const t of wall.tris) {
       part.taken[t] = 1;
+      // On a roof the underside of a raised tile faces down. It keeps its own copy of each
+      // corner, so it can be lit from its own side while the top is lit as the slope.
+      let under = 0;
+      if (wall.normal) {
+        const p = wall.s.pos, i0 = wall.s.indices[t * 3] * 3, i1 = wall.s.indices[t * 3 + 1] * 3, i2 = wall.s.indices[t * 3 + 2] * 3;
+        const ux = p[i1] - p[i0], uy = p[i1 + 1] - p[i0 + 1], uz = p[i1 + 2] - p[i0 + 2], vx = p[i2] - p[i0], vy = p[i2 + 1] - p[i0 + 1], vz = p[i2 + 2] - p[i0 + 2];
+        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        const facing = (nx * wall.normal[0] + ny * wall.normal[1] + nz * wall.normal[2]) / (Math.hypot(nx, ny, nz) || 1);
+        under = facing < -0.3 ? 1 : facing < 0.3 ? 2 : 0; // 2: the edge of a tile, standing across the slope. It keeps the normals it had.
+      }
       for (let e = 0; e < 3; e++) {
         const v = wall.s.indices[t * 3 + e];
-        let at = seen.get(v);
+        let at = seen.get(v * 3 + under);
         if (at === undefined) {
-          at = part.from.length; seen.set(v, at); part.from.push(v);
-          const a = wall.s.pos[v * 3] * wall.hx + wall.s.pos[v * 3 + 2] * wall.hz, y = wall.s.pos[v * 3 + 1];
-          part.uvNew.push((wall.spot.x + (a - wall.a0) * ppu) / size, (wall.spot.y + (wall.y1 - y) * ppu) / size);
+          at = part.from.length; seen.set(v * 3 + under, at); part.from.push(v);
+          const p = wall.s.pos, a = p[v * 3] * wall.U[0] + p[v * 3 + 1] * wall.U[1] + p[v * 3 + 2] * wall.U[2], b = p[v * 3] * wall.V[0] + p[v * 3 + 1] * wall.V[1] + p[v * 3 + 2] * wall.V[2];
+          part.uvNew.push((wall.spot.x + (a - wall.a0) * ppu) / size, (wall.spot.y + (wall.b1 - b) * ppu) / size);
+          part.face.push(!wall.normal || under === 2 ? null : under ? [-wall.normal[0], -wall.normal[1], -wall.normal[2]] : wall.normal);
         }
         part.indices.push(at);
       }
@@ -808,6 +891,7 @@ async function retextureWalls(doc, buffer, options, codec, log) {
   let coursed = 0, total = 0;
   const periods = [];
   for (const wall of found) {
+    if (wall.kind !== "wall") continue;
     wall.courses = findCourses(paint, mask, size, wall.spot, 0.006 * tall * ppu, 0.2 * tall * ppu);
     total += wall.w * wall.h;
     if (wall.courses) { coursed += wall.w * wall.h; periods.push(wall.courses.period); }
@@ -818,7 +902,11 @@ async function retextureWalls(doc, buffer, options, codec, log) {
     // courses on a quarter of the wall area is enough: a generator draws them crooked, and crooked
     // courses fade when a row is averaged. Red walls with courses are brick, any other color is block.
     let r = 0, b = 0;
-    for (let p = 0; p < size * size; p++) if (mask[p]) { r += paint[p * 4]; b += paint[p * 4 + 2]; }
+    for (const wall of found) {
+      if (wall.kind !== "wall") continue;
+      const { x, y, w, h } = wall.spot;
+      for (let j = 0; j < h; j += 2) for (let i = 0; i < w; i += 2) { const p = (y + j) * size + x + i; if (mask[p]) { r += paint[p * 4]; b += paint[p * 4 + 2]; } }
+    }
     kind = read && coursed >= total * 0.25 ? (r > 1.3 * b ? "brick" : "block") : "stucco";
   }
   // one course: 0.2 m for block and 0.075 m for brick when the real size is known, else what the
@@ -827,33 +915,88 @@ async function retextureWalls(doc, buffer, options, codec, log) {
   if (kind !== "stucco") course = pxPerMeter ? (kind === "brick" ? WALL_BRICK : WALL_BLOCK) * pxPerMeter : read || (kind === "brick" ? 0.035 : 0.11) * tall * ppu;
   const brickCourse = pxPerMeter ? WALL_BRICK * pxPerMeter : course / 3;
 
+  // Scanned surfaces, laid at true size. They need the real size of the building, and a device
+  // that can fetch them. Without either, the surface is made here instead.
+  const scans = {};
+  if (materials && pxPerMeter) {
+    for (const name of new Set([wallCount ? kind : null, wallCount && kind === "block" ? "brick" : null, roofCount ? "roof" : null])) {
+      if (!name) continue;
+      let scan = null;
+      try { scan = await materials(name); } catch (error) { scan = null; }
+      if (!scan || !scan.color || !scan.normal || !scan.roughness) continue;
+      const px = Math.max(16, Math.min(2048, Math.round(scan.meters * pxPerMeter)));
+      const fit = (img) => (img.width === px && img.height === px ? img.rgba : resizeRgba(img.rgba, img.width, img.height, px, px));
+      scans[name] = { px, color: fit(scan.color), normal: fit(scan.normal), rough: fit(scan.roughness), mean: meanColor(scan.color) };
+    }
+  }
+
   // 3. the new surface, tinted by the old paint's colors
-  const color = new Uint8Array(size * size * 4), high = new Float32Array(size * size).fill(0.5), rough = new Uint8Array(size * size * 4);
+  const color = new Uint8Array(size * size * 4), normal = new Uint8Array(size * size * 4), high = new Float32Array(size * size).fill(0.5), rough = new Uint8Array(size * size * 4);
   for (let p = 0; p < size * size; p++) { rough[p * 4] = 255; rough[p * 4 + 1] = 224; rough[p * 4 + 3] = 255; color[p * 4 + 3] = 255; }
-  const drawn = new Uint8Array(size * size);
+  const drawn = new Uint8Array(size * size), scanned = new Uint8Array(size * size);
   // the soft mottle of a wall is about a quarter of a meter across
   const cell = Math.max(2, Math.round(0.008 * diag * ppu)), grainPx = Math.max(8, pxPerMeter ? 0.25 * pxPerMeter : 0.02 * tall * ppu);
   const at = [0, 0, 0];
+  let kept = 0;
+  const clamp = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
   found.forEach((wall, k) => {
     const { x, y, w, h } = wall.spot;
     const flat = colorOnly(paint, mask, size, wall.spot, cell);
     const phase = wall.courses ? wall.courses.phase : 0;
+    const roof = wall.kind === "roof";
+    // Something painted on a wall with no step in the mesh (a window, a vent, a door) cannot be
+    // split off. Smoothing would smear it into a blot, so wherever the wall is far darker than its
+    // own usual color the old paint is kept as it was, with a margin for the frame.
+    let keep = null;
+    if (!roof) {
+      const lum = new Float32Array(w * h), sample = [];
+      for (let q = 0; q < w * h; q++) { lum[q] = 0.3 * flat[q * 3] + 0.59 * flat[q * 3 + 1] + 0.11 * flat[q * 3 + 2]; if (q % 7 === 0) sample.push(lum[q]); }
+      sample.sort((p, q) => p - q);
+      const usual = sample[sample.length >> 1] || 0;
+      const dark = new Uint8Array(w * h);
+      let any = 0;
+      for (let q = 0; q < w * h; q++) if (lum[q] < 0.55 * usual) { dark[q] = 1; any++; }
+      if (any) {
+        const reach = Math.max(3, Math.round(pxPerMeter ? 0.12 * pxPerMeter : cell * 3));
+        const wide = new Uint8Array(w * h);
+        for (let j = 0; j < h; j++) { let run = -1e9; for (let i = 0; i < w; i++) { if (dark[j * w + i]) run = i; if (i - run <= reach) wide[j * w + i] = 1; } run = 1e9; for (let i = w - 1; i >= 0; i--) { if (dark[j * w + i]) run = i; if (run - i <= reach) wide[j * w + i] = 1; } }
+        keep = new Uint8Array(w * h);
+        for (let i = 0; i < w; i++) { let run = -1e9; for (let j = 0; j < h; j++) { if (wide[j * w + i]) run = j; if (j - run <= reach) keep[j * w + i] = 1; } run = 1e9; for (let j = h - 1; j >= 0; j--) { if (wide[j * w + i]) run = j; if (run - j <= reach) keep[j * w + i] = 1; } }
+      }
+    }
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      if (keep && keep[j * w + i]) {
+        const p = (y + j) * size + x + i;
+        if (mask[p]) { color[p * 4] = paint[p * 4]; color[p * 4 + 1] = paint[p * 4 + 1]; color[p * 4 + 2] = paint[p * 4 + 2]; drawn[p] = 1; kept++; }
+        continue;
+      }
       const r = flat[(j * w + i) * 3], g = flat[(j * w + i) * 3 + 1], b = flat[(j * w + i) * 3 + 2];
       // on a block wall, the parts painted brick red get brick: three courses to each block course
-      const bricky = kind === "block" && r > 1.3 * b && r > 1.12 * g;
-      surfaceAt(bricky ? "brick" : kind, i + (bricky ? 0 : k * 977), j, grainPx, bricky ? brickCourse : course, phase, 11 + k, at);
+      const bricky = !roof && kind === "block" && r > 1.3 * b && r > 1.12 * g;
+      const name = roof ? "roof" : bricky ? "brick" : kind;
       const p = (y + j) * size + x + i;
-      // the same mottle shows more on pale paint than on dark, so pale stucco gets less of it
-      const tint = kind === "stucco" ? 1 + (at[0] - 1) * Math.max(0.4, Math.min(1, 1.25 - (0.3 * r + 0.59 * g + 0.11 * b) / 255)) : at[0];
-      color[p * 4] = Math.max(0, Math.min(255, r * tint)); color[p * 4 + 1] = Math.max(0, Math.min(255, g * tint)); color[p * 4 + 2] = Math.max(0, Math.min(255, b * tint));
-      high[p] = at[1];
-      rough[p * 4 + 1] = Math.max(0, Math.min(255, Math.round(at[2] * 255)));
+      const scan = scans[name];
+      if (scan) {
+        // each wall starts the scan at a different place, so neighbors do not repeat each other
+        const q = (((j + k * 131) % scan.px) * scan.px + ((i + k * 517) % scan.px)) * 4;
+        color[p * 4] = clamp(scan.color[q] * Math.min(3, r / scan.mean[0])); color[p * 4 + 1] = clamp(scan.color[q + 1] * Math.min(3, g / scan.mean[1])); color[p * 4 + 2] = clamp(scan.color[q + 2] * Math.min(3, b / scan.mean[2]));
+        normal[p * 4] = scan.normal[q]; normal[p * 4 + 1] = scan.normal[q + 1]; normal[p * 4 + 2] = scan.normal[q + 2]; normal[p * 4 + 3] = 255;
+        rough[p * 4 + 1] = scan.rough[q];
+        scanned[p] = 1;
+      } else {
+        surfaceAt(roof ? "brick" : name, i + (bricky ? 0 : k * 977), j, grainPx, roof ? brickCourse * 2 : bricky ? brickCourse : course, phase, 11 + k, at);
+        // the same mottle shows more on pale paint than on dark, so pale stucco gets less of it
+        const tint = name === "stucco" ? 1 + (at[0] - 1) * Math.max(0.4, Math.min(1, 1.25 - (0.3 * r + 0.59 * g + 0.11 * b) / 255)) : at[0];
+        color[p * 4] = clamp(r * tint); color[p * 4 + 1] = clamp(g * tint); color[p * 4 + 2] = clamp(b * tint);
+        high[p] = at[1];
+        rough[p * 4 + 1] = clamp(Math.round(at[2] * 255));
+      }
       drawn[p] = 1;
     }
   });
   spreadEdges(color, drawn, size, 6);
-  const normal = normalsFrom(high, size, kind === "stucco" ? 0.8 : 2.4);
+  const made = normalsFrom(high, size, kind === "stucco" ? 0.8 : 2.4);
+  for (let p = 0; p < size * size; p++) if (!scanned[p]) { normal[p * 4] = made[p * 4]; normal[p * 4 + 1] = made[p * 4 + 1]; normal[p * 4 + 2] = made[p * 4 + 2]; normal[p * 4 + 3] = 255; }
 
   const save = async (rgba, name) => {
     const saved = await encodePixels(rgba, size, size, "image/jpeg", { ...options, textureFormat: options.textureFormat === "webp" ? "webp" : "keep" }, codec);
@@ -865,16 +1008,28 @@ async function retextureWalls(doc, buffer, options, codec, log) {
   const texColor = await save(color, "walls_color"), texNormal = await save(normal, "walls_normal"), texRough = await save(rough, "walls_roughness");
   if (!texColor || !texNormal || !texRough) { log.push("Walls: the new texture could not be written on this device. Nothing was changed."); return null; }
 
-  // 4. the walls become a part of their own
-  const made = new Map();
+  // 4. the walls and roofs become a part of their own
+  const mats = new Map();
   for (const part of bySurface.values()) {
     const { s } = part;
-    if (!made.has(part.mat)) made.set(part.mat, part.mat.clone().setName(WALLS).setBaseColorTexture(texColor).setNormalTexture(texNormal).setMetallicRoughnessTexture(texRough).setRoughnessFactor(1).setMetallicFactor(0).setEmissiveTexture(null).setOcclusionTexture(null));
-    const prim = doc.createPrimitive().setMaterial(made.get(part.mat));
+    if (!mats.has(part.mat)) mats.set(part.mat, part.mat.clone().setName(WALLS).setBaseColorTexture(texColor).setNormalTexture(texNormal).setMetallicRoughnessTexture(texRough).setRoughnessFactor(1).setMetallicFactor(0).setEmissiveTexture(null).setOcclusionTexture(null));
+    const prim = doc.createPrimitive().setMaterial(mats.get(part.mat));
     for (const semantic of ["POSITION", "NORMAL"]) {
       const src = s.prim.getAttribute(semantic), arr = src.getArray(), width = src.getElementSize();
       const out = new Float32Array(part.from.length * width);
       part.from.forEach((v, i) => { for (let c = 0; c < width; c++) out[i * width + c] = arr[v * width + c]; });
+      // a roof slope is lit as one plane: its tiles come from the normal map now, not from every
+      // raised tile catching the light its own way. Positions stay, so the eaves keep their shape.
+      if (semantic === "NORMAL") {
+        // the slope's normal is in world space. The part's own space is the node's matrix away.
+        const m = s.node.getWorldMatrix();
+        part.face.forEach((n, i) => {
+          if (!n) return;
+          const x = m[0] * n[0] + m[1] * n[1] + m[2] * n[2], y = m[4] * n[0] + m[5] * n[1] + m[6] * n[2], z = m[8] * n[0] + m[9] * n[1] + m[10] * n[2];
+          const l = Math.hypot(x, y, z) || 1;
+          out[i * 3] = x / l; out[i * 3 + 1] = y / l; out[i * 3 + 2] = z / l;
+        });
+      }
       prim.setAttribute(semantic, doc.createAccessor().setType(src.getType()).setArray(out).setBuffer(buffer));
     }
     prim.setAttribute("TEXCOORD_0", doc.createAccessor().setType("VEC2").setArray(Float32Array.from(part.uvNew)).setBuffer(buffer));
@@ -883,12 +1038,22 @@ async function retextureWalls(doc, buffer, options, codec, log) {
     const rest = [];
     for (let t = 0; t < part.taken.length; t++) if (!part.taken[t]) rest.push(s.indices[t * 3], s.indices[t * 3 + 1], s.indices[t * 3 + 2]);
     // a part that was nothing but walls has no triangles left: an empty part is not valid glTF
-    if (rest.length) s.prim.setIndices(doc.createAccessor().setType("SCALAR").setArray(Uint32Array.from(rest)).setBuffer(buffer));
-    else s.mesh.removePrimitive(s.prim);
+    if (rest.length) {
+      s.prim.setIndices(doc.createAccessor().setType("SCALAR").setArray(Uint32Array.from(rest)).setBuffer(buffer));
+      // A handful of faces lit from the wrong side pass unseen in a whole building. With the walls
+      // and roof gone they are a larger share of what is left, so they are put right here.
+      const normal = s.prim.getAttribute("NORMAL");
+      if (options.fixNormals && normal && wrongNormals(s.prim.getAttribute("POSITION").getArray(), normal.getArray(), Uint32Array.from(rest)) > rest.length / 3 * 0.02) splitWrongFaces(s.prim, buffer, doc);
+    } else s.mesh.removePrimitive(s.prim);
   }
   const named = kind === "stucco" ? "stucco" : kind === "brick" ? "brick" : "block";
-  log.push("Walls: " + count(found.length, "wall") + " moved to a " + size + " px texture of their own, one rectangle each at one even scale. The old paint was smoothed to its colors (stains, bands and corners stay, thin lines and creases go) and a new " + named + " surface was laid over it" + (kind === "stucco" ? "" : pxPerMeter ? ", with courses at their real height (" + (kind === "brick" ? "75 mm" : "200 mm") + ") for the size asked for" : read ? ", with courses where the old paint had them" : "") + ". Material " + WALLS + ". Nothing was moved.");
-  return { count: found.length, kind: named, size };
+  const usedScans = Object.keys(scans);
+  log.push("Walls: " + count(wallCount, "wall") + (roofCount ? " and " + count(roofCount, "roof slope") : "") + " moved to a " + size + " px texture of their own, one rectangle each at one even scale. The old paint was smoothed to its colors (stains, bands and corners stay, thin lines and creases go) and a new " + named + " surface was laid over it" + (kind === "stucco" ? "" : pxPerMeter ? ", with courses at their real height (" + (kind === "brick" ? "75 mm" : "200 mm") + ") for the size asked for" : read ? ", with courses where the old paint had them" : "") + ". Material " + WALLS + ". Nothing was moved.");
+  if (usedScans.length) log.push("Surfaces are scanned photographs (" + usedScans.join(", ") + ") laid at true size and tinted to the old paint.");
+  else if (materials && !pxPerMeter) log.push("Set a Size to get scanned stucco, block, brick and roof tile at true scale. Without one the surface is drawn here instead.");
+  if (kept) log.push("Where a wall is far darker than its own usual color (a window, vent or door that is only painted on, with no step in the mesh) the old paint was kept as it was, so it is not smeared.");
+  if (roofCount) log.push("Roof: each slope is lit as one plane and its tiles come from the texture. The raised tiles of the mesh stay in place, so the eaves keep their shape.");
+  return { count: found.length, walls: wallCount, roofs: roofCount, kind: named, size, scans: usedScans };
 }
 
 // What the finished file holds as walls: triangles, and how many texture pixels cover a meter of them.
@@ -909,7 +1074,8 @@ function wallsOf(doc) {
 
 // The warm light of a lit room, as an emissive color.
 const WINDOW_GLOW = [1, 0.74, 0.45];
-const WINDOW_LIT = "windows_lit", WINDOW_DARK = "windows_dark";
+const WINDOW_LIT = "windows_lit", WINDOW_DARK = "windows_dark", SIGN_LIT = "sign_lit", DOOR = "door";
+const PART_NAMES = [WINDOW_LIT, WINDOW_DARK, SIGN_LIT, DOOR, "walls"];
 
 // Find the window glass on every unskinned part and move it to two materials of its own: one for
 // rooms with a light on, one for rooms without. Vertices are shared with the wall, so nothing
@@ -919,11 +1085,11 @@ async function lightWindows(doc, buffer, codec, log) {
   const box = sceneBounds(doc);
   const diag = Math.hypot(box.size[0], box.size[1], box.size[2]);
   const pixels = new Map(), glass = new Map();
-  let found = 0, lit = 0, unread = 0;
+  let found = 0, lit = 0, unread = 0, signs = 0, doors = 0;
   for (const s of surfacesOf(doc)) {
     if (s.prim.getAttribute("JOINTS_0") || s.prim.listTargets().length) continue;
     const mat = s.prim.getMaterial();
-    if (!mat || mat.getName() === WINDOW_LIT || mat.getName() === WINDOW_DARK) continue;
+    if (!mat || PART_NAMES.includes(mat.getName())) continue;
     const tex = mat.getBaseColorTexture();
     const info = mat.getBaseColorTextureInfo();
     const acc = tex && s.prim.getAttribute("TEXCOORD_" + (info ? info.getTexCoord() : 0));
@@ -951,21 +1117,27 @@ async function lightWindows(doc, buffer, codec, log) {
       return out;
     };
     const res = findWindows(s.pos, idx, diag, colorOf);
-    if (!res.windows.length) continue;
+    if (!res.windows.length && !res.signs.length && !res.doors.length) continue;
     const on = litPattern(res.windows);
     const mark = new Uint8Array(idx.length / 3);
+    for (const door of res.doors) for (const t of door.tris) mark[t] = 4;
+    for (const sign of res.signs) for (const t of sign.tris) mark[t] = 3;
     res.windows.forEach((win, i) => { for (const t of win.tris) mark[t] = on[i] ? 1 : 2; });
-    const lists = [[], [], []];
+    signs += res.signs.length; doors += res.doors.length;
+    const lists = [[], [], [], [], []];
     for (let t = 0; t < mark.length; t++) lists[mark[t]].push(idx[t * 3], idx[t * 3 + 1], idx[t * 3 + 2]);
     if (!glass.has(mat)) {
       const pane = (name, glow) => {
         const m = mat.clone().setName(name).setEmissiveTexture(null).setEmissiveFactor(glow).setNormalTexture(null).setRoughnessFactor(Math.min(mat.getRoughnessFactor(), 0.25));
         return m;
       };
-      glass.set(mat, [null, pane(WINDOW_LIT, WINDOW_GLOW), pane(WINDOW_DARK, [0, 0, 0])]);
+      // a sign glows with its own paint. A door is only named, so a game can find it.
+      const sign = mat.clone().setName(SIGN_LIT).setEmissiveTexture(mat.getBaseColorTexture()).setEmissiveFactor([1, 1, 1]);
+      if (sign.getEmissiveTextureInfo() && info) sign.getEmissiveTextureInfo().setTexCoord(info.getTexCoord());
+      glass.set(mat, [null, pane(WINDOW_LIT, WINDOW_GLOW), pane(WINDOW_DARK, [0, 0, 0]), sign, mat.clone().setName(DOOR)]);
     }
     const accessor = (list) => doc.createAccessor().setType("SCALAR").setArray(Uint32Array.from(list)).setBuffer(buffer);
-    for (const k of [1, 2]) {
+    for (const k of [1, 2, 3, 4]) {
       if (!lists[k].length) continue;
       s.mesh.addPrimitive(s.prim.clone().setIndices(accessor(lists[k])).setMaterial(glass.get(mat)[k]));
     }
@@ -976,20 +1148,21 @@ async function lightWindows(doc, buffer, codec, log) {
   }
   if (found) log.push("Windows: found " + count(found, "window") + " by shape (flat, upright, set back inside a frame, glass colored). " + lit + (lit === 1 ? " has" : " have") + " a light on (material " + WINDOW_LIT + ")" + (found - lit ? " and " + (found - lit) + (found - lit === 1 ? " is" : " are") + " dark (material " + WINDOW_DARK + ")" : "") + ". The walls are untouched and nothing was moved.");
   else log.push("Windows: none found. A window has to be set back from its frame in the mesh. Glass that is only painted on a flat wall cannot be told from the wall.");
+  if (signs || doors) log.push("Signs and doors: " + (signs ? count(signs, "sign") + " (a wide painted panel, proud of the wall or framed) set to glow with " + (signs === 1 ? "its" : "their") + " own paint, material " + SIGN_LIT + ". " : "") + (doors ? count(doors, "door") + " (set back like a window, but painted or reaching the ground) named as material " + DOOR + ", unchanged in look." : ""));
   if (unread) log.push(count(unread, "part") + " skipped for windows because the texture could not be read.");
-  return { found, lit };
+  return { found, lit, signs, doors };
 }
 
 // What the finished file holds as window glass.
 function glassOf(doc) {
-  let litTris = 0, darkTris = 0;
+  let litTris = 0, darkTris = 0, signTris = 0, doorTris = 0;
   for (const mesh of doc.getRoot().listMeshes()) for (const prim of mesh.listPrimitives()) {
     const name = prim.getMaterial() ? prim.getMaterial().getName() : "";
     const n = (prim.getIndices() ? prim.getIndices().getCount() : prim.getAttribute("POSITION").getCount()) / 3;
-    if (name === WINDOW_LIT) litTris += n; else if (name === WINDOW_DARK) darkTris += n;
+    if (name === WINDOW_LIT) litTris += n; else if (name === WINDOW_DARK) darkTris += n; else if (name === SIGN_LIT) signTris += n; else if (name === DOOR) doorTris += n;
   }
   const mat = doc.getRoot().listMaterials().find((m) => m.getName() === WINDOW_LIT);
-  return { litTris, darkTris, glow: mat ? mat.getEmissiveFactor() : null };
+  return { litTris, darkTris, signTris, doorTris, glow: mat ? mat.getEmissiveFactor() : null };
 }
 
 // Every color texture with the triangles that show it. Parts are in world space, so areas are in meters.
@@ -1330,7 +1503,7 @@ function buildChecks(before, after, options, extra) {
   }
   if (after.walls) {
     const w = after.walls;
-    if (w.count) add("walls", w.tris > 0 && w.density > 0 ? "pass" : "fail", "Walls", count(w.count, "wall") + " on a " + w.kind + " texture of their own: " + w.tris + " triangles at " + Math.round(w.density) + " texture pixels per meter, evenly (" + Math.round(w.stretched * 100) + " percent stretched).", "The wall material did not survive to the finished file.");
+    if (w.count) add("walls", w.tris > 0 && w.density > 0 ? "pass" : "fail", "Walls", count(w.walls, "wall") + (w.roofs ? " and " + count(w.roofs, "roof slope") : "") + " on a " + w.kind + " texture of their own" + (w.scans && w.scans.length ? " (scanned)" : "") + ": " + w.tris + " triangles at " + Math.round(w.density) + " texture pixels per meter, evenly (" + Math.round(w.stretched * 100) + " percent stretched).", "The wall material did not survive to the finished file.");
     else add("walls", "note", "Walls", "No large flat upright wall was found.");
   }
   if (after.windows) {
@@ -1339,6 +1512,7 @@ function buildChecks(before, after, options, extra) {
       const kept = (w.lit ? w.litTris > 0 && !!w.glow && w.glow[0] > 0 : true) && (w.found - w.lit ? w.darkTris > 0 : true);
       add("windows", kept ? "pass" : "fail", "Windows", count(w.found, "window") + ": " + w.lit + " lit (" + w.litTris + " triangles, material " + WINDOW_LIT + ") and " + (w.found - w.lit) + " dark (" + w.darkTris + " triangles, material " + WINDOW_DARK + ").", "The window materials did not survive to the finished file. Turn off any step that merges materials.");
     } else add("windows", "note", "Windows", "None found. Only glass that is set back from its frame in the mesh can be found.");
+    if (w.signs || w.doors) add("panels", (w.signs ? w.signTris > 0 : true) && (w.doors ? w.doorTris > 0 : true) ? "pass" : "fail", "Signs and doors", count(w.signs || 0, "sign") + " (" + w.signTris + " triangles, material " + SIGN_LIT + ") and " + count(w.doors || 0, "door") + " (" + w.doorTris + " triangles, material " + DOOR + ").", "The sign or door material did not survive to the finished file.");
   }
   if (after.color) {
     const c = after.color, pct = (v) => Math.round(v * 100);

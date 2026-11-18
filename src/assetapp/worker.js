@@ -2,11 +2,12 @@
 import { finishModel, inspectModel } from "./engine.js";
 import { finishCar, finishMotorcycle } from "./car.js";
 import { browserCodec } from "./codec.js";
+import { browserMaterials } from "./materials.js";
 import { validate } from "./validate.js";
 
 self.onmessage = async (event) => {
   const { id, kind, bytes, options, name } = event.data;
-  const env = { codec: browserCodec, validate, onProgress: (label, fraction) => self.postMessage({ id, progress: { label, fraction } }) };
+  const env = { codec: browserCodec, materials: browserMaterials(browserCodec, import.meta.env.BASE_URL), validate, onProgress: (label, fraction) => self.postMessage({ id, progress: { label, fraction } }) };
   try {
     let result;
     if (kind === "inspect") result = await inspectModel(bytes);

@@ -1,6 +1,7 @@
 // Sovereign Asset: load any 3D model, see what is wrong with it, finish it, download it.
 // Everything runs on this device. No file is uploaded anywhere.
 import "./app.css";
+import { browserMaterials } from "./materials.js";
 import { PRESETS, presetById } from "./presets.js";
 import { DEFAULTS } from "./engine.js";
 import { ACCEPT, toGlb } from "./convert.js";
@@ -102,7 +103,7 @@ function startWorker() {
 }
 async function direct(kind, payload, onProgress) {
   const [{ finishModel, inspectModel }, { browserCodec }, { validate }] = await Promise.all([import("./engine.js"), import("./codec.js"), import("./validate.js")]);
-  const env = { codec: browserCodec, validate, onProgress };
+  const env = { codec: browserCodec, materials: browserMaterials(browserCodec, import.meta.env.BASE_URL), validate, onProgress };
   if (kind === "inspect") return inspectModel(payload.bytes);
   if (kind === "car") return (await import("./car.js")).finishCar(payload.bytes, payload.name, payload.options, env);
   if (kind === "motorcycle") return (await import("./car.js")).finishMotorcycle(payload.bytes, payload.name, payload.options, env);
@@ -233,12 +234,12 @@ function pickPreset(id) {
     <label class="field">Size<span class="pair"><select id="o-axis">${[["", "Keep the size"], ["height", "Height"], ["length", "Length"], ["width", "Width"], ["longest", "Longest side"]].map(([v, l]) => `<option value="${v}"${(o.size ? o.size.axis : "") === v ? " selected" : ""}>${l}</option>`).join("")}</select><input type="number" id="o-m" min="0" step="0.1" placeholder="meters" value="${o.size ? o.size.meters : ""}"></span></label>
     <label class="field">Close holes<select id="o-holes">${[["off", "Off"], ["small", "Small holes only"], ["all", "Every hole it can"]].map(([v, l]) => `<option value="${v}"${o.closeHoles === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
     <label class="field">Flatten walls<select id="o-flat">${[["off", "Off"], ["light", "Light (crumpled walls)"], ["strong", "Strong (badly crumpled walls)"]].map(([v, l]) => `<option value="${v}"${(o.flatten || "off") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
-    <label class="field">Clean wall texture (buildings)<select id="o-walls">${[["off", "Off"], ["auto", "Auto (read the old paint)"], ["stucco", "Stucco"], ["block", "Block"], ["brick", "Brick"]].map(([v, l]) => `<option value="${v}"${(o.walls || "off") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
+    <label class="field">Clean wall and roof texture (buildings)<select id="o-walls">${[["off", "Off"], ["auto", "Auto (read the old paint)"], ["stucco", "Stucco"], ["block", "Block"], ["brick", "Brick"]].map(([v, l]) => `<option value="${v}"${(o.walls || "off") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
     <label class="field">Remove baked light<select id="o-light">${[["off", "Off"], ["light", "Light (take most of it out)"], ["strong", "Strong (take all of it out)"]].map(([v, l]) => `<option value="${v}"${(o.delight || "off") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
     <label class="field">Make surface maps<select id="o-maps">${[["off", "Off"], ["light", "Light relief"], ["strong", "Strong relief"]].map(([v, l]) => `<option value="${v}"${(o.surfaceMaps || "off") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
     <label class="field">Compress geometry<select id="o-zip">${[["", "Same as the source"], ["on", "On (smaller, needs the Meshopt decoder)"], ["off", "Off (opens everywhere)"]].map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select></label>
     <div>
-      ${[["o-debris", "Remove floating debris", o.removeDebris], ["o-facing", "Fix inside-out faces", o.fixFacing], ["o-normals", "Fix normals", o.fixNormals], ["o-ground", "Set on the ground", o.ground], ["o-center", "Center it", o.center], ["o-anim", "Drop animations", o.dropAnimations], ["o-color", "Hold color to the shared standard", o.colorStandard], ["o-win", "Light the windows (buildings)", o.windowLights]]
+      ${[["o-debris", "Remove floating debris", o.removeDebris], ["o-facing", "Fix inside-out faces", o.fixFacing], ["o-normals", "Fix normals", o.fixNormals], ["o-ground", "Set on the ground", o.ground], ["o-center", "Center it", o.center], ["o-anim", "Drop animations", o.dropAnimations], ["o-color", "Hold color to the shared standard", o.colorStandard], ["o-win", "Light the windows and signs, name the doors (buildings)", o.windowLights]]
     .map(([id, label, on]) => `<label class="check"><input type="checkbox" id="${id}"${on ? " checked" : ""}>${label}</label>`).join("")}
     </div>`;
   if (preset.slots && (preset.car || preset.motorcycle)) $("#slot").addEventListener("change", stale);

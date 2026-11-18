@@ -221,9 +221,93 @@ describe("Sovereign Asset walls: in the finished file", () => {
   it("says so when there is no wall to work on, or textures cannot be read", async () => {
     const ball = await modelBytes({ pos: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1], nor: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], uv: [0, 0, 1, 0, 0, 1, 1, 1], idx: [0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3] }, async (doc, node, mat) => { mat.setBaseColorTexture(doc.createTexture("c").setImage(encodePng(8, 8, painted(8, () => [100, 100, 100]))).setMimeType("image/png")); });
     const none = await finishModel(ball, { walls: "auto" }, { codec: pngCodec });
-    expect(none.log.join(" ")).toMatch(/Walls: no large flat upright wall was found/);
+    expect(none.log.join(" ")).toMatch(/Walls: no large flat upright wall or sloping roof was found/);
     expect(check(none, "walls").status).toBe("note");
     const blind = await finishModel(await building(cream(64), 64), { walls: "auto" }, {});
     expect(blind.log.join(" ")).toMatch(/Walls: textures cannot be read on this device/);
+  });
+});
+
+// A fake scan: a flat color with one bright stripe every `period` pixels, so its scale can be read back.
+const fakeScan = (meters, rgb) => {
+  const px = 64, color = painted(px, (x, y) => (y % 8 === 0 ? [255, 255, 255] : rgb)), normal = painted(px, () => [128, 128, 255]), roughness = painted(px, () => [200, 200, 200]);
+  return { meters, color: { width: px, height: px, rgba: color }, normal: { width: px, height: px, rgba: normal }, roughness: { width: px, height: px, rgba: roughness } };
+};
+
+describe("Sovereign Asset walls: scanned surfaces, roofs and painted features", () => {
+  it("lays a scan at true size when the building has a size, and draws the surface itself when it has none", async () => {
+    const asked = [];
+    const materials = async (name) => { asked.push(name); return fakeScan(2, [100, 100, 100]); };
+    const bytes = await building(cream(128), 128);
+    const sized = await finishModel(bytes, { walls: "stucco", maxTexture: 512, size: { axis: "height", meters: 6 } }, { codec: pngCodec, materials, validate });
+    expect(asked).toEqual(["stucco"]);
+    expect(sized.ready).toBe(true);
+    expect(sized.after.walls.scans).toEqual(["stucco"]);
+    expect(sized.log.join(" ")).toMatch(/Surfaces are scanned photographs \(stucco\) laid at true size/);
+    expect(check(sized, "walls").detail).toMatch(/\(scanned\)/);
+    // the scan is tinted to the wall's paint: the top of a wall is still cream, not the scan's gray
+    const img = decodePng((await read(sized.bytes)).getRoot().listMaterials().find((m) => m.getName() === "walls").getBaseColorTexture().getImage());
+    let bright = 0, n = 0;
+    for (let p = 0; p < 512 * 512; p += 13) { if (img.rgba[p * 4] > 150) bright++; n++; }
+    expect(bright / n).toBeGreaterThan(0.2);
+
+    const unsized = await finishModel(bytes, { walls: "stucco", maxTexture: 256 }, { codec: pngCodec, materials });
+    expect(unsized.after.walls.scans).toEqual([]);
+    expect(unsized.log.join(" ")).toMatch(/Set a Size to get scanned stucco, block, brick and roof tile at true scale/);
+    const none = await finishModel(bytes, { walls: "stucco", maxTexture: 256, size: { axis: "height", meters: 6 } }, { codec: pngCodec, materials: async () => null });
+    expect(none.after.walls.scans).toEqual([]);
+    expect(none.ready).toBe(true);
+  });
+
+  it("finds the slopes of a pitched roof above the walls and lights each as one plane", async () => {
+    // the box of walls with a pyramid roof on top, every roof face cut into a grid
+    const data = box();
+    const top = 6, peak = 8, steps = 10;
+    const corners = [[-2, -2], [2, -2], [2, 2], [-2, 2]];
+    for (let f = 0; f < 4; f++) {
+      const a = corners[f], b = corners[(f + 1) % 4];
+      for (let j = 0; j < steps; j++) for (let i = 0; i < steps - j; i++) {
+        const P = (s, t) => { const u = s / steps, v = t / steps; return [a[0] * (1 - u - v) + b[0] * u, top + (peak - top) * v, a[1] * (1 - u - v) + b[1] * u]; };
+        const tri = (p, q, r) => { const at = data.pos.length / 3; for (const c of [p, q, r]) { data.pos.push(...c); data.nor.push(0, 1, 0); data.uv.push(0.5, 0.5); } data.idx.push(at, at + 2, at + 1); };
+        tri(P(i, j), P(i + 1, j), P(i, j + 1));
+        if (i + j < steps - 1) tri(P(i + 1, j), P(i + 1, j + 1), P(i, j + 1));
+      }
+    }
+    const bytes = await modelBytes(data, async (doc, node, mat) => { mat.setName("old").setBaseColorTexture(doc.createTexture("color").setImage(encodePng(64, 64, cream(64))).setMimeType("image/png")); });
+    const asked = [];
+    const result = await finishModel(bytes, { walls: "auto", maxTexture: 512, size: { axis: "height", meters: 8 } }, { codec: pngCodec, validate, materials: async (name) => { asked.push(name); return fakeScan(3, [90, 80, 60]); } });
+    if (!result.ready) console.log(result.report);
+    expect(result.ready).toBe(true);
+    expect(result.after.walls.walls).toBe(4);
+    expect(result.after.walls.roofs).toBe(4);
+    expect(asked.sort()).toEqual(["roof", "stucco"]);
+    expect(result.log.join(" ")).toMatch(/4 walls and 4 roof slopes moved to a 512 px texture/);
+    expect(result.log.join(" ")).toMatch(/Roof: each slope is lit as one plane/);
+    expect(result.after.walls.tris).toBe(result.before.triangles);
+    expect(check(result, "valid").status).toBe("pass");
+  });
+
+  it("does not take a flat roof or a slab for a slope", async () => {
+    const data = box();
+    const at = data.pos.length / 3;
+    for (const c of [[-2, 6, -2], [2, 6, -2], [2, 6, 2], [-2, 6, 2]]) { data.pos.push(...c); data.nor.push(0, 1, 0); data.uv.push(0.5, 0.5); }
+    data.idx.push(at, at + 2, at + 1, at, at + 3, at + 2);
+    const bytes = await modelBytes(data, async (doc, node, mat) => { mat.setBaseColorTexture(doc.createTexture("color").setImage(encodePng(64, 64, cream(64))).setMimeType("image/png")); });
+    const result = await finishModel(bytes, { walls: "auto", maxTexture: 256 }, { codec: pngCodec });
+    expect(result.after.walls.roofs).toBe(0);
+    expect(result.after.walls.walls).toBe(4);
+  });
+
+  it("keeps a window that is only painted on a wall, and smooths the wall around it", async () => {
+    // cream walls with a dark painted window crossed by a pale bar: the bar is detail smoothing would erase
+    const size = 128;
+    const rgba = painted(size, (x, y) => (x > 50 && x < 78 && y > 40 && y < 70 ? (x >= 63 && x <= 65 ? [240, 240, 240] : [30, 34, 40]) : [220, 200, 180]));
+    const result = await finishModel(await building(rgba, size), { walls: "stucco", maxTexture: 512 }, { codec: pngCodec });
+    expect(result.log.join(" ")).toMatch(/the old paint was kept as it was, so it is not smeared/);
+    const img = decodePng((await read(result.bytes)).getRoot().listMaterials().find((m) => m.getName() === "walls").getBaseColorTexture().getImage());
+    let dark = 0, pale = 0;
+    for (let p = 0; p < 512 * 512; p++) { const v = img.rgba[p * 4]; if (v < 60) dark++; else if (v > 150 && img.rgba[p * 4 + 2] >= v - 5) pale++; } // pale and neutral: the bar, not the cream wall
+    expect(dark).toBeGreaterThan(2000); // the glass is still dark, not a gray blot
+    expect(pale).toBeGreaterThan(20);   // and the bar across it is still there
   });
 });

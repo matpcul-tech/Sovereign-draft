@@ -1,0 +1,3 @@
+Scanned surface textures from Poly Haven (polyhaven.com), released under CC0 (public domain).
+stucco: beige_wall_001. brick: brick_wall_001. block: concrete_block_wall. roof: roof_tiles_14.
+Resized from the 2K originals: color and normal (OpenGL) at 1024 px, roughness at 512 px.
