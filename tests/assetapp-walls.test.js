@@ -43,6 +43,33 @@ describe("Sovereign Asset walls: layout", () => {
   });
 });
 
+describe("Sovereign Asset walls: sheets that lie on each other", () => {
+  // two quads over the same square of the new texture: one plain cream, one with a dark window
+  const src = { width: 8, height: 8, rgba: painted(8, (x) => (x < 4 ? [220, 200, 180] : [30, 34, 40])) };
+  const uvNew = new Float32Array([0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1]);
+  const plain = [0.1, 0.1, 0.3, 0.1, 0.3, 0.9, 0.1, 0.9], glass = [0.7, 0.1, 0.9, 0.1, 0.9, 0.9, 0.7, 0.9];
+  const usual = (extra) => ({ owner: new Int16Array(32 * 32).fill(0), color: new Float32Array([220, 200, 180]), ...extra });
+  const draw = (first, second, rule) => {
+    const out = new Uint8Array(32 * 32 * 4);
+    copyPaint(out, 32, uvNew, new Float32Array([...first, ...second]), new Uint32Array([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]), src, rule);
+    return out[(16 * 32 + 16) * 4];
+  };
+
+  it("keeps the paint that is further from the wall's color, whichever sheet is drawn last", () => {
+    expect(draw(plain, glass)).toBeLessThan(60);     // no rule: the last one drawn wins
+    expect(draw(glass, plain)).toBeGreaterThan(180);
+    expect(draw(plain, glass, usual())).toBeLessThan(60);
+    expect(draw(glass, plain, usual())).toBeLessThan(60);
+  });
+
+  it("lets a sheet that is clearly in front cover the one behind", () => {
+    const front = (a, b) => usual({ depth: new Float32Array(32 * 32), near: 0.01, front: new Float32Array([a, a, a, a, b, b, b, b]) });
+    expect(draw(glass, plain, front(0, 0.5))).toBeGreaterThan(180); // plain wall in front of hidden glass
+    expect(draw(plain, glass, front(0.5, 0))).toBeGreaterThan(180); // in either order
+    expect(draw(glass, plain, front(0, 0.005))).toBeLessThan(60);   // level with each other: the window shows
+  });
+});
+
 describe("Sovereign Asset walls: paint down to color", () => {
   it("drops thin lines and creases and keeps areas of color", () => {
     const size = 96;
@@ -233,6 +260,37 @@ const fakeScan = (meters, rgb) => {
   const px = 64, color = painted(px, (x, y) => (y % 8 === 0 ? [255, 255, 255] : rgb)), normal = painted(px, () => [128, 128, 255]), roughness = painted(px, () => [200, 200, 200]);
   return { meters, color: { width: px, height: px, rgba: color }, normal: { width: px, height: px, rgba: normal }, roughness: { width: px, height: px, rgba: roughness } };
 };
+
+describe("Sovereign Asset walls: a wall is taken whole", () => {
+  it("joins a loose sheet that lies in a wall's plane to that wall", async () => {
+    // one long thin triangle lying on the front wall, sharing no corner with it: a diagonal wedge
+    const data = box();
+    const at = data.pos.length / 3;
+    data.pos.push(-1.3, 0.4, -2, -0.9, 0.4, -2, 1.5, 5.3, -2);
+    data.nor.push(0, 0, -1, 0, 0, -1, 0, 0, -1);
+    data.uv.push(0.3, 0.3, 0.32, 0.3, 0.5, 0.6);
+    data.idx.push(at, at + 2, at + 1);
+    const bytes = await modelBytes(data, async (doc, node, mat) => { mat.setName("old").setBaseColorTexture(doc.createTexture("color").setImage(encodePng(128, 128, cream(128))).setMimeType("image/png")); });
+    const result = await finishModel(bytes, { walls: "stucco", maxTexture: 256 }, { codec: pngCodec, validate });
+    if (!result.ready) console.log(result.report);
+    expect(result.ready).toBe(true);
+    expect(check(result, "valid").status).toBe("pass");
+    expect(result.after.walls.count).toBe(4);
+    expect(result.after.walls.tris).toBe(result.before.triangles); // nothing left behind in the old material
+    expect(result.log.join(" ")).toMatch(/Walls taken whole: 1 loose triangle/);
+  });
+
+  it("keeps a brown door that is only painted on, which is not dark enough to be kept for darkness", async () => {
+    const size = 128;
+    const rgba = painted(size, (x, y) => (x > 44 && x < 84 && y > 30 && y < 110 ? (y % 20 < 2 ? [120, 80, 45] : [170, 115, 65]) : [220, 200, 180]));
+    const result = await finishModel(await building(rgba, size), { walls: "stucco", maxTexture: 512 }, { codec: pngCodec });
+    expect(result.log.join(" ")).toMatch(/kept whole the same way/);
+    const img = decodePng((await read(result.bytes)).getRoot().listMaterials().find((m) => m.getName() === "walls").getBaseColorTexture().getImage());
+    let rails = 0;
+    for (let p = 0; p < 512 * 512; p++) if (img.rgba[p * 4] > 100 && img.rgba[p * 4] < 135 && img.rgba[p * 4 + 2] < 60) rails++; // the darker rails across the door
+    expect(rails).toBeGreaterThan(500);
+  });
+});
 
 describe("Sovereign Asset walls: scanned surfaces, roofs and painted features", () => {
   it("lays a scan at true size when the building has a size, and draws the surface itself when it has none", async () => {

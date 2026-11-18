@@ -45,7 +45,15 @@ export function packWalls(rects, size, pad = 6) {
 
 // Draw triangles into the new texture, reading each pixel's color from the old one.
 // uvNew and uvOld are per vertex. Returns the pixels it wrote as a mask.
-export function copyPaint(out, size, uvNew, uvOld, indices, src) {
+// A generator can leave two sheets of a wall lying on each other with different paint: plain wall
+// on one, a window on the other. Which one shows is then luck. With `usual` (the usual color of
+// the wall each pixel belongs to: { owner, color }), a pixel that is drawn twice keeps the paint
+// that is further from that color, so the window wins over the plain sheet, whatever the order.
+// That is for sheets at the same depth. With usual.front (per vertex, how far out from the wall's
+// plane) and usual.near, a sheet that sits clearly in front of another simply covers it, as it
+// does to the eye, so paint on a sheet hidden behind the wall never comes through.
+export function copyPaint(out, size, uvNew, uvOld, indices, src, usual) {
+  const front = usual && usual.front, depth = usual && usual.depth;
   const mask = new Uint8Array(size * size);
   const { width, height, rgba } = src;
   eachTexel(size, size, uvNew, indices, (p, w0, w1, w2, i0, i1, i2) => {
@@ -53,7 +61,21 @@ export function copyPaint(out, size, uvNew, uvOld, indices, src) {
     const fx = Math.min(width - 1, Math.max(0, u * width - 0.5)), fy = Math.min(height - 1, Math.max(0, v * height - 0.5));
     const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(width - 1, x0 + 1), y1 = Math.min(height - 1, y0 + 1), tx = fx - x0, ty = fy - y0;
     const a = (y0 * width + x0) * 4, b = (y0 * width + x1) * 4, c = (y1 * width + x0) * 4, d = (y1 * width + x1) * 4, o = p * 4;
-    for (let k = 0; k < 3; k++) out[o + k] = Math.round((rgba[a + k] * (1 - tx) + rgba[b + k] * tx) * (1 - ty) + (rgba[c + k] * (1 - tx) + rgba[d + k] * tx) * ty);
+    const r = (rgba[a] * (1 - tx) + rgba[b] * tx) * (1 - ty) + (rgba[c] * (1 - tx) + rgba[d] * tx) * ty;
+    const g = (rgba[a + 1] * (1 - tx) + rgba[b + 1] * tx) * (1 - ty) + (rgba[c + 1] * (1 - tx) + rgba[d + 1] * tx) * ty;
+    const bl = (rgba[a + 2] * (1 - tx) + rgba[b + 2] * tx) * (1 - ty) + (rgba[c + 2] * (1 - tx) + rgba[d + 2] * tx) * ty;
+    const out0 = front ? w0 * front[i0] + w1 * front[i1] + w2 * front[i2] : 0;
+    if (usual && out[o + 3] === 255) {
+      const k = usual.owner[p];
+      if (front && out0 < depth[p] - usual.near) { mask[p] = 1; return; }
+      if (k >= 0 && !(front && out0 > depth[p] + usual.near)) {
+        const ur = usual.color[k * 3], ug = usual.color[k * 3 + 1], ub = usual.color[k * 3 + 2];
+        const now = Math.abs(out[o] - ur) + Math.abs(out[o + 1] - ug) + Math.abs(out[o + 2] - ub);
+        if (Math.abs(r - ur) + Math.abs(g - ug) + Math.abs(bl - ub) <= now) { mask[p] = 1; return; }
+      }
+    }
+    out[o] = Math.round(r); out[o + 1] = Math.round(g); out[o + 2] = Math.round(bl);
+    if (front) depth[p] = out0;
     out[o + 3] = 255;
     mask[p] = 1;
   });
