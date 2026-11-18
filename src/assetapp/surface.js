@@ -417,7 +417,8 @@ export function colorStats(rgba, mask) {
     const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     luma[Math.min(bins - 1, Math.floor(l * bins))]++; count++;
     const max = Math.max(r, g, b);
-    if (max > 0.05) { sat[Math.min(bins - 1, Math.floor((max - Math.min(r, g, b)) / max * bins))]++; colored++; }
+    // vividness is read where there is enough light to see it: in near-black pixels it is only noise
+    if (max > 0.15) { sat[Math.min(bins - 1, Math.floor((max - Math.min(r, g, b)) / max * bins))]++; colored++; }
   }
   if (!count) return null;
   return {
@@ -443,16 +444,8 @@ export function holdToStandard(rgba, standard = STANDARD) {
     const i = p * 4;
     let r = LINEAR[rgba[i]], g = LINEAR[rgba[i + 1]], b = LINEAR[rgba[i + 2]];
     let touched = false;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    let l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    if (max > 0.05) {
-      const s = (max - min) / max;
-      if (s > vivid) {
-        const want = vivid + (vividMax - vivid) * (1 - Math.exp(-(s - vivid) / (vividMax - vivid)));
-        const k = want * l / ((max - min) - want * (max - l));
-        if (k > 0 && k < 1) { r = l + (r - l) * k; g = l + (g - l) * k; b = l + (b - l) * k; touched = true; }
-      }
-    }
+    // brightness first, so a near-black pixel is judged for vividness at the level it ends up at
+    const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
     let to = l;
     if (l < toe) to = floor + l * (toe - floor) / toe;
     else if (l > shoulder) to = shoulder + (ceiling - shoulder) * (1 - Math.exp(-(l - shoulder) / (ceiling - shoulder)));
@@ -460,6 +453,15 @@ export function holdToStandard(rgba, standard = STANDARD) {
       if (l > 1e-5) { const k = to / l; r *= k; g *= k; b *= k; }
       else { r = to; g = to; b = to; }
       touched = true;
+    }
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    if (max > 0.02) {
+      const s = (max - min) / max;
+      if (s > vivid) {
+        const want = vivid + (vividMax - vivid) * (1 - Math.exp(-(s - vivid) / (vividMax - vivid)));
+        const k = want * to / ((max - min) - want * (max - to));
+        if (k > 0 && k < 1) { r = to + (r - to) * k; g = to + (g - to) * k; b = to + (b - to) * k; touched = true; }
+      }
     }
     if (!touched) continue;
     const R = toSrgb(r), G = toSrgb(g), B = toSrgb(b);

@@ -337,6 +337,17 @@ describe("Sovereign Asset surface: one color standard", () => {
     }
   });
 
+  it("does not let near-black pixels come out vivid once they are lifted", () => {
+    // dark, noisy, fully saturated pixels, the way a generator paints tires and glass, next to a bright yellow body
+    const colors = [];
+    for (let i = 0; i < 300; i++) colors.push(i % 3 ? [12 + (i % 7), 0, 0] : [240, 205, 0]);
+    const held = holdToStandard(px(...colors));
+    const stats = colorStats(held.rgba, null);
+    expect(insideStandard(stats)).toBe(true);
+    expect(stats.vivid).toBeLessThanOrEqual(STANDARD.vividMax + 0.02);
+    expect(stats.low).toBeGreaterThanOrEqual(STANDARD.floor * 0.8);
+  });
+
   it("reads the range from the pixels the model uses, not the gutter", () => {
     const rgba = px([0, 0, 0], [128, 128, 128], [128, 128, 128], [255, 255, 255]);
     const all = colorStats(rgba, null), used = colorStats(rgba, new Uint8Array([0, 1, 1, 0]));
