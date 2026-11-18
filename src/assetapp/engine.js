@@ -719,6 +719,8 @@ const WALL_KINDS = ["auto", "stucco", "block", "brick"];
 const WALLS = "walls";
 // A wall worth its own texture is at least this share of the model's size, squared.
 const WALL_AREA = 0.04;
+// The height of one course, in meters: a concrete block with its joint, and a brick with its joint.
+const WALL_BLOCK = 0.2, WALL_BRICK = 0.075;
 
 // Move every large flat upright wall to a material of its own, with a new texture: one rectangle
 // per wall at one even scale, the old paint smoothed down to its colors, and a sharp surface laid
@@ -728,6 +730,15 @@ async function retextureWalls(doc, buffer, options, codec, log) {
   const box = sceneBounds(doc);
   const diag = Math.hypot(box.size[0], box.size[1], box.size[2]), tall = box.size[1];
   const size = Math.min(options.maxTexture || 2048, 2048);
+  // How many meters one unit of the model will be once it is sized, when a size was asked for.
+  // With that, block, brick and grain are laid at their real dimensions. Without it they can only
+  // be guessed from the old paint and the model's proportions.
+  let metersPerUnit = 0;
+  if (options.size && options.size.meters > 0) {
+    const dims = { width: box.size[0], height: box.size[1], length: box.size[2], longest: Math.max(box.size[0], box.size[1], box.size[2]) };
+    const dim = dims[options.size.axis] || dims.longest;
+    if (dim > 1e-9) metersPerUnit = options.size.meters / dim;
+  }
   const found = [];
   const pixels = new Map();
   for (const s of surfacesOf(doc)) {
@@ -810,13 +821,18 @@ async function retextureWalls(doc, buffer, options, codec, log) {
     for (let p = 0; p < size * size; p++) if (mask[p]) { r += paint[p * 4]; b += paint[p * 4 + 2]; }
     kind = read && coursed >= total * 0.25 ? (r > 1.3 * b ? "brick" : "block") : "stucco";
   }
-  if (kind !== "stucco") course = read || (kind === "brick" ? 0.035 : 0.11) * tall * ppu;
+  // one course: 0.2 m for block and 0.075 m for brick when the real size is known, else what the
+  // old paint showed, else a guess from the model's height
+  const pxPerMeter = metersPerUnit ? ppu / metersPerUnit : 0;
+  if (kind !== "stucco") course = pxPerMeter ? (kind === "brick" ? WALL_BRICK : WALL_BLOCK) * pxPerMeter : read || (kind === "brick" ? 0.035 : 0.11) * tall * ppu;
+  const brickCourse = pxPerMeter ? WALL_BRICK * pxPerMeter : course / 3;
 
   // 3. the new surface, tinted by the old paint's colors
   const color = new Uint8Array(size * size * 4), high = new Float32Array(size * size).fill(0.5), rough = new Uint8Array(size * size * 4);
   for (let p = 0; p < size * size; p++) { rough[p * 4] = 255; rough[p * 4 + 1] = 224; rough[p * 4 + 3] = 255; color[p * 4 + 3] = 255; }
   const drawn = new Uint8Array(size * size);
-  const cell = Math.max(2, Math.round(0.008 * diag * ppu)), grainPx = Math.max(6, 0.02 * tall * ppu);
+  // the soft mottle of a wall is about a quarter of a meter across
+  const cell = Math.max(2, Math.round(0.008 * diag * ppu)), grainPx = Math.max(8, pxPerMeter ? 0.25 * pxPerMeter : 0.02 * tall * ppu);
   const at = [0, 0, 0];
   found.forEach((wall, k) => {
     const { x, y, w, h } = wall.spot;
@@ -826,16 +842,18 @@ async function retextureWalls(doc, buffer, options, codec, log) {
       const r = flat[(j * w + i) * 3], g = flat[(j * w + i) * 3 + 1], b = flat[(j * w + i) * 3 + 2];
       // on a block wall, the parts painted brick red get brick: three courses to each block course
       const bricky = kind === "block" && r > 1.3 * b && r > 1.12 * g;
-      surfaceAt(bricky ? "brick" : kind, i + (bricky ? 0 : k * 977), j, grainPx, bricky ? course / 3 : course, phase, 11 + k, at);
+      surfaceAt(bricky ? "brick" : kind, i + (bricky ? 0 : k * 977), j, grainPx, bricky ? brickCourse : course, phase, 11 + k, at);
       const p = (y + j) * size + x + i;
-      color[p * 4] = Math.max(0, Math.min(255, r * at[0])); color[p * 4 + 1] = Math.max(0, Math.min(255, g * at[0])); color[p * 4 + 2] = Math.max(0, Math.min(255, b * at[0]));
+      // the same mottle shows more on pale paint than on dark, so pale stucco gets less of it
+      const tint = kind === "stucco" ? 1 + (at[0] - 1) * Math.max(0.4, Math.min(1, 1.25 - (0.3 * r + 0.59 * g + 0.11 * b) / 255)) : at[0];
+      color[p * 4] = Math.max(0, Math.min(255, r * tint)); color[p * 4 + 1] = Math.max(0, Math.min(255, g * tint)); color[p * 4 + 2] = Math.max(0, Math.min(255, b * tint));
       high[p] = at[1];
       rough[p * 4 + 1] = Math.max(0, Math.min(255, Math.round(at[2] * 255)));
       drawn[p] = 1;
     }
   });
   spreadEdges(color, drawn, size, 6);
-  const normal = normalsFrom(high, size, kind === "stucco" ? 1.6 : 2.4);
+  const normal = normalsFrom(high, size, kind === "stucco" ? 0.8 : 2.4);
 
   const save = async (rgba, name) => {
     const saved = await encodePixels(rgba, size, size, "image/jpeg", { ...options, textureFormat: options.textureFormat === "webp" ? "webp" : "keep" }, codec);
@@ -869,7 +887,7 @@ async function retextureWalls(doc, buffer, options, codec, log) {
     else s.mesh.removePrimitive(s.prim);
   }
   const named = kind === "stucco" ? "stucco" : kind === "brick" ? "brick" : "block";
-  log.push("Walls: " + count(found.length, "wall") + " moved to a " + size + " px texture of their own, one rectangle each at one even scale. The old paint was smoothed to its colors (stains, bands and corners stay, thin lines and creases go) and a new " + named + " surface was laid over it" + (read && kind !== "stucco" ? ", with courses where the old paint had them" : "") + ". Material " + WALLS + ". Nothing was moved.");
+  log.push("Walls: " + count(found.length, "wall") + " moved to a " + size + " px texture of their own, one rectangle each at one even scale. The old paint was smoothed to its colors (stains, bands and corners stay, thin lines and creases go) and a new " + named + " surface was laid over it" + (kind === "stucco" ? "" : pxPerMeter ? ", with courses at their real height (" + (kind === "brick" ? "75 mm" : "200 mm") + ") for the size asked for" : read ? ", with courses where the old paint had them" : "") + ". Material " + WALLS + ". Nothing was moved.");
   return { count: found.length, kind: named, size };
 }
 

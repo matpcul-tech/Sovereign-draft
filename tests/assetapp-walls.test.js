@@ -174,6 +174,41 @@ describe("Sovereign Asset walls: in the finished file", () => {
     expect(told.after.walls.kind).toBe("brick");
   });
 
+  it("lays block at its real height once the building has a size", async () => {
+    // the box is 6 units tall. Sized to 6 m, one 200 mm course is 1/30 of the wall whatever the old paint showed
+    const sized = await finishModel(await building(coursed(128), 128), { walls: "block", maxTexture: 512, size: { axis: "height", meters: 6 } }, { codec: pngCodec });
+    expect(sized.log.join(" ")).toMatch(/courses at their real height \(200 mm\) for the size asked for/);
+    const doc = await read(sized.bytes);
+    const mat = doc.getRoot().listMaterials().find((m) => m.getName() === "walls");
+    const prim = doc.getRoot().listMeshes()[0].listPrimitives().find((p) => p.getMaterial() === mat);
+    const pos = prim.getAttribute("POSITION").getArray(), uv = prim.getAttribute("TEXCOORD_0").getArray();
+    const img = decodePng(mat.getBaseColorTexture().getImage());
+    // walk up one wall's texture column and count the dark joints: 6 m of wall holds 30 courses
+    let lo = 0, hi = 0;
+    for (let v = 0; v < pos.length / 3; v++) { if (pos[v * 3 + 1] < pos[lo * 3 + 1]) lo = v; if (pos[v * 3 + 1] > pos[hi * 3 + 1]) hi = v; }
+    const x = Math.floor(uv[lo * 2] * 512) + 30, y0 = Math.floor(Math.min(uv[lo * 2 + 1], uv[hi * 2 + 1]) * 512), y1 = Math.floor(Math.max(uv[lo * 2 + 1], uv[hi * 2 + 1]) * 512);
+    const col = []; let mean = 0;
+    for (let y = y0; y < y1; y++) { let v = 0; for (let dx = 0; dx < 40; dx++) v += img.rgba[(y * 512 + x + dx) * 4]; col.push(v / 40); mean += v / 40; }
+    mean /= col.length;
+    let joints = 0;
+    for (let i = 1; i < col.length; i++) if (col[i] < mean * 0.93 && col[i - 1] >= mean * 0.93) joints++;
+    expect(joints).toBeGreaterThanOrEqual(27);
+    expect(joints).toBeLessThanOrEqual(33);
+    expect(sized.after.walls.density).toBeGreaterThan(20);
+  });
+
+  it("keeps stucco faint on a pale wall", async () => {
+    const pale = await finishModel(await building(painted(64, () => [235, 228, 215]), 64), { walls: "stucco", maxTexture: 512, size: { axis: "height", meters: 6 } }, { codec: pngCodec });
+    const doc = await read(pale.bytes);
+    const img = decodePng(doc.getRoot().listMaterials().find((m) => m.getName() === "walls").getBaseColorTexture().getImage());
+    let s = 0, s2 = 0, n = 0;
+    for (let y = 40; y < 200; y++) for (let x = 40; x < 200; x++) { const v = img.rgba[(y * 512 + x) * 4]; s += v; s2 += v * v; n++; }
+    const mean = s / n, dev = Math.sqrt(s2 / n - mean * mean);
+    expect(mean).toBeGreaterThan(225);
+    expect(dev).toBeGreaterThan(0.3); // not dead flat
+    expect(dev).toBeLessThan(4);      // and never static: under 2 percent
+  });
+
   it("runs with flatten, windows, the color standard and a triangle target, and the file is valid", async () => {
     const result = await finishModel(await building(cream(128), 128), { walls: "auto", flatten: "light", windowLights: true, colorStandard: true, surfaceMaps: "light", triangles: 200, maxTexture: 256 }, { codec: pngCodec, validate });
     expect(check(result, "valid").status).toBe("pass");

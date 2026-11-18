@@ -203,12 +203,16 @@ function grain(x, y, seed, octaves) {
 // grainPx is the size of the coarsest grain in pixels. Returns [tint, height, roughness]:
 // tint multiplies the color (1 is no change), height is 0 to 1 for the normal map.
 export function surfaceAt(kind, x, y, grainPx, course, phase, seed, out) {
-  const fine = grain(x / (grainPx * 0.12), y / (grainPx * 0.12), seed + 3, 3);
+  // the finest grain is never under 4 pixels: grain at one pixel shimmers like static when the
+  // game shrinks the texture, and it is what the normal map turns into sparkle
+  const finePx = Math.max(4, grainPx * 0.12);
+  const fine = grain(x / finePx, y / finePx, seed + 3, 3);
   if (kind === "stucco") {
-    const coarse = grain(x / grainPx, y / grainPx, seed, 4);
-    out[0] = 1 + (coarse - 0.5) * 0.16 + (fine - 0.5) * 0.1;
-    out[1] = 0.5 + (coarse - 0.5) * 0.5 + (fine - 0.5) * 0.5;
-    out[2] = 0.88 + (fine - 0.5) * 0.14;
+    // a troweled wall is nearly even: a soft mottle a hand wide, and a faint tooth
+    const coarse = grain(x / grainPx, y / grainPx, seed, 3);
+    out[0] = 1 + (coarse - 0.5) * 0.07 + (fine - 0.5) * 0.035;
+    out[1] = 0.5 + (coarse - 0.5) * 0.5 + (fine - 0.5) * 0.12;
+    out[2] = 0.88 + (fine - 0.5) * 0.1;
     return out;
   }
   const length = kind === "brick" ? course * 3 : course * 2;
