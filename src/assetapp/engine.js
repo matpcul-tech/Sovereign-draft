@@ -8,7 +8,8 @@ import { ALL_EXTENSIONS, EXTTextureWebP } from "@gltf-transform/extensions";
 import { compactPrimitive, convertPrimitiveToTriangles, dedup, dequantize, meshopt, prune, reorder, simplify, transformMesh, weld } from "@gltf-transform/functions";
 import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from "meshoptimizer";
 import { analyze, boundsOf, capHoles, computeNormals, diagOf, findDebris, findFlats, flattenPositions, invertedIslands, resizeRgba, wrongNormals } from "./geometry.js";
-import { STANDARD, applyGain, colorStats, coverageMask, fitBakedLight, gainFrom, gainMap, holdToStandard, insideStandard, normalFromColor, paintOf, roughnessFromColor, sampleColor, texelDensity, uvInside } from "./surface.js";
+import { LINEAR, STANDARD, applyGain, colorStats, coverageMask, fitBakedLight, gainFrom, gainMap, holdToStandard, insideStandard, normalFromColor, paintOf, roughnessFromColor, sampleColor, texelDensity, uvInside } from "./surface.js";
+import { findWindows, litPattern } from "./windows.js";
 
 export const DEFAULTS = {
   removeDebris: true,     // drop small pieces that touch nothing
@@ -18,6 +19,7 @@ export const DEFAULTS = {
   flatten: "off",         // "off", "light", "strong": press crumpled walls flat and light each as one face
   delight: "off",         // "off", "light", "strong": take light that was painted into the color texture back out
   surfaceMaps: "off",     // "off", "light", "strong": make normal and roughness maps for materials that have none
+  windowLights: false,    // buildings: find the window glass and give it its own lit and unlit materials
   colorStandard: false,   // hold every color texture to one range of brightness and vividness, so assets match
   minTexelDensity: null,  // fail when the color texture has fewer pixels per meter than this
   rotation: null,         // 4x4 column-major rotation applied before sizing
@@ -44,6 +46,8 @@ const DELIGHT = { light: { strength: 0.6, limit: 1.6 }, strong: { strength: 1, l
 const RELIEF = { light: 2, strong: 4 };
 // Painted light under this ratio, lit side to dark side, is not worth touching the texture for.
 const BAKED_FLOOR = 1.08;
+// When this share of the surface faces straight along an axis, the model is a box of walls.
+const BOXY = 0.75;
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 
 let ioReady = null;
@@ -421,6 +425,14 @@ export async function finishModel(bytes, userOptions = {}, env = {}) {
     await refineSurfaces(doc, options, env.codec, log);
   }
 
+  // 1c. windows: before the triangle target, while the glass still has its full shape. Once the glass
+  // is its own part, the target holds every edge between parts in place, so no seam can open.
+  let windows = null;
+  if (options.windowLights) {
+    progress("Windows", 0.36);
+    windows = await lightWindows(doc, buffer, env.codec, log);
+  }
+
   // 2. animations
   if (options.dropAnimations && root.listAnimations().length) {
     const dropped = root.listAnimations().length;
@@ -477,6 +489,7 @@ export async function finishModel(bytes, userOptions = {}, env = {}) {
   after.defects = findDefects(surfacesOf(check), Math.hypot(...after.size), false);
   after.detail = texelDensity(colorGroups(check).flatMap((g) => g.parts.map((part) => ({ ...part, width: g.size[0], height: g.size[1] }))));
   after.color = await colorOf(check, env.codec);
+  if (options.windowLights) after.windows = { ...(windows || { found: 0, lit: 0 }), ...glassOf(check) };
   let validation = null;
   if (env.validate) {
     try { validation = await env.validate(out); } catch (error) { validation = { failed: String(error && error.message || error) }; }
@@ -692,6 +705,90 @@ function placeModel(doc, options, log) {
   log.push("The model was " + parts.join(", ") + "." + (single ? "" : " The change sits on one top node, so parts, bones and animation are untouched."));
 }
 
+// The warm light of a lit room, as an emissive color.
+const WINDOW_GLOW = [1, 0.74, 0.45];
+const WINDOW_LIT = "windows_lit", WINDOW_DARK = "windows_dark";
+
+// Find the window glass on every unskinned part and move it to two materials of its own: one for
+// rooms with a light on, one for rooms without. Vertices are shared with the wall, so nothing
+// moves and no seam opens. The game can then switch the lit material on at night.
+async function lightWindows(doc, buffer, codec, log) {
+  if (!codec) { log.push("Windows: textures cannot be read on this device, so glass could not be told from painted doors. Nothing was changed."); return null; }
+  const box = sceneBounds(doc);
+  const diag = Math.hypot(box.size[0], box.size[1], box.size[2]);
+  const pixels = new Map(), glass = new Map();
+  let found = 0, lit = 0, unread = 0;
+  for (const s of surfacesOf(doc)) {
+    if (s.prim.getAttribute("JOINTS_0") || s.prim.listTargets().length) continue;
+    const mat = s.prim.getMaterial();
+    if (!mat || mat.getName() === WINDOW_LIT || mat.getName() === WINDOW_DARK) continue;
+    const tex = mat.getBaseColorTexture();
+    const info = mat.getBaseColorTextureInfo();
+    const acc = tex && s.prim.getAttribute("TEXCOORD_" + (info ? info.getTexCoord() : 0));
+    if (!acc) continue;
+    if (!pixels.has(tex)) {
+      let decoded = null;
+      try { decoded = await codec.decode(tex.getImage(), tex.getMimeType()); } catch (error) { decoded = null; }
+      pixels.set(tex, decoded);
+    }
+    const img = pixels.get(tex);
+    if (!img) { unread++; continue; }
+    const uv = acc.getArray(), idx = s.indices, w = img.width, h = img.height, rgba = img.rgba;
+    const at = (u, v) => (Math.min(h - 1, Math.max(0, Math.floor((v - Math.floor(v)) * h))) * w + Math.min(w - 1, Math.max(0, Math.floor((u - Math.floor(u)) * w)))) * 4;
+    const out = [0, 0, 0];
+    // the color of a triangle: its middle and a point toward each corner
+    const colorOf = (t) => {
+      const a = idx[t * 3] * 2, b = idx[t * 3 + 1] * 2, c = idx[t * 3 + 2] * 2;
+      let r = 0, g = 0, bl = 0;
+      for (let k = 0; k < 4; k++) {
+        const x = k === 1 ? 0.6 : k ? 0.2 : 1 / 3, y = k === 2 ? 0.6 : k ? 0.2 : 1 / 3, z = 1 - x - y;
+        const o = at(x * uv[a] + y * uv[b] + z * uv[c], x * uv[a + 1] + y * uv[b + 1] + z * uv[c + 1]);
+        r += LINEAR[rgba[o]]; g += LINEAR[rgba[o + 1]]; bl += LINEAR[rgba[o + 2]];
+      }
+      out[0] = r / 4; out[1] = g / 4; out[2] = bl / 4;
+      return out;
+    };
+    const res = findWindows(s.pos, idx, diag, colorOf);
+    if (!res.windows.length) continue;
+    const on = litPattern(res.windows);
+    const mark = new Uint8Array(idx.length / 3);
+    res.windows.forEach((win, i) => { for (const t of win.tris) mark[t] = on[i] ? 1 : 2; });
+    const lists = [[], [], []];
+    for (let t = 0; t < mark.length; t++) lists[mark[t]].push(idx[t * 3], idx[t * 3 + 1], idx[t * 3 + 2]);
+    if (!glass.has(mat)) {
+      const pane = (name, glow) => {
+        const m = mat.clone().setName(name).setEmissiveTexture(null).setEmissiveFactor(glow).setNormalTexture(null).setRoughnessFactor(Math.min(mat.getRoughnessFactor(), 0.25));
+        return m;
+      };
+      glass.set(mat, [null, pane(WINDOW_LIT, WINDOW_GLOW), pane(WINDOW_DARK, [0, 0, 0])]);
+    }
+    const accessor = (list) => doc.createAccessor().setType("SCALAR").setArray(Uint32Array.from(list)).setBuffer(buffer);
+    for (const k of [1, 2]) {
+      if (!lists[k].length) continue;
+      s.mesh.addPrimitive(s.prim.clone().setIndices(accessor(lists[k])).setMaterial(glass.get(mat)[k]));
+    }
+    s.prim.setIndices(accessor(lists[0]));
+    found += res.windows.length;
+    lit += on.filter(Boolean).length;
+  }
+  if (found) log.push("Windows: found " + count(found, "window") + " by shape (flat, upright, set back inside a frame, glass colored). " + lit + (lit === 1 ? " has" : " have") + " a light on (material " + WINDOW_LIT + ")" + (found - lit ? " and " + (found - lit) + (found - lit === 1 ? " is" : " are") + " dark (material " + WINDOW_DARK + ")" : "") + ". The walls are untouched and nothing was moved.");
+  else log.push("Windows: none found. A window has to be set back from its frame in the mesh. Glass that is only painted on a flat wall cannot be told from the wall.");
+  if (unread) log.push(count(unread, "part") + " skipped for windows because the texture could not be read.");
+  return { found, lit };
+}
+
+// What the finished file holds as window glass.
+function glassOf(doc) {
+  let litTris = 0, darkTris = 0;
+  for (const mesh of doc.getRoot().listMeshes()) for (const prim of mesh.listPrimitives()) {
+    const name = prim.getMaterial() ? prim.getMaterial().getName() : "";
+    const n = (prim.getIndices() ? prim.getIndices().getCount() : prim.getAttribute("POSITION").getCount()) / 3;
+    if (name === WINDOW_LIT) litTris += n; else if (name === WINDOW_DARK) darkTris += n;
+  }
+  const mat = doc.getRoot().listMaterials().find((m) => m.getName() === WINDOW_LIT);
+  return { litTris, darkTris, glow: mat ? mat.getEmissiveFactor() : null };
+}
+
 // Every color texture with the triangles that show it. Parts are in world space, so areas are in meters.
 function colorGroups(doc) {
   const groups = new Map();
@@ -790,6 +887,14 @@ function bakedLightOf(mesh, rgba, width, height, mask) {
     const area = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 6;
     weight[a / 3] += area; weight[b / 3] += area; weight[c / 3] += area;
   }
+  // A building is flat walls facing a handful of ways. With so few directions, a wall that is
+  // simply dirtier, or a base painted a darker color, looks exactly like light. Do not guess.
+  let square = 0, all = 0;
+  for (let i = 0; i < count; i++) {
+    all += weight[i];
+    if (Math.max(Math.abs(normal[i * 3]), Math.abs(normal[i * 3 + 1]), Math.abs(normal[i * 3 + 2])) > 0.978) square += weight[i]; // within 12 degrees of an axis
+  }
+  if (all > 0 && square / all > BOXY) return { found: false, range: 1, boxy: true };
   let lo = Infinity, hi = -Infinity;
   for (let i = 0; i < count; i++) { const y = p[i * 3 + 1]; if (y < lo) lo = y; if (y > hi) hi = y; }
   const span = hi - lo > 0 ? hi - lo : 1;
@@ -809,7 +914,7 @@ async function refineSurfaces(doc, options, codec, log) {
   const groups = colorGroups(doc);
   if (!groups.length) { log.push("Surfaces: the model has no color texture, so there was nothing to work from."); return; }
   if (!codec) { log.push("Surfaces: textures cannot be read on this device, so baked light and surface maps were skipped."); return; }
-  let unread = 0, tiled = 0, evened = 0, clean = 0, normals = 0, roughs = 0, had = 0, flatMaps = 0, matched = 0, inRange = 0;
+  let unread = 0, tiled = 0, evened = 0, clean = 0, normals = 0, roughs = 0, had = 0, flatMaps = 0, matched = 0, inRange = 0, boxed = 0;
   let worst = 1, left = 1, shown = null;
   for (const group of groups) {
     const pixels = await readPixels(group.tex, options, codec);
@@ -824,7 +929,8 @@ async function refineSurfaces(doc, options, codec, log) {
       if (!single) tiled++;
       else if (mesh.pos.length / 3 >= 200) {
         const fit = bakedLightOf(mesh, rgba, width, height, mask);
-        if (fit.found && fit.range >= BAKED_FLOOR) {
+        if (fit.boxy) boxed++;
+        else if (fit.found && fit.range >= BAKED_FLOOR) {
           rgba = applyGain(rgba, gainMap(width, height, mesh.uv, mesh.indices, gainFrom(fit, light.strength, light.limit)));
           const again = bakedLightOf(mesh, rgba, width, height, mask);
           lit = { was: fit.range, now: again.found ? again.range : 1 };
@@ -890,6 +996,7 @@ async function refineSurfaces(doc, options, codec, log) {
   if (light) {
     if (evened) log.push("Baked light: " + count(evened, "color texture") + " had light painted in. On the worst, the lit side was " + worst.toFixed(2) + " times as bright as the dark side. It is now " + left.toFixed(2) + " times. Local painted shadows are not touched.");
     else if (clean) log.push("Baked light: none found. Brightness does not follow the direction faces point or how high they sit.");
+    if (boxed) log.push("Baked light: " + count(boxed, "color texture") + " left as painted. The model is mostly flat walls facing a few ways, and there a dirtier wall or a darker painted base looks exactly like light. That is not guessed at.");
     if (tiled) log.push(count(tiled, "tiling texture") + " left as painted. A texture that repeats has no single pixel per point to correct.");
   }
   if (options.colorStandard) {
@@ -1017,6 +1124,13 @@ function buildChecks(before, after, options, extra) {
         ? (over ? count(over, "texture is", "textures are") + " over " + options.maxTexture + " px." : "All " + (after.textures.length - unknown) + " readable textures are " + options.maxTexture + " px or under.") + (unknown ? " " + unknown + " are in a format this app cannot measure." : "")
         : "The model has no textures.",
       "Those textures could not be decoded on this device. Convert them to PNG or JPEG first.");
+  }
+  if (after.windows) {
+    const w = after.windows;
+    if (w.found) {
+      const kept = (w.lit ? w.litTris > 0 && !!w.glow && w.glow[0] > 0 : true) && (w.found - w.lit ? w.darkTris > 0 : true);
+      add("windows", kept ? "pass" : "fail", "Windows", count(w.found, "window") + ": " + w.lit + " lit (" + w.litTris + " triangles, material " + WINDOW_LIT + ") and " + (w.found - w.lit) + " dark (" + w.darkTris + " triangles, material " + WINDOW_DARK + ").", "The window materials did not survive to the finished file. Turn off any step that merges materials.");
+    } else add("windows", "note", "Windows", "None found. Only glass that is set back from its frame in the mesh can be found.");
   }
   if (after.color) {
     const c = after.color, pct = (v) => Math.round(v * 100);

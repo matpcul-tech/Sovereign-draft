@@ -430,6 +430,7 @@ export function wrongNormals(pos, normals, indices, list) {
 // Finds connected areas whose triangles all lie within `tolerance` (a share of the model size) of
 // one plane and face within `angle` degrees of it. An area must be a real share of the surface, and
 // it must not bow: a curved surface reads as a run of narrow flats, and those are left alone.
+// keepBowed skips that last test, for a caller that only wants to find areas and will not move them.
 // Returns { owner, regions, held }. owner[t] is the area a triangle belongs to, or -1.
 // Each region is { normal, d, tris, area } with the plane normal . p = d.
 export function findFlats(pos, indices, diag, opts = {}) {
@@ -556,7 +557,7 @@ export function findFlats(pos, indices, diag, opts = {}) {
       }
     }
     const big = regionArea >= total * minShare && Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) >= minSpan;
-    if (!big || bows(queue, count, n, fn, fc, area, tol)) {
+    if (!big || (!opts.keepBowed && bows(queue, count, n, fn, fc, area, tol))) {
       if (big) out.held++;
       for (let i = 0; i < count; i++) tried[queue[i]] = 1;
       continue;

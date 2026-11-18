@@ -51,9 +51,15 @@ export const PRESETS = [
     options: { triangles: 15000, maxTexture: 1024, textureFormat: "keep", size: { axis: "height", meters: 1.8 }, requireSkeleton: true, dropAnimations: true }
   },
   {
+    id: "unity-building",
+    name: "Unity building",
+    blurb: "Clean, walls pressed flat, windows found and lit as their own materials, color held to the shared standard, surface maps made. 2048 px.",
+    options: { triangles: null, maxTexture: 2048, textureFormat: "keep", size: null, flatten: "light", surfaceMaps: "light", colorStandard: true, windowLights: true }
+  },
+  {
     id: "unity-static",
-    name: "Unity building or prop",
-    blurb: "Clean, walls pressed flat, baked light out, color held to the shared standard, surface maps made. 2048 px.",
+    name: "Unity prop",
+    blurb: "Clean, flat areas pressed flat, baked light out, color held to the shared standard, surface maps made. 2048 px.",
     options: { triangles: null, maxTexture: 2048, textureFormat: "keep", size: null, flatten: "light", delight: "light", surfaceMaps: "light", colorStandard: true }
   },
   {

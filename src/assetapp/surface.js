@@ -7,7 +7,7 @@
 //                  direction a face points and how high it sits, so it can be divided back out
 //   normalFromColor, roughnessFromColor   surface maps for a material that came with a color texture only
 
-const LINEAR = new Float32Array(256);
+export const LINEAR = new Float32Array(256);
 for (let i = 0; i < 256; i++) { const c = i / 255; LINEAR[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
 
 function toSrgb(v) {

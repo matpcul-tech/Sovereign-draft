@@ -237,7 +237,7 @@ function pickPreset(id) {
     <label class="field">Make surface maps<select id="o-maps">${[["off", "Off"], ["light", "Light relief"], ["strong", "Strong relief"]].map(([v, l]) => `<option value="${v}"${(o.surfaceMaps || "off") === v ? " selected" : ""}>${l}</option>`).join("")}</select></label>
     <label class="field">Compress geometry<select id="o-zip">${[["", "Same as the source"], ["on", "On (smaller, needs the Meshopt decoder)"], ["off", "Off (opens everywhere)"]].map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select></label>
     <div>
-      ${[["o-debris", "Remove floating debris", o.removeDebris], ["o-facing", "Fix inside-out faces", o.fixFacing], ["o-normals", "Fix normals", o.fixNormals], ["o-ground", "Set on the ground", o.ground], ["o-center", "Center it", o.center], ["o-anim", "Drop animations", o.dropAnimations], ["o-color", "Hold color to the shared standard", o.colorStandard]]
+      ${[["o-debris", "Remove floating debris", o.removeDebris], ["o-facing", "Fix inside-out faces", o.fixFacing], ["o-normals", "Fix normals", o.fixNormals], ["o-ground", "Set on the ground", o.ground], ["o-center", "Center it", o.center], ["o-anim", "Drop animations", o.dropAnimations], ["o-color", "Hold color to the shared standard", o.colorStandard], ["o-win", "Light the windows (buildings)", o.windowLights]]
     .map(([id, label, on]) => `<label class="check"><input type="checkbox" id="${id}"${on ? " checked" : ""}>${label}</label>`).join("")}
     </div>`;
   if (preset.slots && (preset.car || preset.motorcycle)) $("#slot").addEventListener("change", stale);
@@ -261,7 +261,7 @@ function readOptions() {
     surfaceMaps: $("#o-maps").value,
     compress: zip === "on" ? true : zip === "off" ? false : null,
     removeDebris: $("#o-debris").checked, fixFacing: $("#o-facing").checked, fixNormals: $("#o-normals").checked,
-    ground: $("#o-ground").checked, center: $("#o-center").checked, dropAnimations: $("#o-anim").checked, colorStandard: $("#o-color").checked,
+    ground: $("#o-ground").checked, center: $("#o-center").checked, dropAnimations: $("#o-anim").checked, colorStandard: $("#o-color").checked, windowLights: $("#o-win").checked,
     rotation: state.turn
   };
 }
