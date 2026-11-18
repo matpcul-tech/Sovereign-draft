@@ -774,6 +774,7 @@ async function retextureWalls(doc, buffer, options, codec, materials, log) {
     // patch (a pier, a band of brick) and not a thin strip of trim or the ring of a frame.
     let eave = 0, eaveArea = 0;
     const flats = findFlats(s.pos, s.indices, diag, { minShare: 0.0008 });
+    const fronts = flats.regions.filter((region) => Math.abs(region.normal[1]) <= 0.2 && region.area >= WALL_AREA * diag * diag);
     flats.regions.forEach((region) => {
       const n = region.normal;
       if (Math.abs(n[1]) > 0.2) return;
@@ -782,6 +783,9 @@ async function retextureWalls(doc, buffer, options, codec, materials, log) {
       const big = region.area >= WALL_AREA * diag * diag;
       const patch = region.area >= WALL_PATCH * diag * diag && Math.min(e.w, e.h) >= 0.05 * diag && region.area / (e.w * e.h) >= 0.4;
       if (!big && !patch) return;
+      // A door leaf is a solid upright patch too. It is tall, stands on the ground, and sits back
+      // from the wall it is in. A pier is tall and on the ground but level with the wall.
+      if (!big && e.h >= 1.3 * e.w && e.b0 - floor < 0.08 * tall && fronts.some((f) => f.normal[0] * n[0] + f.normal[2] * n[2] > 0.95 && f.d - region.d > 0.004 * diag)) return;
       for (const t of region.tris) taken[t] = 1;
       found.push({ ...base, ...e, kind: "wall", tris: region.tris, U, V });
       if (big) { eave += e.b1 * region.area; eaveArea += region.area; }
@@ -920,7 +924,9 @@ async function retextureWalls(doc, buffer, options, codec, materials, log) {
   const scans = {};
   if (materials && pxPerMeter) {
     for (const name of new Set([wallCount ? kind : null, wallCount && kind === "block" ? "brick" : null, roofCount ? "roof" : null])) {
-      if (!name) continue;
+      // block is drawn, not scanned: its courses read clean and crisp at street distance, where the
+      // scan's are faint. Stucco, brick and roof tile use the scans.
+      if (!name || name === "block") continue;
       let scan = null;
       try { scan = await materials(name); } catch (error) { scan = null; }
       if (!scan || !scan.color || !scan.normal || !scan.roughness) continue;

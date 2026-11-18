@@ -259,6 +259,14 @@ describe("Sovereign Asset walls: scanned surfaces, roofs and painted features", 
     expect(none.ready).toBe(true);
   });
 
+  it("draws block itself, for crisp courses, and still uses the brick scan beside it", async () => {
+    const asked = [];
+    const result = await finishModel(await building(coursed(128), 128), { walls: "block", maxTexture: 512, size: { axis: "height", meters: 6 } }, { codec: pngCodec, materials: async (name) => { asked.push(name); return fakeScan(1.3, [100, 74, 60]); } });
+    expect(asked).toEqual(["brick"]);
+    expect(result.log.join(" ")).toMatch(/courses at their real height \(200 mm\)/);
+    expect(result.ready).toBe(true);
+  });
+
   it("finds the slopes of a pitched roof above the walls and lights each as one plane", async () => {
     // the box of walls with a pyramid roof on top, every roof face cut into a grid
     const data = box();
