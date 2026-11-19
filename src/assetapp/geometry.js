@@ -170,12 +170,15 @@ function signedVolume(pos, a, b, c, o) {
 
 // A closed (or very nearly closed) piece whose volume comes out negative has its faces pointing inward.
 // A piece that sits wholly inside a larger closed piece is left alone: that is how a hollow is modeled.
-export function invertedIslands(analysis) {
+// With `whole`, only a piece with no open edge at all counts. That is for a model whose walls and
+// windows were split into parts of their own: what is left of a piece that gave up some of its
+// faces is not a shell any more, and which way its leftover "volume" comes out means nothing.
+export function invertedIslands(analysis, whole) {
   const out = [];
   const list = analysis.islands;
   for (let k = 0; k < list.length; k++) {
     const isl = list[k];
-    if (isl.tris < 4 || isl.open > isl.edges * 0.02) continue;
+    if (isl.tris < 4 || isl.open > (whole ? 0 : isl.edges * 0.02)) continue;
     const box = (isl.max[0] - isl.min[0]) * (isl.max[1] - isl.min[1]) * (isl.max[2] - isl.min[2]);
     if (!(isl.volume < -Math.max(box * 1e-4, 1e-18))) continue;
     let hollow = false;

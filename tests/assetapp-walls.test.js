@@ -292,6 +292,24 @@ describe("Sovereign Asset walls: a wall is taken whole", () => {
   });
 });
 
+describe("Sovereign Asset walls: lit as one plane", () => {
+  it("gives every corner of a wall the wall's own normal, however the source leaned them", async () => {
+    const data = box();
+    for (let i = 0; i < data.nor.length; i += 3) { data.nor[i] += 0.4 * Math.sin(i); data.nor[i + 1] += 0.3 * Math.cos(i * 1.7); } // crumpled light
+    const bytes = await modelBytes(data, async (doc, node, mat) => { mat.setName("old").setBaseColorTexture(doc.createTexture("color").setImage(encodePng(64, 64, cream(64))).setMimeType("image/png")); });
+    const result = await finishModel(bytes, { walls: "stucco", maxTexture: 256 }, { codec: pngCodec });
+    expect(result.log.join(" ")).toMatch(/Each wall is lit as one plane/);
+    const doc = await read(result.bytes);
+    const prim = doc.getRoot().listMeshes()[0].listPrimitives().find((q) => q.getMaterial().getName() === "walls");
+    const nor = prim.getAttribute("NORMAL").getArray();
+    for (let i = 0; i < nor.length; i += 3) {
+      expect(Math.abs(nor[i + 1])).toBeLessThan(1e-4); // upright walls: no lean
+      expect(Math.max(Math.abs(nor[i]), Math.abs(nor[i + 2]))).toBeGreaterThan(0.9999);
+    }
+    expect(check(result, "normals").status).toBe("pass");
+  });
+});
+
 describe("Sovereign Asset walls: scanned surfaces, roofs and painted features", () => {
   it("lays a scan at true size when the building has a size, and draws the surface itself when it has none", async () => {
     const asked = [];

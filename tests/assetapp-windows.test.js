@@ -174,9 +174,12 @@ describe("Sovereign Asset windows: in the finished file", () => {
     expect(check(result, "valid").status).toBe("pass");
     expect(check(result, "windows").status).toBe("pass");
     expect(result.after.windows.found).toBe(8);
-    expect(result.after.windows.litTris + result.after.windows.darkTris).toBe(16);
-    expect(result.after.windows.litTris).toBe(result.after.windows.lit * 2);
-    expect(result.after.triangles).toBe(result.before.triangles);
+    // each pane is its own 2 triangles, and one whole sheet of 2 just behind it
+    expect(result.after.windows.litTris + result.after.windows.darkTris).toBe(32);
+    expect(result.after.windows.litTris).toBe(result.after.windows.lit * 4);
+    expect(result.after.triangles).toBe(result.before.triangles + 16);
+    expect(check(result, "normals").status).toBe("pass"); // the sheets face out
+    expect(result.log.join(" ")).toMatch(/Whole panes/);
 
     const doc = await read(result.bytes);
     const mats = Object.fromEntries(doc.getRoot().listMaterials().map((m) => [m.getName(), m]));
@@ -190,10 +193,19 @@ describe("Sovereign Asset windows: in the finished file", () => {
     expect(result.log.join(" ")).toMatch(/Windows: found 8 windows by shape/);
   });
 
+  it("finds the windows again in a file that was finished before", async () => {
+    const once = await finishModel(await building(row), { windowLights: true }, { codec: pngCodec, validate });
+    const twice = await finishModel(once.bytes, { windowLights: true }, { codec: pngCodec, validate });
+    expect(twice.log.join(" ")).toMatch(/had been finished before/);
+    expect(twice.after.windows.found).toBe(8);
+    expect(twice.after.windows.lit).toBeGreaterThan(0);
+    expect(check(twice, "valid").status).toBe("pass");
+  });
+
   it("keeps every window through a triangle target, with no gap at the frame", async () => {
     const result = await finishModel(await building(row), { windowLights: true, triangles: 60 }, { codec: pngCodec, validate });
     expect(check(result, "windows").status).toBe("pass");
-    expect(result.after.windows.litTris + result.after.windows.darkTris).toBe(16);
+    expect(result.after.windows.litTris + result.after.windows.darkTris).toBe(32);
     expect(check(result, "valid").status).toBe("pass");
   });
 
