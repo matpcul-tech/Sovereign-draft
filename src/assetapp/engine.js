@@ -7,10 +7,11 @@ import { WebIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS, EXTTextureWebP } from "@gltf-transform/extensions";
 import { compactPrimitive, convertPrimitiveToTriangles, dedup, dequantize, meshopt, prune, reorder, simplify, transformMesh, weld } from "@gltf-transform/functions";
 import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from "meshoptimizer";
+import { findAwnings, stripeColors, stripeCount } from "./awnings.js";
 import { analyze, boundsOf, capHoles, computeNormals, diagOf, findDebris, findFlats, flattenPositions, invertedIslands, resizeRgba, weldIds, wrongNormals } from "./geometry.js";
 import { LINEAR, STANDARD, applyGain, colorStats, coverageMask, fitBakedLight, gainFrom, gainMap, holdToStandard, insideStandard, normalFromColor, paintOf, roughnessFromColor, sampleColor, texelDensity, uvInside } from "./surface.js";
 import { findWindows, litPattern } from "./windows.js";
-import { colorOnly, copyPaint, findCourses, normalsFrom, packWalls, spreadEdges, surfaceAt } from "./walls.js";
+import { colorOnly, copyPaint, findCourses, levelGrain, normalsFrom, packWalls, spreadEdges, surfaceAt } from "./walls.js";
 import { meanColor } from "./materials.js";
 
 export const DEFAULTS = {
@@ -435,6 +436,7 @@ export async function finishModel(bytes, userOptions = {}, env = {}) {
   let walls = null;
   if (WALL_KINDS.includes(options.walls)) {
     progress("Walls", 0.3);
+    await stripeAwnings(doc, buffer, options, env.codec, log);
     walls = await retextureWalls(doc, buffer, options, env.codec, env.materials, log);
   }
 
@@ -727,6 +729,8 @@ const WALL_BLOCK = 0.2, WALL_BRICK = 0.075;
 const WALL_PATCH = 0.005;
 // A triangle beside a wall joins it when a corner is this near the wall's plane and none is further than the second.
 const WALL_ON = 0.003, WALL_CLOSE = 0.02;
+// Paint that changes this much more going up a wall than along it has level courses. Measured: stucco 0.75 to 1.4, brick and block 1.6 to 4.2.
+const WALL_GRAIN = 1.5;
 // A roof slope: at least this much of it, and the raised tiles lie this close to its plane.
 const ROOF_AREA = 0.02, ROOF_NEAR = 0.014;
 
@@ -1018,6 +1022,9 @@ async function retextureWalls(doc, buffer, options, codec, materials, log) {
     if (wall.kind !== "wall") continue;
     wall.courses = findCourses(paint, mask, size, wall.spot, 0.006 * tall * ppu, 0.2 * tall * ppu);
     total += wall.w * wall.h;
+    // fine brick is too small to measure a course on, but its mortar lines still make the paint
+    // change more going up the wall than along it. Plain paint is near 1 on that scale.
+    if (!wall.courses && levelGrain(paint, mask, size, wall.spot) >= WALL_GRAIN) coursed += wall.w * wall.h;
     if (wall.courses) { coursed += wall.w * wall.h; periods.push(wall.courses.period); }
   }
   periods.sort((p, q) => p - q);
@@ -1031,7 +1038,7 @@ async function retextureWalls(doc, buffer, options, codec, materials, log) {
       const { x, y, w, h } = wall.spot;
       for (let j = 0; j < h; j += 2) for (let i = 0; i < w; i += 2) { const p = (y + j) * size + x + i; if (mask[p]) { r += paint[p * 4]; b += paint[p * 4 + 2]; } }
     }
-    kind = read && coursed >= total * 0.25 ? (r > 1.3 * b ? "brick" : "block") : "stucco";
+    kind = coursed >= total * 0.25 ? (r > 1.3 * b ? "brick" : "block") : "stucco";
   }
   // one course: 0.2 m for block and 0.075 m for brick when the real size is known, else what the
   // old paint showed, else a guess from the model's height
@@ -1185,7 +1192,13 @@ async function retextureWalls(doc, buffer, options, codec, materials, log) {
       if (scan) {
         // each wall starts the scan at a different place, so neighbors do not repeat each other
         const q = (((j + k * 131) % scan.px) * scan.px + ((i + k * 517) % scan.px)) * 4;
-        color[p * 4] = clamp(scan.color[q] * Math.min(3, r / scan.mean[0])); color[p * 4 + 1] = clamp(scan.color[q + 1] * Math.min(3, g / scan.mean[1])); color[p * 4 + 2] = clamp(scan.color[q + 2] * Math.min(3, b / scan.mean[2]));
+        // The scan gives the light and dark of the surface. Its own colors come through only a
+        // third: a red brick scan under yellow paint would otherwise turn green and orange brick by brick.
+        // The brick scan is of old, burnt brick, black next to cream. Its swing is eased so a wall reads as one wall.
+        const raw = (0.3 * scan.color[q] + 0.59 * scan.color[q + 1] + 0.11 * scan.color[q + 2]) / (0.3 * scan.mean[0] + 0.59 * scan.mean[1] + 0.11 * scan.mean[2]);
+        const sl = name === "brick" ? Math.pow(raw, 0.55) : raw;
+        const shade = (c, paintC) => clamp(paintC * Math.min(3, sl * (1 + 0.35 * (scan.color[q + c] / scan.mean[c] / (sl || 1) - 1))));
+        color[p * 4] = shade(0, r); color[p * 4 + 1] = shade(1, g); color[p * 4 + 2] = shade(2, b);
         normal[p * 4] = scan.normal[q]; normal[p * 4 + 1] = scan.normal[q + 1]; normal[p * 4 + 2] = scan.normal[q + 2]; normal[p * 4 + 3] = 255;
         rough[p * 4 + 1] = scan.rough[q];
         scanned[p] = 1;
@@ -1283,11 +1296,106 @@ function wallsOf(doc) {
 // The warm light of a lit room, as an emissive color.
 const WINDOW_GLOW = [1, 0.74, 0.45];
 const WINDOW_LIT = "windows_lit", WINDOW_DARK = "windows_dark", SIGN_LIT = "sign_lit", DOOR = "door";
-const PART_NAMES = [WINDOW_LIT, WINDOW_DARK, SIGN_LIT, DOOR, "walls"];
+const AWNING = "awning";
+const PART_NAMES = [WINDOW_LIT, WINDOW_DARK, SIGN_LIT, DOOR, "walls", AWNING];
 
 // Find the window glass on every unskinned part and move it to two materials of its own: one for
 // rooms with a light on, one for rooms without. Vertices are shared with the wall, so nothing
 // moves and no seam opens. The game can then switch the lit material on at night.
+// A striped shop awning is drawn again with straight, even stripes in its own colors. See awnings.js.
+async function stripeAwnings(doc, buffer, options, codec, log) {
+  if (!codec) return 0;
+  const box = sceneBounds(doc);
+  const diag = Math.hypot(box.size[0], box.size[1], box.size[2]), tall = box.size[1], floor = box.min[1];
+  let metersPerUnit = 0;
+  if (options.size && options.size.meters > 0) {
+    const dims = { width: box.size[0], height: box.size[1], length: box.size[2], longest: Math.max(box.size[0], box.size[1], box.size[2]) };
+    const dim = dims[options.size.axis] || dims.longest;
+    if (dim > 1e-9) metersPerUnit = options.size.meters / dim;
+  }
+  const pixels = new Map();
+  let done = 0, colorsUsed = 0;
+  for (const s of surfacesOf(doc)) {
+    if (s.prim.getAttribute("JOINTS_0") || s.prim.listTargets().length) continue;
+    const mat = s.prim.getMaterial();
+    if (!mat || PART_NAMES.includes(mat.getName())) continue;
+    const tex = mat.getBaseColorTexture(), info = mat.getBaseColorTextureInfo();
+    const acc = tex && s.prim.getAttribute("TEXCOORD_" + (info ? info.getTexCoord() : 0));
+    if (!acc || !s.prim.getAttribute("NORMAL")) continue;
+    if (!pixels.has(tex)) {
+      let decoded = null;
+      try { decoded = await codec.decode(tex.getImage(), tex.getMimeType()); } catch (error) { decoded = null; }
+      pixels.set(tex, decoded);
+    }
+    const img = pixels.get(tex);
+    if (!img) continue;
+    const uv = acc.getArray(), idx = s.indices, p = s.pos;
+    const at = (u, v) => (Math.min(img.height - 1, Math.max(0, Math.floor((v - Math.floor(v)) * img.height))) * img.width + Math.min(img.width - 1, Math.max(0, Math.floor((u - Math.floor(u)) * img.width)))) * 4;
+    const taken = new Uint8Array(idx.length / 3);
+    let any = false;
+    for (const awning of findAwnings(p, idx, diag, floor, tall)) {
+      // its paint, read all over the top face
+      const samples = [];
+      for (const t of awning.top) {
+        const a = idx[t * 3] * 2, b = idx[t * 3 + 1] * 2, c = idx[t * 3 + 2] * 2;
+        // spread evenly over the triangle, and more of them when the top is only a few big triangles
+        for (let k = 0, per = Math.max(7, Math.ceil(300 / awning.top.length)); k < per; k++) {
+          let x = ((k + 0.5) * 0.6180339887) % 1, y = (k + 0.5) / per;
+          if (x + y > 1) { x = 1 - x; y = 1 - y; }
+          const z = 1 - x - y, o = at(x * uv[a] + y * uv[b] + z * uv[c], x * uv[a + 1] + y * uv[b + 1] + z * uv[c + 1]);
+          samples.push([img.rgba[o], img.rgba[o + 1], img.rgba[o + 2]]);
+        }
+      }
+      const colors = stripeColors(samples);
+      if (!colors) continue;
+      // the whole width in one strip of texture, 16 pixels or more a stripe, so nothing depends on
+      // how a game engine tiles a texture
+      const width = awning.a1 - awning.a0, n = stripeCount(width, metersPerUnit ? 0.2 / metersPerUnit : width / 15, colors.length), repeat = width;
+      let tw = 64;
+      while (tw < n * 16 && tw < Math.min(options.maxTexture || 2048, 2048)) tw *= 2;
+      const th = 4, rgba = new Uint8Array(tw * th * 4);
+      for (let y = 0; y < th; y++) for (let x = 0; x < tw; x++) rgba.set([...colors[Math.min(n - 1, Math.floor((x + 0.5) / tw * n)) % colors.length], 255], (y * tw + x) * 4);
+      const encoded = await encodePixels(rgba, tw, th, "image/png", { ...options, textureFormat: "png" }, codec);
+      if (!encoded) continue;
+      const cloth = mat.clone().setName(AWNING).setBaseColorTexture(doc.createTexture(AWNING + "_color").setImage(encoded.bytes).setMimeType(encoded.mime))
+        .setBaseColorFactor([1, 1, 1, 1]).setNormalTexture(null).setMetallicRoughnessTexture(null).setOcclusionTexture(null).setEmissiveTexture(null).setEmissiveFactor([0, 0, 0])
+        .setRoughnessFactor(0.85).setMetallicFactor(0).setDoubleSided(true);
+      // every corner gets its place across the width. A side panel, which faces along the width, is striped along its depth.
+      const from = [], uvNew = [], indices = [];
+      let d0 = Infinity;
+      for (const t of awning.tris) for (let e = 0; e < 3; e++) { const v = idx[t * 3 + e] * 3; d0 = Math.min(d0, p[v] * awning.out[0] + p[v + 2] * awning.out[1]); }
+      for (const t of awning.tris) {
+        const i0 = idx[t * 3] * 3, i1 = idx[t * 3 + 1] * 3, i2 = idx[t * 3 + 2] * 3;
+        const ux = p[i1] - p[i0], uy = p[i1 + 1] - p[i0 + 1], uz = p[i1 + 2] - p[i0 + 2], vx = p[i2] - p[i0], vy = p[i2 + 1] - p[i0 + 1], vz = p[i2 + 2] - p[i0 + 2];
+        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, len = Math.hypot(nx, ny, nz) || 1;
+        const side = Math.abs(nx * awning.along[0] + nz * awning.along[1]) / len > 0.7;
+        for (const i of [i0, i1, i2]) {
+          const u = Math.min(0.999, Math.max(0.001, side ? (p[i] * awning.out[0] + p[i + 2] * awning.out[1] - d0) / repeat : (p[i] * awning.along[0] + p[i + 2] * awning.along[1] - awning.a0) / repeat));
+          indices.push(from.length); from.push(i / 3); uvNew.push(u, 0.5);
+        }
+        taken[t] = 1;
+      }
+      const prim = doc.createPrimitive().setMaterial(cloth);
+      for (const semantic of ["POSITION", "NORMAL"]) {
+        const src = s.prim.getAttribute(semantic), arr = src.getArray(), out = new Float32Array(from.length * 3);
+        from.forEach((v, i) => { out[i * 3] = arr[v * 3]; out[i * 3 + 1] = arr[v * 3 + 1]; out[i * 3 + 2] = arr[v * 3 + 2]; });
+        prim.setAttribute(semantic, doc.createAccessor().setType("VEC3").setArray(out).setBuffer(buffer));
+      }
+      prim.setAttribute("TEXCOORD_0", doc.createAccessor().setType("VEC2").setArray(Float32Array.from(uvNew)).setBuffer(buffer));
+      prim.setIndices(doc.createAccessor().setType("SCALAR").setArray(Uint32Array.from(indices)).setBuffer(buffer));
+      s.mesh.addPrimitive(prim);
+      any = true; done++; colorsUsed = new Set(colors).size;
+    }
+    if (!any) continue;
+    const rest = [];
+    for (let t = 0; t < taken.length; t++) if (!taken[t]) rest.push(idx[t * 3], idx[t * 3 + 1], idx[t * 3 + 2]);
+    if (rest.length) s.prim.setIndices(doc.createAccessor().setType("SCALAR").setArray(Uint32Array.from(rest)).setBuffer(buffer));
+    else s.mesh.removePrimitive(s.prim);
+  }
+  if (done) log.push("Awnings: " + count(done, "striped awning") + " drawn again with straight, even stripes in " + (done === 1 ? "its own " + colorsUsed + " colors" : "their own colors") + ", running down the slope (material " + AWNING + "). A generator's stripes wander and tear, and stripes are where that shows.");
+  return done;
+}
+
 async function lightWindows(doc, buffer, codec, log) {
   if (!codec) { log.push("Windows: textures cannot be read on this device, so glass could not be told from painted doors. Nothing was changed."); return null; }
   const box = sceneBounds(doc);

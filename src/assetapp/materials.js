@@ -5,7 +5,7 @@
 export const SCANS = {
   stucco: { meters: 2 },
   block: { meters: 1.6 },   // 8 courses of 200 mm
-  brick: { meters: 1.3 },   // 17 courses of 75 mm
+  brick: { meters: 1.05 },  // 14 courses of 75 mm
   roof: { meters: 3 }
 };
 
