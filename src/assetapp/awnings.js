@@ -56,40 +56,51 @@ export function findAwnings(pos, indices, diag, floor, tall, options) {
 
 const lumaOf = (c) => 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2];
 const satOf = (c) => { const max = Math.max(c[0], c[1], c[2]); return max > 0 ? (max - Math.min(c[0], c[1], c[2])) / max : 0; };
-const apart = (p, q) => Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) + Math.abs(p[2] - q[2]);
+// How unlike two colors are. Color counts in full and brightness by half: navy and dark red are
+// about as dark as each other and nothing alike.
+const apart = (p, q) => 0.5 * Math.abs(lumaOf(p) - lumaOf(q)) + Math.abs((p[0] - p[1]) - (q[0] - q[1])) + Math.abs((p[2] - p[1]) - (q[2] - q[1]));
 
 // The colors an awning is striped in, from samples of its paint ([r, g, b] 0..255 each).
 // Returns the stripes of one repeat, in order, or null when the paint is not stripes: one color
 // only, or nothing strong enough to be cloth (a porch roof of shingles is brown on brown).
 export function stripeColors(samples) {
   if (samples.length < 12) return null;
-  // three groups, started from the darkest, the lightest and the most colored sample
-  let dark = samples[0], light = samples[0], vivid = samples[0];
-  for (const c of samples) {
-    if (lumaOf(c) < lumaOf(dark)) dark = c;
-    if (lumaOf(c) > lumaOf(light)) light = c;
-    if (satOf(c) * Math.max(c[0], c[1], c[2]) > satOf(vivid) * Math.max(vivid[0], vivid[1], vivid[2])) vivid = c;
+  // Four groups, each started as far as possible from the ones before: the lightest sample, then
+  // the sample furthest from it, and so on. Two dark colors (navy and dark red) are near each other
+  // in brightness and far apart in color, and this keeps them apart.
+  const pick = samples.length > 800 ? samples.filter((c, i) => i % Math.ceil(samples.length / 800) === 0) : samples;
+  let first = pick[0];
+  for (const c of pick) if (lumaOf(c) > lumaOf(first)) first = c;
+  let means = [first.slice()];
+  while (means.length < 4) {
+    let far = null, reach = -1;
+    for (const c of pick) { let near = Infinity; for (const m of means) near = Math.min(near, apart(c, m)); if (near > reach) { reach = near; far = c; } }
+    means.push(far.slice());
   }
-  let means = [dark.slice(), light.slice(), vivid.slice()], share = [0, 0, 0];
-  for (let pass = 0; pass < 8; pass++) {
-    const sum = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], n = [0, 0, 0];
-    for (const c of samples) {
+  let share = means.map(() => 0);
+  for (let pass = 0; pass < 10; pass++) {
+    const sum = means.map(() => [0, 0, 0]), n = means.map(() => 0);
+    for (const c of pick) {
       let best = 0;
-      for (let k = 1; k < 3; k++) if (apart(c, means[k]) < apart(c, means[best])) best = k;
+      for (let k = 1; k < means.length; k++) if (apart(c, means[k]) < apart(c, means[best])) best = k;
       sum[best][0] += c[0]; sum[best][1] += c[1]; sum[best][2] += c[2]; n[best]++;
     }
     means = means.map((m, k) => (n[k] ? [sum[k][0] / n[k], sum[k][1] / n[k], sum[k][2] / n[k]] : m));
-    share = n.map((v) => v / samples.length);
+    share = n.map((v) => v / pick.length);
   }
-  // groups that are the same color are one, and a sliver of a third color is a smear, not a stripe
+  // groups that are the same color are one
   let groups = means.map((color, k) => ({ color, share: share[k] })).filter((g) => g.share > 0);
   for (let i = 0; i < groups.length; i++) for (let j = groups.length - 1; j > i; j--) {
-    if (apart(groups[i].color, groups[j].color) >= 90) continue;
+    if (apart(groups[i].color, groups[j].color) >= 45) continue;
     const a = groups[i], b = groups[j], total = a.share + b.share;
     a.color = a.color.map((v, c) => (v * a.share + b.color[c] * b.share) / total); a.share = total;
     groups.splice(j, 1);
   }
-  groups = groups.filter((g) => g.share >= 0.1);
+  // a group that lies between two others is where two stripes smeared together, not a stripe of its own
+  groups = groups.filter((g) => !groups.some((a) => a !== g && groups.some((b) => b !== g && b !== a && [0.25, 0.5, 0.75].some((t) => apart(g.color, a.color.map((v, c) => v + t * (b.color[c] - v))) < 30))));
+  // and a sliver of another color is a smear too
+  const whole = groups.reduce((sum, g) => sum + g.share, 0) || 1;
+  groups = groups.filter((g) => g.share / whole >= 0.1).sort((p, q) => q.share - p.share).slice(0, 3);
   if (groups.length < 2) return null;
   if (!groups.some((g) => satOf(g.color) >= 0.4 && Math.max(...g.color) >= 70)) return null; // no strong color: not cloth stripes
   const clean = groups.map((g) => g.color.map((v) => Math.round(v)));
