@@ -1,4 +1,4 @@
-// Redraw openings on a finished building, from a plan, without a browser.
+// Redraw openings on a finished building and give its panes rooms, from a plan, without a browser.
 //   node scripts/asset-redraw.mjs <finished.glb> <plan.json> <out.glb>
 // Writes the file and, next to it, <out>.verdict.json: what was done and every check, measured
 // on the written file. Exits 1 when the file is not READY.
@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import jpeg from "jpeg-js";
 import { checkModel } from "../src/assetapp/engine.js";
 import { redrawOpenings } from "../src/assetapp/redraw.js";
+import { drawRooms } from "../src/assetapp/rooms.js";
 import { validate } from "../src/assetapp/validate.js";
 import { decodePng, encodePng } from "../src/asset/finish/png.js";
 
@@ -27,7 +28,10 @@ if (process.argv[1] && process.argv[1].endsWith("asset-redraw.mjs")) {
   const [file, planFile, out] = process.argv.slice(2);
   if (!file || !planFile || !out) { console.error("usage: node scripts/asset-redraw.mjs <finished.glb> <plan.json> <out.glb>"); process.exit(2); }
   const plan = JSON.parse(readFileSync(planFile, "utf8"));
-  const result = await redrawOpenings(new Uint8Array(readFileSync(file)), plan, { codec });
+  // a plan may redraw openings, give every pane a room ("rooms": true), or both, in that order
+  let result = { bytes: new Uint8Array(readFileSync(file)), log: [], done: {} };
+  if (plan.openings && plan.openings.length) result = await redrawOpenings(result.bytes, plan, { codec });
+  if (plan.rooms) { const rooms = await drawRooms(result.bytes, { codec }); result = { bytes: rooms.bytes, log: result.log.concat(rooms.log), done: { ...result.done, panes: rooms.panes } }; }
   writeFileSync(out, result.bytes);
   const verdict = await checkModel(result.bytes, {}, { codec, validate });
   const report = { file: out, plan, done: result.done, log: result.log, ready: verdict.ready, summary: verdict.summary, checks: verdict.checks, after: verdict.after };

@@ -76,6 +76,25 @@ export function addWindow(pane, trim, fr, r0, r1, y0, y1, o = {}) {
   for (let i = 1; i <= rails; i++) { const c = y0 + (y1 - y0) * i / (rails + 1); addBar(trim, fr, r0 + frame, r1 - frame, c - bar / 2, c + bar / 2, 0, proud * 0.6, k); }
 }
 
+// Window bars: upright iron bars a hand apart, standing off the wall on two flat rails.
+export function addBars(b, fr, r0, r1, y0, y1, o = {}) {
+  const thick = o.thick ?? 0.022, every = o.every ?? 0.13, out = o.out ?? 0.075, k = 4;
+  const n = Math.max(2, Math.round((r1 - r0) / every)), stepR = (r1 - r0) / n;
+  for (let i = 0; i <= n; i++) { const c = r0 + i * stepR; addBar(b, fr, c - thick / 2, c + thick / 2, y0 - 0.05, y1 + 0.05, out, out + thick, k); }
+  for (const share of [0.22, 0.78]) { const c = y0 + (y1 - y0) * share; addBar(b, fr, r0 - 0.04, r1 + 0.04, c - 0.02, c + 0.02, 0, out, k); }
+}
+
+// Wrought iron: near black, a little rust in it.
+export function paintIron(size = 64) {
+  const img = image(size, size, [44, 40, 38]);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const rust = noise(x / 6, y / 6, 31);
+    if (rust > 0.62) blend(img, x, y, [92, 58, 38], (rust - 0.62) * 1.6);
+    shade(img, x, y, 0.9 + 0.2 * noise(x / 2, y / 2, 32));
+  }
+  return img;
+}
+
 // A door: the leaf, painted from the door texture, inside a frame down both sides and across the top.
 export function addDoor(leaf, trim, fr, r0, r1, y0, y1, o = {}) {
   const frame = o.frame ?? 0.09, proud = o.proud ?? 0.05, k = o.trimScale ?? 2;

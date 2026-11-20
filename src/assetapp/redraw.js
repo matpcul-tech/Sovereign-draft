@@ -17,8 +17,12 @@
 // along the wall in the file's own X (or Z, for a wall that faces along X), y is bottom and top.
 // All in meters, in the finished file. Leave `at` out and the wall is found under the rectangle.
 //
-// Every kind first cuts away the wall that lies in its rectangle, then puts its own piece there:
-//   window  one pane (windows_lit or windows_dark), a frame, a sill and sash bars (trim)
+// Every kind first cuts away the wall that lies in its rectangle, then puts its own piece there.
+// A window or a door also clears out what the generator left in its opening: torn glass set back
+// in it, bars and shutters standing out of it (anything wholly inside the rectangle, from 0.4 m
+// behind the wall to `clear` meters in front of it, 0.25 unless the plan says; 0 keeps it all).
+//   window  one pane (windows_lit or windows_dark), a frame, a sill and sash bars (trim), and
+//           with "bars": true a set of iron window bars in front (bars)
 //   door    a paneled leaf painted here (door) in a frame (trim); doors found before are retired
 //   sign    a lettered board that glows with its own paint (sign_lit); signs found before are retired
 //   wall    a clean patch of the wall's own paint, copied from the cleanest stretch of that wall
@@ -29,10 +33,10 @@
 //           showing as a long streak across a clean wall) are taken off it
 import { prune } from "@gltf-transform/functions";
 import { readModel, writeModel } from "./engine.js";
-import { FACE_NAMES, addDoor, addPanel, addWindow, builder, cleanStretch, cutTriangle, frameOf, freeBlock, hexColor, layWall, markUsed, paintDoor, paintSign, paintTrim, sample } from "./openings.js";
+import { FACE_NAMES, addBars, addDoor, addPanel, addWindow, builder, cleanStretch, cutTriangle, frameOf, freeBlock, hexColor, layWall, markUsed, paintDoor, paintIron, paintSign, paintTrim, sample } from "./openings.js";
 
-const WINDOW_LIT = "windows_lit", WINDOW_DARK = "windows_dark", SIGN_LIT = "sign_lit", DOOR = "door", TRIM = "trim";
-const PARTS = [WINDOW_LIT, WINDOW_DARK, SIGN_LIT, DOOR, "walls", TRIM];
+const WINDOW_LIT = "windows_lit", WINDOW_DARK = "windows_dark", SIGN_LIT = "sign_lit", DOOR = "door", TRIM = "trim", BARS = "bars";
+const PARTS = [WINDOW_LIT, WINDOW_DARK, SIGN_LIT, DOOR, "walls", TRIM, BARS];
 const WINDOW_GLOW = [1, 0.74, 0.45];
 const KINDS = ["window", "door", "sign", "wall", "cut", "clear"];
 const TOLERANCE = 0.03; // how far off the wall's plane a triangle may sit and still be that wall, meters
@@ -288,7 +292,7 @@ async function patchWall(doc, parts, fr, o, r0, y0, r1, y1, plan, store, islands
   }
   const gutter = 6;
   let spot = null, scale = 1, pw = 0, ph = 0;
-  for (const k of [1, 0.85, 0.7, 0.55, 0.45, 0.35]) {
+  for (const k of [1, 0.85, 0.7, 0.55, 0.45, 0.35, 0.28, 0.22]) {
     pw = Math.ceil((r1 - r0) * density * k) + 2 * gutter; ph = Math.ceil((y1 - y0) * density * k) + 2 * gutter;
     spot = freeBlock(used, gw, gh, Math.ceil(pw / CELL) + 1, Math.ceil(ph / CELL) + 1);
     if (spot) { scale = k; break; }
@@ -400,9 +404,29 @@ export async function redrawOpenings(bytes, plan, env = {}) {
     parts = partsOf(doc);
   }
 
+  // what a generator left in a window or door opening goes: glass shards set back in it, bars and
+  // shutters standing out of it. Only triangles wholly inside the opening, near the wall.
+  let emptied = 0;
+  for (const o of list) {
+    if (o.kind !== "window" && o.kind !== "door") continue;
+    const front = o.clear ?? 0.25;
+    if (!(front > 0)) continue;
+    for (const part of parts) {
+      const pos = worldOf(part), idx = indexOf(part), keep = [];
+      for (let t = 0; t < idx.length; t += 3) {
+        const loc = [0, 1, 2].map((e) => o.frame.local([pos[idx[t + e] * 3], pos[idx[t + e] * 3 + 1], pos[idx[t + e] * 3 + 2]]));
+        const inside = loc.every((p) => p[0] >= o.r0 - 0.04 && p[0] <= o.r1 + 0.04 && p[1] >= o.y[0] - 0.04 && p[1] <= o.y[1] + 0.04 && p[2] >= -0.4 && p[2] <= front);
+        if (inside) emptied++; else keep.push(idx[t], idx[t + 1], idx[t + 2]);
+      }
+      if (keep.length !== idx.length) part.prim.setIndices(doc.createAccessor().setType("SCALAR").setArray(Uint32Array.from(keep)).setBuffer(buffer));
+    }
+  }
+  if (emptied) log.push("Openings emptied: " + count(emptied, "triangle") + " the generator left inside the redrawn windows and doors (torn glass, bent bars, shutters) " + (emptied === 1 ? "was" : "were") + " taken out.");
+  parts = partsOf(doc);
+
   // 2. clean wall, then the pieces that stand on it
   const store = pixelStore(codec), islands = new Map(), wallBuilders = new Map();
-  const trim = builder(), leaf = builder(), panes = { [WINDOW_LIT]: builder(), [WINDOW_DARK]: builder() }, boards = [];
+  const trim = builder(), iron = builder(), leaf = builder(), panes = { [WINDOW_LIT]: builder(), [WINDOW_DARK]: builder() }, boards = [];
   const paneUv = {};
   for (const name of [WINDOW_LIT, WINDOW_DARK]) {
     // an existing pane's own color, from the smallest part painted with it (the flat sheet behind a window)
@@ -422,6 +446,7 @@ export async function redrawOpenings(bytes, plan, env = {}) {
     } else if (o.kind === "window") {
       const name = o.lit === false ? WINDOW_DARK : WINDOW_LIT;
       addWindow(panes[name], trim, fr, o.r0, o.r1, y0, y1, { sashes: o.sashes, rails: o.rails, frame: o.frameWidth, paneUv: paneUv[name] });
+      if (o.bars) addBars(iron, fr, o.r0, o.r1, y0, y1);
       done.window++;
     } else if (o.kind === "door") {
       addDoor(leaf, trim, fr, o.r0, o.r1, y0, y1, { frame: o.frameWidth });
@@ -459,9 +484,17 @@ export async function redrawOpenings(bytes, plan, env = {}) {
   if (trim.I.length) {
     const first = list.find((o) => o.kind === "window" || o.kind === "door");
     const color = hexColor(plan.trim || (first && first.trim), [216, 212, 200]);
-    const tex = await newTexture(doc, codec, "trim_color", paintTrim(color));
-    addPart(trim, doc.createMaterial(TRIM).setBaseColorTexture(tex).setRoughnessFactor(0.6).setMetallicFactor(0));
+    // a file redrawn before already has its woodwork: more of it is painted the same
+    let mat = root.listMaterials().find((m) => m.getName() === TRIM);
+    if (!mat) mat = doc.createMaterial(TRIM).setBaseColorTexture(await newTexture(doc, codec, "trim_color", paintTrim(color))).setRoughnessFactor(0.6).setMetallicFactor(0);
+    addPart(trim, mat);
     log.push("Frames, sills and sash bars are real pieces standing off the wall, material " + TRIM + ", painted one color here.");
+  }
+  if (iron.I.length) {
+    let mat = root.listMaterials().find((m) => m.getName() === BARS);
+    if (!mat) mat = doc.createMaterial(BARS).setBaseColorTexture(await newTexture(doc, codec, "bars_color", paintIron())).setRoughnessFactor(0.7).setMetallicFactor(0);
+    addPart(iron, mat);
+    log.push("Window bars: " + count(list.filter((o) => o.kind === "window" && o.bars).length, "window") + " barred with straight iron bars on two rails, material " + BARS + ".");
   }
   if (leaf.I.length) {
     const first = list.find((o) => o.kind === "door");
