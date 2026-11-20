@@ -154,6 +154,28 @@ export function colorOnly(rgba, mask, size, spot, cell) {
 // Does the old paint show level courses, the way block and brick do? Looks at how brightness
 // changes from row to row down one wall and whether that repeats. Returns the course height in
 // pixels and where the first joint falls, or null for a wall with no courses (stucco, concrete).
+// How much more the paint changes going up a wall than going along it. Level courses that are too
+// fine or too crooked to measure still leave this mark: mortar lines run along the wall, so color
+// changes often on the way up and seldom on the way along. Paint with no courses changes the same
+// both ways (about 1). Returns 0 when there is too little wall to tell.
+export function levelGrain(rgba, mask, size, spot) {
+  const { x, y, w, h } = spot;
+  let up = 0, along = 0, n = 0, busy = 0;
+  for (let j = 0; j + 1 < h; j++) for (let i = 0; i + 1 < w; i++) {
+    const p = (y + j) * size + x + i, right = p + 1, below = p + size;
+    if (!mask[p] || !mask[right] || !mask[below]) continue;
+    const l = 0.3 * rgba[p * 4] + 0.59 * rgba[p * 4 + 1] + 0.11 * rgba[p * 4 + 2];
+    along += Math.abs(0.3 * rgba[right * 4] + 0.59 * rgba[right * 4 + 1] + 0.11 * rgba[right * 4 + 2] - l);
+    const step = Math.abs(0.3 * rgba[below * 4] + 0.59 * rgba[below * 4 + 1] + 0.11 * rgba[below * 4 + 2] - l);
+    up += step;
+    if (step > 4) busy++;
+    n++;
+  }
+  // one edge between two bands of paint is a change going up too, but only one: courses change all the way up
+  if (n <= 400 || busy < 0.08 * n) return 0;
+  return along > 0 ? up / along : up > 0 ? 99 : 0;
+}
+
 export function findCourses(rgba, mask, size, spot, minPx, maxPx, minLike = 0.1) {
   const { x, y, w, h } = spot;
   const row = new Float32Array(h);

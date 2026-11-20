@@ -22,6 +22,8 @@ const DEFAULTS = {
   spreadSide: 0.05,   // and no further than this past the pane's own edge
   minWindow: 0.035,   // smallest window, as a share of the building's height
   maxSat: 0.42,       // glass is gray, black, white or blue, even when dirty. A painted door is far past this
+  paneFront: 0.0015, paneBack: 0.006, // a facet this far in front of the glass or behind it is still the pane
+  minPaint: 0.06,     // darker than this is glass whatever its tint: dark glass picks up the color of the wall around it
   floorGap: 0.03,     // anything that starts this close to the ground is a door
   minSign: 0.2        // narrowest sign, as a share of the building's height
 };
@@ -120,7 +122,7 @@ export function findWindows(pos, indices, diag, colorOf, opts = {}) {
       if (m) {
         const max = Math.max(r, g, b) / m, min = Math.min(r, g, b) / m;
         const sat = max > 1e-4 ? (max - min) / max : 0;
-        painted = max > 0.02 && sat > (b >= r && b >= g ? 0.6 : o.maxSat);
+        painted = max > o.minPaint && sat > (b >= r && b >= g ? 0.6 : o.maxSat);
         luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / m;
       }
     }
@@ -182,7 +184,7 @@ export function findWindows(pos, indices, diag, colorOf, opts = {}) {
             const c = colorOf(u);
             if (!c) continue;
             const max = Math.max(c[0], c[1], c[2]), min = Math.min(c[0], c[1], c[2]);
-            if (max > 0.02 && (max - min) / max > (c[2] >= c[0] && c[2] >= c[1] ? 0.6 : o.maxSat)) continue;
+            if (max > o.minPaint && (max - min) / max > (c[2] >= c[0] && c[2] >= c[1] ? 0.6 : o.maxSat)) continue;
             const l = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
             if (p.luma >= 0 && (l + 0.01) / (p.luma + 0.01) > 2.5) continue; // much brighter than the glass: a bar, a frame
             taken[u] = i;
@@ -214,6 +216,9 @@ export function findWindows(pos, indices, diag, colorOf, opts = {}) {
     if (step > o.maxStep * diag) continue;
     parent[find(i)] = find(j);
   }
+  const claimed = new Uint8Array(tris);
+  for (const list of [out.signs, out.doors]) for (const part of list) for (const t of part.tris) claimed[t] = 1;
+  for (const p of pieces) for (const t of p.tris) claimed[t] = 1;
   const groups = new Map();
   pieces.forEach((p, i) => { const r = find(i); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(p); });
 
@@ -231,10 +236,38 @@ export function findWindows(pos, indices, diag, colorOf, opts = {}) {
     if (w < o.minWindow * height || h < o.minWindow * height) continue;
     if (w / h < 0.2 || w / h > 6) continue;
     if (area / (w * h) < 0.45) continue;
-    const tri = new Int32Array(count);
-    let at = 0;
-    for (const p of list) { tri.set(p.tris, at); at += p.tris.length; }
-    out.windows.push({ tris: tri, normal: [lead.n[0], 0, lead.n[2]], width: w, height: h, bottom: y0 - floor, left: a0, depth: depth / area, area });
+    const mine = [];
+    for (const p of list) for (const t of p.tris) { mine.push(t); claimed[t] = 1; }
+    // The rest of the pane: a facet of glass inside the window's outline, at the glass or behind
+    // it, facing out, that the steps above left behind. Left out, it is a dark wedge across a lit
+    // window. Bars and mullions stand in front of the glass, so they are not taken.
+    const plane = depth / area, near = o.paneFront * diag, far = o.paneBack * diag, reach = o.reach * diag, edge = 0.002 * diag;
+    for (let t = 0; t < (colorOf ? tris : 0); t++) {
+      if (claimed[t]) continue;
+      const i0 = indices[t * 3] * 3, i1 = indices[t * 3 + 1] * 3, i2 = indices[t * 3 + 2] * 3;
+      let inside = true, front = false;
+      for (const iv of [i0, i1, i2]) {
+        const al = pos[iv] * lead.hx + pos[iv + 2] * lead.hz, y = pos[iv + 1], d = pos[iv] * lead.n[0] + pos[iv + 2] * lead.n[2] - plane;
+        if (al < a0 - edge || al > a1 + edge || y < y0 - edge || y > y1 + edge || d > reach || d < -far) { inside = false; break; }
+        if (d > near) front = true;
+      }
+      if (!inside) continue;
+      const ux = pos[i1] - pos[i0], uy = pos[i1 + 1] - pos[i0 + 1], uz = pos[i1 + 2] - pos[i0 + 2], vx = pos[i2] - pos[i0], vy = pos[i2 + 1] - pos[i0 + 1], vz = pos[i2 + 2] - pos[i0 + 2];
+      const nx = uy * vz - uz * vy, nz = ux * vy - uy * vx, len = Math.hypot(nx, uz * vx - ux * vz, nz);
+      if (!(len > 0) || (nx * lead.n[0] + nz * lead.n[2]) / len < 0.5) continue;
+      // it is glass colored: not paint, and not much brighter than the pane (a mullion, a frame)
+      const c = colorOf(t);
+      if (!c) continue;
+      const max = Math.max(c[0], c[1], c[2]), min = Math.min(c[0], c[1], c[2]);
+      if (max > o.minPaint && (max - min) / max > o.maxSat) continue;
+      if (lead.luma >= 0 && (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] + 0.01) / (lead.luma + 0.01) > 2.5) continue;
+      // In front of the glass, up at the wall: a big sheet painted as glass that the generator
+      // laid across the opening. It is the pane too. A bar is small.
+      if (front && (len / 2 < 0.01 * w * h || !(lead.luma >= 0) || (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] + 0.01) / (lead.luma + 0.01) > 1.5)) continue;
+      mine.push(t); claimed[t] = 1;
+    }
+    const tri = Int32Array.from(mine);
+    out.windows.push({ tris: tri, normal: [lead.n[0], 0, lead.n[2]], width: w, height: h, bottom: y0 - floor, left: a0, depth: depth / area, area, along: [lead.hx, lead.hz], y0, luma: lead.luma });
   }
   // a sign made of two or three level strips is one sign
   for (let i = 0; i < out.signs.length; i++) for (let j = out.signs.length - 1; j > i; j--) {
@@ -256,8 +289,18 @@ export function findWindows(pos, indices, diag, colorOf, opts = {}) {
 // Which windows have a light on. About two in three, in a fixed scatter that depends only on
 // where each window is, so the same building always lights the same rooms.
 export function litPattern(windows) {
-  return windows.map((w) => {
+  const on = windows.map((w) => {
     const key = Math.round(w.left * 37.1) * 73856093 ^ Math.round(w.bottom * 53.3) * 19349663 ^ Math.round(Math.atan2(w.normal[0], w.normal[2]) * 2) * 83492791;
     return ((key >>> 0) % 100) < 66;
   });
+  // The biggest window on the ground floor is the shop window, or the front room of a house. A
+  // building whose one big window is dark reads as shut, so that one is always lit.
+  if (windows.length) {
+    let low = Infinity;
+    for (const w of windows) low = Math.min(low, w.bottom);
+    let best = -1;
+    windows.forEach((w, i) => { if (w.bottom <= low + 0.6 * w.height && (best < 0 || w.width * w.height > windows[best].width * windows[best].height)) best = i; });
+    if (best >= 0) on[best] = true;
+  }
+  return on;
 }
