@@ -370,6 +370,34 @@ Code is in `src/assetapp/`. `engine.js` is bytes in, bytes out, and runs the sam
 
 Not done here: unwrapping UVs, rigging, retexturing, Draco-compressed input, and sending the file to a game repo from the app.
 
+### Openings redrawn by hand
+
+Some openings are past finding. A window that is only torn paint, a door with a sheet of wall across it, a sign board with nothing on it: nothing in the mesh says what was meant, so running the file again finds the same nothing. For those, a plan says what goes where, and the file is worked on after it is finished:
+
+```
+node scripts/asset-redraw.mjs finished.glb plan.json out.glb
+```
+
+```json
+{ "openings": [
+  { "kind": "sign",   "face": "+z", "at": 2.249, "span": [-2.23, 2.13], "y": [3.22, 3.86], "text": "PAWN * LOANS * GOLD" },
+  { "kind": "window", "face": "+z", "at": 3.815, "span": [-2.45, -1.23], "y": [0.97, 2.03], "lit": true },
+  { "kind": "door",   "face": "+z", "at": 2.46,  "span": [0.17, 1.31],  "y": [0.12, 2.13] },
+  { "kind": "wall",   "face": "+z", "at": 3.815, "span": [-2.62, -1.06], "y": [0.03, 0.99] }
+] }
+```
+
+`face` is the way the wall faces (`+z`, `-z`, `+x`, `-x`), `at` is where the wall stands on that axis (left out, the wall under the rectangle is found), `span` is the stretch along the wall and `y` is bottom and top, all in meters in the finished file. Each kind takes the wall out of its rectangle and puts its own piece there:
+
+- `window`: one whole pane (`windows_lit`, or `windows_dark` with `"lit": false`) behind a frame, a sill and sash bars that are real pieces standing off the wall (material `trim`)
+- `door`: a paneled wooden leaf painted here (material `door`) in a frame. A door found before goes back to plain paint
+- `sign`: a board lettered in block capitals that glows with its own paint (material `sign_lit`). `*` is a bullet between words. A sign found before goes back to plain paint
+- `wall`: a clean patch of the wall's own paint, copied from the cleanest stretch of that wall, shifted to the tone round the patch and faded into it at the edge, painted into a free corner of the wall's own texture, color and surface maps alike
+- `cut`: the wall is only taken away (a wedge of wall across an open porch)
+- `clear`: loose triangles lying flat on the wall in old paint are taken off it, so no streak of old paint crosses a clean wall
+
+The written file gets the same checks a finished file gets, measured on its own bytes, and a `verdict.json` beside it. The plans for the two Street Empire buildings done this way are in `examples/asset-plans/`. This is not in the app's screen yet: it runs from the command line.
+
 ## AI drafting
 
 Grok drafts in this app — tap AI, describe the building or part, no key. Optional Anthropic key in settings is a fallback only. **Adds only** — undo drops a pass. Sheet-context mode reads existing walls and appends. Invalid JSON is retried once, then toasted. Never deletes user entities.

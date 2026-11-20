@@ -305,6 +305,27 @@ export async function inspectModel(bytes) {
   return stats;
 }
 
+// Check a finished file as it stands: the measurements and checks finishModel ends with, on
+// these bytes. Changes nothing. For a file that was worked on after it was finished.
+export async function checkModel(bytes, userOptions = {}, env = {}) {
+  const options = { ...DEFAULTS, removeDebris: false, ground: false, center: false, maxTexture: null, ...userOptions };
+  const doc = await readModel(bytes);
+  const after = measure(doc, bytes.byteLength);
+  await normalize(doc);
+  after.defects = findDefects(surfacesOf(doc), Math.hypot(...after.size), false, doc.getRoot().listMaterials().some((m) => PART_NAMES.includes(m.getName())));
+  after.detail = texelDensity(colorGroups(doc).flatMap((g) => g.parts.map((part) => ({ ...part, width: g.size[0], height: g.size[1] }))));
+  after.color = await colorOf(doc, env.codec);
+  const glass = glassOf(doc);
+  if (glass.litTris || glass.darkTris || glass.signTris || glass.doorTris) after.parts = glass;
+  let validation = null;
+  if (env.validate) {
+    try { validation = await env.validate(bytes); } catch (error) { validation = { failed: String(error && error.message || error) }; }
+  }
+  const checks = buildChecks(after, after, options, { holesLeft: 0, validation });
+  if (after.parts) checks.push({ id: "parts", status: "note", label: "Windows, signs and doors", detail: after.parts.litTris + " lit and " + after.parts.darkTris + " dark window triangles, " + after.parts.signTris + " sign triangles, " + after.parts.doorTris + " door triangles.", fix: "" });
+  return verdictOf({ before: after, after, bytes, log: [], checks, validation });
+}
+
 export async function finishModel(bytes, userOptions = {}, env = {}) {
   const options = { ...DEFAULTS, ...userOptions };
   const log = [];
