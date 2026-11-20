@@ -396,6 +396,10 @@ node scripts/asset-redraw.mjs finished.glb plan.json out.glb
 - `cut`: the wall is only taken away (a wedge of wall across an open porch)
 - `clear`: loose triangles lying flat on the wall in old paint are taken off it, so no streak of old paint crosses a clean wall
 
+A window or a door also empties its opening first: whatever the generator left wholly inside the rectangle, from 0.4 m behind the wall to 0.25 m in front of it (torn glass, bent bars, shutters), is taken out. `"clear": 0` on the opening keeps it. `"bars": true` on a window puts straight iron bars on two rails in front of it (material `bars`).
+
+`"rooms": true` in a plan (with openings or alone) gives every pane in the file a room. Each window's glass, sashes together, becomes one clean rectangle painted from a small sheet of windows drawn here: curtains drawn back with a lamp behind, a blind half down, a sheer curtain, a closed blind, two shopfronts with shelves, frosted door glass, small pebbled glass. A big pane near the ground is a shopfront; the rest are picked by where the pane sits, so a file always comes out the same. By day a pane is dark glass with the sky in it and the blind seen through it. `windows_lit` carries the night sheet as its emission at full strength, for the game's clock to scale; `windows_dark` carries the day sheet only.
+
 The written file gets the same checks a finished file gets, measured on its own bytes, and a `verdict.json` beside it. The plans for the two Street Empire buildings done this way are in `examples/asset-plans/`. This is not in the app's screen yet: it runs from the command line.
 
 ## AI drafting

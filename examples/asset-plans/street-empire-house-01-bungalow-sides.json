@@ -1,0 +1,24 @@
+{
+  "rooms": true,
+  "openings": [
+    { "kind": "clear",  "face": "+x", "at": 3.647, "span": [-3.97, 2.45], "y": [0.0, 2.46] },
+    { "kind": "wall",   "face": "+x", "at": 3.647, "span": [-1.45, 0.45], "y": [0.85, 2.42] },
+    { "kind": "window", "face": "+x", "at": 3.647, "span": [0.5, 1.52],   "y": [0.98, 1.98], "lit": false },
+    { "kind": "window", "face": "+x", "at": 3.647, "span": [-1.2, -0.28], "y": [1.25, 2.05], "lit": false, "bars": true },
+    { "kind": "window", "face": "+x", "at": 3.647, "span": [-3.07, -1.76], "y": [0.93, 2.03], "lit": true, "bars": true },
+
+    { "kind": "clear",  "face": "-x", "at": -3.653, "span": [-3.97, 3.97], "y": [0.0, 2.46] },
+    { "kind": "wall",   "face": "-x", "at": -3.653, "span": [1.0, 3.2],    "y": [0.4, 2.3] },
+    { "kind": "wall",   "face": "-x", "at": -3.653, "span": [-3.0, -1.3],  "y": [0.45, 0.97] },
+    { "kind": "window", "face": "-x", "at": -3.653, "span": [-2.82, -1.46], "y": [0.93, 2.05], "lit": true, "bars": true },
+    { "kind": "window", "face": "-x", "at": -3.653, "span": [-0.68, 0.06], "y": [1.38, 2.0], "lit": false, "sashes": 1 },
+    { "kind": "window", "face": "-x", "at": -3.653, "span": [1.28, 2.5],   "y": [1.03, 2.05], "lit": false },
+
+    { "kind": "clear",  "face": "-z", "at": -3.815, "span": [-3.6, 3.95],  "y": [0.0, 2.46] },
+    { "kind": "wall",   "face": "-z", "at": -3.815, "span": [1.2, 2.85],   "y": [0.4, 2.15] },
+    { "kind": "wall",   "face": "-z", "at": -3.815, "span": [-0.75, 1.0],  "y": [0.8, 2.42] },
+    { "kind": "window", "face": "-z", "at": -3.815, "span": [1.48, 2.42],  "y": [1.03, 1.97], "lit": false },
+    { "kind": "window", "face": "-z", "at": -3.815, "span": [-0.47, 0.69], "y": [0.98, 2.0], "lit": true },
+    { "kind": "window", "face": "-z", "at": -3.815, "span": [-2.58, -1.2], "y": [0.92, 2.05], "lit": true, "bars": true }
+  ]
+}

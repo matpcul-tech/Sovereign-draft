@@ -155,3 +155,51 @@ describe("Sovereign Asset openings: redrawn on a finished file", () => {
     await expect(redrawOpenings(await house(), { openings: [{ kind: "window", face: "up", span: [0, 1], y: [1, 2] }] }, { codec: pngCodec })).rejects.toThrow("face");
   });
 });
+
+describe("Sovereign Asset rooms and window bars", () => {
+  it("bars a redrawn window and empties what stood in its opening", async () => {
+    const { redrawOpenings: redraw } = await import("../src/assetapp/redraw.js");
+    const plan = { openings: [{ kind: "window", face: "+z", at: 2, span: [-2.6, -1.4], y: [0.5, 1.9], lit: true, bars: true }] };
+    const out = await redraw(await house(), plan, { codec: pngCodec });
+    const parts = partsOf(await readModel(out.bytes));
+    expect(parts.map((p) => p.name)).toEqual(expect.arrayContaining(["bars", "trim", "windows_lit"]));
+    // straight bars: more than one, each a box of five faces, standing off the wall
+    const bars = parts.find((p) => p.name === "bars");
+    expect(bars.tris % 10).toBe(0);
+    expect(bars.tris).toBeGreaterThan(60);
+    expect(Math.max(...Array.from(bars.prim.getAttribute("POSITION").getArray()).filter((_, i) => i % 3 === 2))).toBeGreaterThan(2.05);
+    const again = await redraw(out.bytes, { openings: [{ kind: "window", face: "+z", at: 2, span: [1, 2], y: [1, 2], lit: false }] }, { codec: pngCodec });
+    expect(partsOf(await readModel(again.bytes)).filter((p) => p.name === "trim").map((p) => p.mat).every((m, i, all) => m === all[0])).toBe(true);
+  });
+
+  it("gathers sashes into one window and gives every pane a room", async () => {
+    const { drawRooms, gatherPanes, paintRooms, roomFor, tileUv } = await import("../src/assetapp/rooms.js");
+    const tri = (r0, r1, y0, y1, lit = true) => ({ axis: 2, sign: 1, r0, r1, y0, y1, depth: 2, area: (r1 - r0) * (y1 - y0), lit });
+    const panes = gatherPanes([tri(0, 0.5, 1, 2), tri(0.58, 1.08, 1, 2), tri(3, 3.6, 1, 2, false)]);
+    expect(panes).toHaveLength(2);
+    expect(panes.find((p) => p.r0 === 0).r1).toBeCloseTo(1.08, 6);
+    expect(panes.find((p) => p.r0 === 3).lit).toBe(false);
+    expect(roomFor(2, 2, 0.6, 0)).toBeGreaterThanOrEqual(4); // a big pane near the ground is a shopfront
+    expect(roomFor(1, 1, 1, 0)).toBeLessThan(4);
+    const sheets = paintRooms(), uv = tileUv(5);
+    expect(sheets.day.width).toBe(sheets.night.width);
+    expect(uv.u0).toBeGreaterThan(0.25);
+    expect(uv.v0).toBeGreaterThan(0.5);
+
+    const made = await redrawOpenings(await house(), { openings: [{ kind: "window", face: "+z", at: 2, span: [0, 1], y: [1, 2], lit: true }, { kind: "window", face: "+z", at: 2, span: [-1.2, -0.4], y: [1, 2], lit: false }] }, { codec: pngCodec });
+    const out = await drawRooms(made.bytes, { codec: pngCodec });
+    expect(out.panes).toBe(2);
+    const parts = partsOf(await readModel(out.bytes)), lit = parts.find((p) => p.name === "windows_lit"), dark = parts.find((p) => p.name === "windows_dark");
+    expect(lit.tris).toBe(2);
+    expect(lit.mat.getEmissiveTexture().getName()).toBe("windows_night");
+    expect(lit.mat.getEmissiveFactor()).toEqual([1, 1, 1]);
+    expect(dark.mat.getBaseColorTexture().getName()).toBe("windows_day");
+    expect(dark.mat.getEmissiveTexture()).toBeNull();
+    const again = await drawRooms(out.bytes, { codec: pngCodec }); // drawn twice comes out the same
+    expect(Array.from(partsOf(await readModel(again.bytes)).find((p) => p.name === "windows_lit").prim.getAttribute("TEXCOORD_0").getArray())).toEqual(Array.from(lit.prim.getAttribute("TEXCOORD_0").getArray()));
+    const verdict = await checkModel(out.bytes, {}, { codec: pngCodec, validate });
+    expect(verdict.ready).toBe(true);
+    const none = await drawRooms(await house(), { codec: pngCodec });
+    expect(none.panes).toBe(0);
+  });
+});
