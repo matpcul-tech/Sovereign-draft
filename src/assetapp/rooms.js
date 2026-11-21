@@ -101,7 +101,7 @@ export function paintRooms() {
 // in a file says what a building is: a big pane near the ground is a shopfront.
 export function roomFor(w, h, bottom, seed) {
   if (w >= 1.5 && h >= 1.2 && bottom <= 1.3) return SHOP[seed % SHOP.length];
-  if ((w < 0.95 && h >= 1.5 * w && bottom <= 0.5) || w >= 2.4 * h) return DOOR_GLASS;
+  if ((w < 0.95 && h >= 1.5 * w && bottom <= 0.5) || (w >= 2.4 * h && h < 0.8)) return DOOR_GLASS;
   if (w * h < 0.3) return SMALL;
   return HOUSE[seed % HOUSE.length];
 }
@@ -199,23 +199,29 @@ export async function drawRooms(bytes, env = {}) {
   const panes = gatherPanes(tris).filter((g) => g.area >= 0.02 && g.r1 - g.r0 >= 0.12 && g.y1 - g.y0 >= 0.12);
   const inv = invert(host.matrix), built = { [WINDOW_LIT]: { P: [], N: [], T: [], I: [] }, [WINDOW_DARK]: { P: [], N: [], T: [], I: [] } };
   const counts = { house: 0, shop: 0, door: 0, small: 0 };
+  let quads = 0;
   panes.sort((a, b) => a.axis - b.axis || a.sign - b.sign || a.r0 - b.r0 || a.y0 - b.y0);
   panes.forEach((g) => {
     // which of the drawings: from where the pane is, so the same file always comes out the same
     const seed = Math.floor(hash(Math.round(g.r0 * 10), Math.round(g.y0 * 10), g.axis * 2 + (g.sign > 0 ? 1 : 0)) * 1000);
     const kind = roomFor(g.r1 - g.r0, g.y1 - g.y0, g.y0 - floor, seed);
     counts[kind >= 4 && kind <= 5 ? "shop" : kind === DOOR_GLASS ? "door" : kind === SMALL ? "small" : "house"]++;
-    const uv = tileUv(kind), b = built[g.lit ? WINDOW_LIT : WINDOW_DARK], base = b.P.length / 3, along = g.axis === 0 ? 2 : 0;
+    const uv = tileUv(kind), b = built[g.lit ? WINDOW_LIT : WINDOW_DARK], along = g.axis === 0 ? 2 : 0;
     // seen from outside, left to right: +Z shows X rising, -Z shows it falling, +X shows Z falling, -X rising
-    const rising = (g.axis === 2 ? 1 : -1) * g.sign > 0;
-    const left = rising ? g.r0 : g.r1, right = rising ? g.r1 : g.r0, normal = [0, 0, 0];
+    const rising = (g.axis === 2 ? 1 : -1) * g.sign > 0, normal = [0, 0, 0];
     normal[g.axis] = g.sign;
-    for (const [r, y, u, v] of [[left, g.y0, uv.u0, uv.v1], [right, g.y0, uv.u1, uv.v1], [right, g.y1, uv.u1, uv.v0], [left, g.y1, uv.u0, uv.v0]]) {
-      const w = [0, y, 0]; w[along] = r; w[g.axis] = g.depth;
-      const p = apply(inv, w), o = apply(inv, [0, 0, 0]), q = apply(inv, normal), nl = Math.hypot(q[0] - o[0], q[1] - o[1], q[2] - o[2]) || 1;
-      b.P.push(p[0], p[1], p[2]); b.N.push((q[0] - o[0]) / nl, (q[1] - o[1]) / nl, (q[2] - o[2]) / nl); b.T.push(u, v);
+    // a long ribbon of glass is a row of windows: the drawing repeats along it instead of stretching
+    const w = g.r1 - g.r0, h = g.y1 - g.y0, bays = w >= 2.4 * h && h >= 0.8 ? Math.max(2, Math.round(w / (1.3 * h))) : 1;
+    quads += bays;
+    for (let k = 0; k < bays; k++) {
+      const a0 = g.r0 + w * k / bays, a1 = g.r0 + w * (k + 1) / bays, left = rising ? a0 : a1, right = rising ? a1 : a0, base = b.P.length / 3;
+      for (const [r, y, u, v] of [[left, g.y0, uv.u0, uv.v1], [right, g.y0, uv.u1, uv.v1], [right, g.y1, uv.u1, uv.v0], [left, g.y1, uv.u0, uv.v0]]) {
+        const pw = [0, y, 0]; pw[along] = r; pw[g.axis] = g.depth;
+        const p = apply(inv, pw), o = apply(inv, [0, 0, 0]), q = apply(inv, normal), nl = Math.hypot(q[0] - o[0], q[1] - o[1], q[2] - o[2]) || 1;
+        b.P.push(p[0], p[1], p[2]); b.N.push((q[0] - o[0]) / nl, (q[1] - o[1]) / nl, (q[2] - o[2]) / nl); b.T.push(u, v);
+      }
+      b.I.push(base, base + 1, base + 2, base, base + 2, base + 3);
     }
-    b.I.push(base, base + 1, base + 2, base, base + 2, base + 3);
   });
 
   for (const { mesh, prim } of old) mesh.removePrimitive(prim);
@@ -243,6 +249,6 @@ export async function drawRooms(bytes, env = {}) {
   await doc.transform(prune({ keepAttributes: true, keepLeaves: false, keepSolidTextures: true, keepExtras: true, keepIndices: true }));
   const lit = built[WINDOW_LIT].I.length / 6, dark = built[WINDOW_DARK].I.length / 6;
   const kinds = [[counts.house, "house window"], [counts.shop, "shopfront"], [counts.door, "door or transom glass", "door or transom glass"], [counts.small, "small window"]].filter((k) => k[0]).map((k) => k[0] + " " + (k[0] === 1 ? k[1] : k[2] || k[1] + "s")).join(", ");
-  log.push("Rooms: " + panes.length + (panes.length === 1 ? " pane" : " panes") + " (" + lit + " lit, " + dark + " dark), each made one clean rectangle where its glass was and painted with what hangs in it: " + kinds + ". By day a pane is dark glass with the sky in it; " + WINDOW_LIT + " glows at night with the room behind (its emission map, at full strength for the game's clock to scale). " + tris.length + " triangles of generated glass became " + (panes.length * 2) + ".");
+  log.push("Rooms: " + panes.length + (panes.length === 1 ? " pane" : " panes") + " (" + lit + " lit, " + dark + " dark), each made one clean rectangle where its glass was and painted with what hangs in it: " + kinds + ". By day a pane is dark glass with the sky in it; " + WINDOW_LIT + " glows at night with the room behind (its emission map, at full strength for the game's clock to scale). " + tris.length + " triangles of generated glass became " + (quads * 2) + ".");
   return { bytes: await writeModel(doc), log, panes: panes.length };
 }

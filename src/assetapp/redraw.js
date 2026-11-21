@@ -102,16 +102,25 @@ function findWall(parts, o) {
     const pos = worldOf(part), idx = indexOf(part);
     for (let t = 0; t < idx.length; t += 3) {
       const a = fr.local([pos[idx[t] * 3], pos[idx[t] * 3 + 1], pos[idx[t] * 3 + 2]]), b = fr.local([pos[idx[t + 1] * 3], pos[idx[t + 1] * 3 + 1], pos[idx[t + 1] * 3 + 2]]), c = fr.local([pos[idx[t + 2] * 3], pos[idx[t + 2] * 3 + 1], pos[idx[t + 2] * 3 + 2]]);
-      if (Math.max(a[0], b[0], c[0]) < r0 || Math.min(a[0], b[0], c[0]) > r1 || Math.max(a[1], b[1], c[1]) < y0 || Math.min(a[1], b[1], c[1]) > y1) continue;
+      // the wall round an opening counts too: a wall built up to a window's edge never crosses into it
+      if (Math.max(a[0], b[0], c[0]) < r0 - 0.3 || Math.min(a[0], b[0], c[0]) > r1 + 0.3 || Math.max(a[1], b[1], c[1]) < y0 - 0.3 || Math.min(a[1], b[1], c[1]) > y1 + 0.3) continue;
       const area = Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])) / 2; // its size seen square on
       if (area < 1e-8 || Math.max(a[2], b[2], c[2]) - Math.min(a[2], b[2], c[2]) > 0.05) continue;
+      // only surface that faces the way the wall does: the far wall of the building lies under the
+      // same rectangle, facing the other way
+      const w0 = [pos[idx[t] * 3], pos[idx[t] * 3 + 1], pos[idx[t] * 3 + 2]], w1 = [pos[idx[t + 1] * 3], pos[idx[t + 1] * 3 + 1], pos[idx[t + 1] * 3 + 2]], w2 = [pos[idx[t + 2] * 3], pos[idx[t + 2] * 3 + 1], pos[idx[t + 2] * 3 + 2]];
+      const e1 = [w1[0] - w0[0], w1[1] - w0[1], w1[2] - w0[2]], e2 = [w2[0] - w0[0], w2[1] - w0[1], w2[2] - w0[2]];
+      const nrm = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+      if (nrm[fr.axis] * fr.sign <= 0) continue;
       const key = Math.round((a[2] + b[2] + c[2]) / 3 / 0.02);
       const hit = buckets.get(key) || { area: 0, sum: 0 };
       hit.area += area; hit.sum += area * (a[2] + b[2] + c[2]) / 3; buckets.set(key, hit);
     }
   }
-  let best = null;
-  for (const hit of buckets.values()) if (!best || hit.area > best.area) best = hit;
+  // of the depths with a good share of that surface, the outermost is the wall's face
+  let most = 0, best = null;
+  for (const hit of buckets.values()) if (hit.area > most) most = hit.area;
+  for (const hit of buckets.values()) if (hit.area >= most * 0.25 && (!best || hit.sum / hit.area > best.sum / best.area)) best = hit;
   if (!best) throw new Error("Opening " + (o.index + 1) + " (" + o.kind + "): no wall was found under it. Give its depth as `at`.");
   return frameOf(o.face, 0).sign * best.sum / best.area;
 }
@@ -355,6 +364,7 @@ export async function redrawOpenings(bytes, plan, env = {}) {
   for (const o of list) {
     const at = Number.isFinite(o.at) ? o.at : findWall(parts, o);
     o.frame = frameOf(o.face, at);
+    if (!Number.isFinite(o.at)) log.push("Opening " + (o.index + 1) + " (" + o.kind + "): the " + o.face + " wall was found at " + (o.frame.axis === 0 ? "x" : "z") + " = " + m2(at) + ".");
     [o.r0, o.r1] = o.frame.span(o.span);
   }
   const done = { window: 0, door: 0, sign: 0, wall: 0, cut: 0, clear: 0 };
@@ -412,11 +422,14 @@ export async function redrawOpenings(bytes, plan, env = {}) {
     const front = o.clear ?? 0.25;
     if (!(front > 0)) continue;
     for (const part of parts) {
-      const pos = worldOf(part), idx = indexOf(part), keep = [];
+      const pos = worldOf(part), idx = indexOf(part), keep = [], name = part.prim.getMaterial() ? part.prim.getMaterial().getName() : "", glass = name === WINDOW_LIT || name === WINDOW_DARK;
       for (let t = 0; t < idx.length; t += 3) {
         const loc = [0, 1, 2].map((e) => o.frame.local([pos[idx[t + e] * 3], pos[idx[t + e] * 3 + 1], pos[idx[t + e] * 3 + 2]]));
         const inside = loc.every((p) => p[0] >= o.r0 - 0.04 && p[0] <= o.r1 + 0.04 && p[1] >= o.y[0] - 0.04 && p[1] <= o.y[1] + 0.04 && p[2] >= -0.4 && p[2] <= front);
-        if (inside) emptied++; else keep.push(idx[t], idx[t + 1], idx[t + 2]);
+        // glass found before that reaches into the opening is that window's old glass, torn wider
+        // than its frame: all of it goes, or it would be gathered with the new pane as one window
+        const oldGlass = glass && loc.every((p) => p[2] >= -0.4 && p[2] <= front) && Math.max(loc[0][0], loc[1][0], loc[2][0]) > o.r0 && Math.min(loc[0][0], loc[1][0], loc[2][0]) < o.r1 && Math.max(loc[0][1], loc[1][1], loc[2][1]) > o.y[0] && Math.min(loc[0][1], loc[1][1], loc[2][1]) < o.y[1];
+        if (inside || oldGlass) emptied++; else keep.push(idx[t], idx[t + 1], idx[t + 2]);
       }
       if (keep.length !== idx.length) part.prim.setIndices(doc.createAccessor().setType("SCALAR").setArray(Uint32Array.from(keep)).setBuffer(buffer));
     }

@@ -203,3 +203,18 @@ describe("Sovereign Asset rooms and window bars", () => {
     expect(none.panes).toBe(0);
   });
 });
+
+describe("Sovereign Asset openings: found walls and ribbon windows", () => {
+  it("finds the wall that faces the right way, and repeats a room along a ribbon of glass", async () => {
+    const { drawRooms } = await import("../src/assetapp/rooms.js");
+    // no `at`: the +z wall stands at z = 2, and nothing else faces that way
+    const made = await redrawOpenings(await house(), { openings: [{ kind: "window", face: "+z", span: [-2.9, 2.9], y: [1.2, 2.2], lit: true, sashes: 4, clear: 0 }] }, { codec: pngCodec });
+    expect(made.log.join(" ")).toContain("the +z wall was found at z = 2.00");
+    const out = await drawRooms(made.bytes, { codec: pngCodec });
+    expect(out.panes).toBe(1);
+    const lit = partsOf(await readModel(out.bytes)).find((p) => p.name === "windows_lit");
+    expect(lit.tris).toBe(8); // 5.8 m by 1 m: four bays, each the whole drawing
+    const uv = Array.from(lit.prim.getAttribute("TEXCOORD_0").getArray());
+    expect(new Set(uv.filter((_, i) => i % 2 === 0).map((u) => u.toFixed(4))).size).toBe(2);
+  });
+});
