@@ -1,0 +1,8 @@
+{
+  "rooms": true,
+  "openings": [
+    { "kind": "window", "face": "+z", "at": 2.08,  "span": [-2.74, -1.28], "y": [1.28, 2.39], "lit": true, "clear": 0.12 },
+    { "kind": "window", "face": "+z", "at": 2.08,  "span": [1.23, 2.72],   "y": [1.28, 2.39], "lit": true, "bars": true },
+    { "kind": "window", "face": "-z", "at": -3.34, "span": [-2.7, 2.7],    "y": [1.28, 2.39], "lit": true, "sashes": 4 }
+  ]
+}
